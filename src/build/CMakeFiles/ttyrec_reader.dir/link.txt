@@ -1,0 +1,1 @@
+/usr/bin/cc -O2 -g -DNDEBUG CMakeFiles/ttyrec_reader.dir/third_party/converter/reader.c.o -o ttyrec_reader  libconverter.a -lbz2 libtmt.a 

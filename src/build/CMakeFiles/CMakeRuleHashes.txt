@@ -1,0 +1,21 @@
+# Hashes of file build rules.
+b5f829c908f86767dbd1a94657d93ad1 dat/Arc-fila.lev
+13a3d4670016fb54bcc051d2bc2374a3 dat/CMakeFiles/dat
+4862ac2dc0f08b2ca4d5c00090fd9112 dat/bogusmon
+7987b116f5880f214315776c1033bcf3 dat/data
+867ce816da2bd7483e20e9d7d702c5f8 dat/dungeon
+78ce63dc0cef3287fc752e251f4287c4 dat/nhdat
+004436babbd811830a31a58f0c2c16bc dat/options
+312a161b7f4862825ed2794952adec5c dat/oracles
+c45f54346ed126040663aa6eb94018e3 dat/perm
+8848be50b2f78a05b19b7073e5196577 dat/quest.dat
+c7a176e434ddafb013ead54509dffba3 dat/rumors
+b46d7268463d42ea288b490e6361c802 include/date.h
+ddc29649960742dd117c4191fe71549a include/onames.h
+0004c64a6d7ccfc6bd2b7ab162acfd33 include/pm.h
+807351b3a947336d9dc1dc566a5cf4bf src/tile.c
+68036c2bedba2a8d032b228ac0556ed6 util/CMakeFiles/util
+b94c933a0776388abc973032c36d4c7f util/dgn_parser.c
+ce27c40f52bf2119b3e3a760c3f00999 util/dgn_scanner.c
+646f6b4d9916c75239f8b1075f551928 util/lev_parser.c
+39ef77def0cadaee55328820c7d4aaa7 util/lev_scanner.c

@@ -1,0 +1,17 @@
+{
+  local:
+    /* Hide C++ operator new/delete overrides so libnethack's arena
+       allocator is internal-only. Without this, dynamic-link interposition
+       routes torch / pybind11 / Python allocations into our bump arena,
+       which Python's free() rejects at finalize-time. */
+    _Znwm;                  /* operator new(unsigned long) */
+    _Znam;                  /* operator new[](unsigned long) */
+    _ZnwmRKSt9nothrow_t;    /* operator new(ulong, nothrow_t) */
+    _ZnamRKSt9nothrow_t;    /* operator new[](ulong, nothrow_t) */
+    _ZdlPv;                 /* operator delete(void*) */
+    _ZdaPv;                 /* operator delete[](void*) */
+    _ZdlPvm;                /* operator delete(void*, ulong) */
+    _ZdaPvm;                /* operator delete[](void*, ulong) */
+    _ZdlPvRKSt9nothrow_t;   /* operator delete(void*, nothrow_t) */
+    _ZdaPvRKSt9nothrow_t;   /* operator delete[](void*, nothrow_t) */
+};

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfcontext.a CMakeFiles/fcontext.dir/source/stack.c.o CMakeFiles/fcontext.dir/asm/make_x86_64_sysv_elf_gas.S.o CMakeFiles/fcontext.dir/asm/jump_x86_64_sysv_elf_gas.S.o CMakeFiles/fcontext.dir/asm/ontop_x86_64_sysv_elf_gas.S.o
+/usr/bin/ranlib libfcontext.a

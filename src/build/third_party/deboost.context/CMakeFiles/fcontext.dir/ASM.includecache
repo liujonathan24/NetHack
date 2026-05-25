@@ -1,0 +1,14 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/scratch/gpfs/ZHUANGL/jl0796/PufferLib/vendor/nle/src/third_party/deboost.context/asm/jump_x86_64_sysv_elf_gas.S
+
+/scratch/gpfs/ZHUANGL/jl0796/PufferLib/vendor/nle/src/third_party/deboost.context/asm/make_x86_64_sysv_elf_gas.S
+
+/scratch/gpfs/ZHUANGL/jl0796/PufferLib/vendor/nle/src/third_party/deboost.context/asm/ontop_x86_64_sysv_elf_gas.S
+

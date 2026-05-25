@@ -1,0 +1,1 @@
+/usr/bin/cc -O2 -g -DNDEBUG CMakeFiles/makedefs.dir/makedefs.c.o CMakeFiles/makedefs.dir/__/src/monst.c.o CMakeFiles/makedefs.dir/__/src/objects.c.o -o makedefs 
