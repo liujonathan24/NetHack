@@ -973,32 +973,6 @@ free_nle_fields(nle_ctx_t *nle)
     free(nle->bhitpos_p);
     free(nle->s_utrack);
     free(nle->s_muse_m_p);
-    free(nle->s_save_state);
-    free(nle->s_files_state);
-    free(nle->s_pline_state);
-    free(nle->dungeon_save);
-    free(nle->s_objnam_state);
-    free(nle->s_options_state);
-    free(nle->s_termcap_state);
-    free(nle->s_rect);
-    free(nle->s_botl_state);
-    free(nle->s_wintty_state);
-    free(nle->s_apply_state);
-    free(nle->s_cmd_state);
-    free(nle->s_display_state);
-    free(nle->s_dokick_state);
-    free(nle->s_do_name_state);
-    free(nle->s_do_wear_state);
-    free(nle->s_end_state);
-    free(nle->s_pager_state);
-    free(nle->s_rip_state);
-    free(nle->s_rumors_state);
-    free(nle->s_shk_state);
-    free(nle->s_sounds_state);
-    free(nle->s_sp_lev_state);
-    free(nle->s_topl_state);
-    free(nle->s_uhitm_state);
-    free(nle->s_windows_state);
 }
 
 void

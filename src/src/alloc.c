@@ -81,7 +81,7 @@ size_t nle_arena_cap  = 0;
  * Lookups walk linearly with acquire loads — no lock, no contention on
  * the hot alloc() path (only nle_arena_free pays the cost). Capacity
  * 4096 is large vs the realistic env count (~1024). */
-#define NLE_ARENA_REGISTRY_CAP 4096
+#define NLE_ARENA_REGISTRY_CAP 32768
 static char  *nle_arena_registry_base[NLE_ARENA_REGISTRY_CAP];
 static size_t nle_arena_registry_cap_bytes[NLE_ARENA_REGISTRY_CAP];
 /* High-water mark: max+1 index ever assigned. Bounds the linear scan in
