@@ -908,21 +908,105 @@ nle_step(nle_ctx_t *nle, nle_obs *obs)
     return nle;
 }
 
+static void
+free_nle_fields(nle_ctx_t *nle)
+{
+    free(nle->u_ptr);
+    free(nle->flags_ptr);
+    free(nle->iflags_ptr);
+#ifdef SYSFLAGS
+    free(nle->sysflags_ptr);
+#endif
+    free(nle->s6_topology_p);
+    free(nle->s6_dungeons_p);
+    free(nle->s6_upstair_p);
+    free(nle->s6_dnstair_p);
+    free(nle->s6_upladder_p);
+    free(nle->s6_dnladder_p);
+    free(nle->s6_sstairs_p);
+    free(nle->s6_updest_p);
+    free(nle->s6_dndest_p);
+    free(nle->s6_inv_pos_p);
+    free(nle->s9c_m_shot_p);
+    free(nle->s9c_urealtime_p);
+    free(nle->s9c_quest_status_p);
+    free(nle->s9c_spl_book_p);
+    free(nle->s9c_youmonst_p);
+    free(nle->s9c_mvitals_p);
+    free(nle->s9c_killer_p);
+    free(nle->s8_tcap_p);
+    free(nle->s5_cmd_p);
+    free(nle->s_disco_p);
+    free(nle->s_obufs_p);
+    free(nle->s_tty_status_p);
+    free(nle->s_context_p);
+    free(nle->s_rndmonst_state_p);
+    /* s_artilist_p and s_qt_list_p are allocated via alloc() (arena),
+     * not libc malloc — freed when the arena is munmap'd. */
+    free(nle->s9o_objects_p);
+    free(nle->s9o_obj_descr_p);
+    free(nle->s_mbufs_p);
+    free(nle->s_smeq_p);
+    free(nle->s_bases_p);
+    free(nle->s_hilites_p);
+    free(nle->s_gbuf_p);
+    free(nle->s_blstats_p);
+    free(nle->s_status_hilites_p);
+    free(nle->s_could_see_p);
+    free(nle->s_viz_clear_p);
+    free(nle->s_left_ptrs_p);
+    free(nle->s_right_ptrs_p);
+    free(nle->s_SpLev_Map_p);
+    free(nle->s_fqn_fname_p);
+    free(nle->s_wheads_p);
+    free(nle->s_wtails_p);
+    free(nle->s_wgrowtime_p);
+    free(nle->s_boolopt_p);
+    free(nle->s_compopt_p);
+    free(nle->s_urole_p);
+    free(nle->s_urace_p);
+    free(nle->s7_level_p);
+    free(nle->s7_rooms_p);
+    free(nle->s7_doors_p);
+    free(nle->s7_level_info_p);
+    free(nle->s7_lastseentyp_p);
+    free(nle->bhitpos_p);
+    free(nle->s_utrack);
+    free(nle->s_muse_m_p);
+    free(nle->s_save_state);
+    free(nle->s_files_state);
+    free(nle->s_pline_state);
+    free(nle->dungeon_save);
+    free(nle->s_objnam_state);
+    free(nle->s_options_state);
+    free(nle->s_termcap_state);
+    free(nle->s_rect);
+    free(nle->s_botl_state);
+    free(nle->s_wintty_state);
+    free(nle->s_apply_state);
+    free(nle->s_cmd_state);
+    free(nle->s_display_state);
+    free(nle->s_dokick_state);
+    free(nle->s_do_name_state);
+    free(nle->s_do_wear_state);
+    free(nle->s_end_state);
+    free(nle->s_pager_state);
+    free(nle->s_rip_state);
+    free(nle->s_rumors_state);
+    free(nle->s_shk_state);
+    free(nle->s_sounds_state);
+    free(nle->s_sp_lev_state);
+    free(nle->s_topl_state);
+    free(nle->s_uhitm_state);
+    free(nle->s_windows_state);
+}
+
 void
 nle_end(nle_ctx_t *nle)
 {
-    /* nle_end may run on a thread that didn't step this env. The TLS
-     * NetHack globals on the calling thread are empty / stale. Anchor
-     * current_nle_ctx and swap the env's state into TLS so the
-     * freedynamicdata / savelev cleanup walk sees this env's level,
-     * flags, etc. Without this, calling nle_end from the main thread
-     * (as the bench does) segfaults in savelev on a non-OMP-worker
-     * thread. */
     current_nle_ctx = nle;
     nle_swap_in(nle);
     if (!nle->done) {
-        /* Reset without closing nethack. Need free memory, etc.
-         * this is what nh_terminate in end.c does. I hope it's enough. */
         if (!current_nle_ctx->program_state.panicking) {
             freedynamicdata();
             dlb_cleanup();
@@ -941,13 +1025,6 @@ nle_end(nle_ctx_t *nle)
     tmt_close(nle->vterminal);
 
     destroy_fcontext_stack(&nle->stack);
-    /* Nle_tls_loaded TLS cache retired; no clear needed. */
-    /* Release per-env bump arena mmap. The 64 MB virtual range
-     * (mostly MAP_NORESERVE, only touched pages are resident) is freed
-     * back to the kernel so long training runs that recycle envs don't
-     * accumulate virtual address space. Unregister from the global arena
-     * registry first so nle_arena_free on a stale pointer doesn't
-     * mis-claim the now-unmapped range. */
     if (nle->s_arena_base) {
         extern void nle_arena_registry_release(char *);
         nle_arena_registry_release(nle->s_arena_base);
@@ -956,6 +1033,9 @@ nle_end(nle_ctx_t *nle)
         nle->s_arena_used = 0;
         nle->s_arena_cap  = 0;
     }
+    extern void nle_winrl_destroy_for_ctx(nle_ctx_t *);
+    nle_winrl_destroy_for_ctx(nle);
+    free_nle_fields(nle);
     free(nle);
 }
 

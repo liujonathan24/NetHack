@@ -1411,3 +1411,7 @@ extern const struct window_procs rl_procs = {
     nethack_rl::NetHackRL::rl_status_update,
     genl_can_suspend_yes,
 };
+
+extern "C" void nle_winrl_destroy_for_ctx(nle_ctx_t *nle) {
+    nethack_rl::NetHackRL::destroy_for_ctx(nle);
+}

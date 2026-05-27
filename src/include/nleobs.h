@@ -81,12 +81,12 @@ typedef struct {
 } nle_seeds_init_t;
 
 typedef struct nle_settings {
-    char hackdir[256];
-    char scoreprefix[256];
-    char options[512];
-    char wizkit[256];
+    char hackdir[4096];
+    char scoreprefix[4096];
+    char options[32768];
+    char wizkit[4096];
     int spawn_monsters;
-    char ttyrecname[256];
+    char ttyrecname[4096];
 } nle_settings;
 
 #endif /* NLEOBS_H */
