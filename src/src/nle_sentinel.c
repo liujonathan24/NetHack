@@ -4,6 +4,12 @@
 #include <stdatomic.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <execinfo.h>
 
 typedef struct {
     _Atomic uint64_t heartbeat;     /* bumped every step                       */
@@ -94,6 +100,121 @@ uint64_t nle_sentinel_total_heartbeat(void) {
     return total;
 }
 
-/* global_init is defined in Task 2 (handler + watchdog). Provide a temporary
- * no-op so Task 1's unit test links; Task 2 replaces this body. */
-void nle_sentinel_global_init(void) { }
+/* ---- async-signal-safe output helpers ---- */
+static char g_crash_path[512];   /* breadcrumb path, built at init           */
+static volatile sig_atomic_t g_signal_fired = 0;
+
+static void sas_write(int fd, const char *s) {
+    size_t n = 0; while (s[n]) n++;
+    ssize_t w = write(fd, s, n); (void)w;
+}
+/* unsigned long -> decimal, async-signal-safe */
+static void sas_write_u(int fd, unsigned long v) {
+    char b[32]; int i = 31; b[i--] = '\0';
+    if (v == 0) b[i--] = '0';
+    while (v) { b[i--] = (char)('0' + (v % 10)); v /= 10; }
+    sas_write(fd, &b[i + 1]);
+}
+/* unsigned long -> hex, async-signal-safe */
+static void sas_write_x(int fd, unsigned long v) {
+    static const char *hx = "0123456789abcdef";
+    char b[32]; int i = 31; b[i--] = '\0';
+    if (v == 0) b[i--] = '0';
+    while (v) { b[i--] = hx[v & 0xf]; v >>= 4; }
+    sas_write(fd, "0x"); sas_write(fd, &b[i + 1]);
+}
+
+static void dump_report(int fd, const char *signame) {
+    sas_write(fd, "=== NLE SENTINEL: ");
+    sas_write(fd, signame);
+    sas_write(fd, " ===\n");
+    sas_write(fd, "pid="); sas_write_u(fd, (unsigned long)getpid());
+    sas_write(fd, " tid="); sas_write_u(fd, (unsigned long)pthread_self());
+    sas_write(fd, "\n");
+
+    sentinel_slot *cur = g_tls;
+    if (cur) {
+        sas_write(fd, "FAULTING ENV: id="); sas_write_u(fd, (unsigned long)cur->env_id);
+        sas_write(fd, " seed="); sas_write_x(fd, cur->seed);
+        sas_write(fd, " step="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->step, memory_order_relaxed));
+        sas_write(fd, " action="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->last_action, memory_order_relaxed));
+        sas_write(fd, " dlvl="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->dlvl, memory_order_relaxed));
+        sas_write(fd, "\n");
+        if (cur->panic_msg[0]) { sas_write(fd, "panic_msg="); sas_write(fd, cur->panic_msg); sas_write(fd, "\n"); }
+    } else {
+        sas_write(fd, "FAULTING ENV: <unknown thread, no slot>\n");
+    }
+
+    sas_write(fd, "--- all envs (id seed step heartbeat dlvl) ---\n");
+    for (int i = 0; i < NLE_SENTINEL_CAP; i++) {
+        if (atomic_load_explicit(&g_slots[i].in_use, memory_order_acquire) != 1) continue;
+        sentinel_slot *s = &g_slots[i];
+        sas_write_u(fd, (unsigned long)s->env_id); sas_write(fd, " ");
+        sas_write_x(fd, s->seed); sas_write(fd, " ");
+        sas_write_u(fd, (unsigned long)atomic_load_explicit(&s->step, memory_order_relaxed)); sas_write(fd, " ");
+        sas_write_u(fd, (unsigned long)atomic_load_explicit(&s->heartbeat, memory_order_relaxed)); sas_write(fd, " ");
+        sas_write_u(fd, (unsigned long)atomic_load_explicit(&s->dlvl, memory_order_relaxed)); sas_write(fd, "\n");
+    }
+
+    sas_write(fd, "--- backtrace ---\n");
+    void *bt[64];
+    int nb = backtrace(bt, 64);
+    backtrace_symbols_fd(bt, nb, fd);
+    sas_write(fd, "=== END SENTINEL ===\n");
+}
+
+static void crash_handler(int sig, siginfo_t *info, void *uctx) {
+    (void)info; (void)uctx;
+    g_signal_fired = sig;
+    const char *name =
+        sig == SIGSEGV ? "SIGSEGV" :
+        sig == SIGABRT ? "SIGABRT" :
+        sig == SIGFPE  ? "SIGFPE"  :
+        sig == SIGBUS  ? "SIGBUS"  : "SIGNAL";
+
+    dump_report(STDERR_FILENO, name);
+    if (g_crash_path[0]) {
+        int fd = open(g_crash_path, O_CREAT | O_WRONLY | O_APPEND, 0644);
+        if (fd >= 0) { dump_report(fd, name); close(fd); }
+    }
+
+    /* restore default disposition and re-raise: preserve exit code / core */
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void install_handlers(void) {
+    static char altstack[65536];
+    stack_t ss = { .ss_sp = altstack, .ss_size = sizeof(altstack), .ss_flags = 0 };
+    sigaltstack(&ss, NULL);
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = crash_handler;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    int sigs[] = { SIGSEGV, SIGABRT, SIGFPE, SIGBUS };
+    for (int i = 0; i < 4; i++) sigaction(sigs[i], &sa, NULL);
+
+    /* pre-load libgcc unwinder so backtrace() in the handler is safe */
+    void *bt[4]; (void)backtrace(bt, 4);
+}
+
+static pthread_once_t g_once = PTHREAD_ONCE_INIT;
+
+static void build_crash_path(void) {
+    const char *dir = getenv("NLE_CRASH_DIR");
+    if (!dir || !dir[0]) dir = ".";
+    /* g_crash_path = "<dir>/nle_crash_<pid>.txt" (built once, plain snprintf ok here) */
+    snprintf(g_crash_path, sizeof(g_crash_path), "%s/nle_crash_%d.txt", dir, (int)getpid());
+}
+
+static void global_init_once(void) {
+    build_crash_path();
+    install_handlers();
+    /* watchdog is started here in Task 3 */
+}
+
+void nle_sentinel_global_init(void) {
+    pthread_once(&g_once, global_init_once);
+}
