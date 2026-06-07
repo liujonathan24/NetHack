@@ -87,8 +87,9 @@ typedef struct {
   returns an opaque `void *` stored in `nle_ctx_t.sentinel`.
 - A `__thread nle_sentinel_slot *` records the slot the **current thread** is
   servicing, so the signal handler can identify the faulting env without a lookup.
-- Fixed capacity (default 8192, compile-time constant). Overflow logs once and
-  returns NULL; `beat()` tolerates a NULL slot (no-op) so an over-cap env still runs.
+- Fixed capacity (default 16384, compile-time constant — headroom well past the
+  N=4096 stress config). Overflow logs once and returns NULL; `beat()` tolerates a
+  NULL slot (no-op) so an over-cap env still runs.
 
 ### 2. Step hot path: `nle_sentinel_beat`
 
@@ -225,8 +226,9 @@ aborting, so a hang is a normal CI failure.
   advance for a stall threshold (e.g. 5 s), or a signal handler fired, the test
   prints the offending env (id/seed/step/action/dlvl) and exits 1. If all envs
   advance for the whole duration, exit 0.
-- **`--soak`:** large N (e.g. 1024+), more threads, minutes-to-hours; same
-  assertions. This is the real over-time proof for unattended runs.
+- **`--soak`:** large N (e.g. 1024+), more threads, runs a few minutes by default
+  (duration overridable); same assertions. This is the real over-time proof for
+  unattended runs.
 - Output: per-env step counts, min/median/max progress, total steps/sec, and a
   clear PASS/FAIL line.
 
