@@ -11,7 +11,9 @@ extern "C" {
 #define NLE_SENTINEL_CAP 16384
 
 /* Install signal handlers (once) and, iff NLE_WATCHDOG_SECS is set to a
- * positive integer, start the watchdog thread. Idempotent. */
+ * positive integer, start the watchdog thread. Idempotent.
+ * The watchdog detects a GLOBAL stall only (all envs stuck); per-env stalls are
+ * caught by the snapshot API. */
 void nle_sentinel_global_init(void);
 
 /* Claim a slot for a new env. Returns an opaque slot pointer to store in the

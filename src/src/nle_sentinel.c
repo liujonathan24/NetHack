@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <execinfo.h>
 
+#define NLE_WATCHDOG_MIN_POLL_US 100000UL  /* 100ms minimum watchdog poll interval */
+
 typedef struct {
     _Atomic uint64_t heartbeat;     /* bumped every step                       */
     _Atomic uint64_t step;          /* total steps this env has taken          */
@@ -220,9 +222,13 @@ static void build_crash_path(void) {
 }
 
 static void *watchdog_main(void *arg) {
+    /* NOTE: detects a GLOBAL stall only. total_heartbeat() is a sum across all
+     * envs, so this fires only when every env stops advancing (e.g. a process-
+     * wide deadlock). A single stuck env while others progress will NOT trip it;
+     * per-env stall detection is done by the snapshot poll in tests/test_no_hang.c. */
     unsigned long secs = (unsigned long)(long)arg;
     unsigned long half_us = (secs * 1000000UL) / 2;
-    if (half_us < 100000UL) half_us = 100000UL;
+    if (half_us < NLE_WATCHDOG_MIN_POLL_US) half_us = NLE_WATCHDOG_MIN_POLL_US;
 
     uint64_t last = nle_sentinel_total_heartbeat();
     unsigned long stalled_us = 0;
@@ -253,6 +259,7 @@ static void global_init_once(void) {
     if (wd && wd[0]) {
         long secs = atol(wd);
         if (secs > 0) {
+            if (secs > 86400) secs = 86400; /* cap at 1 day; guards secs*1e6 overflow */
             pthread_t th;
             if (pthread_create(&th, NULL, watchdog_main, (void *)(long)secs) == 0)
                 pthread_detach(th);
