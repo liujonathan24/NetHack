@@ -870,7 +870,7 @@ nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
     nle_sentinel_beat(nle->sentinel, obs->action,
-                      (int)obs->blstats[NLE_BL_DEPTH]);
+                      obs->blstats ? (int)obs->blstats[NLE_BL_DEPTH] : 0);
     /* exp_039: prefetch the env context aggressively. Under puffer's
      * round-robin OMP step pattern, each c_step touches a different env's
      * 72 KB nle_ctx_t cold from L2/L3 — that single-pattern alone is
