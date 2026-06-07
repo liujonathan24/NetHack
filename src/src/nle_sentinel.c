@@ -219,10 +219,45 @@ static void build_crash_path(void) {
     snprintf(g_crash_path, sizeof(g_crash_path), "%s/nle_crash_%d.txt", dir, (int)getpid());
 }
 
+static void *watchdog_main(void *arg) {
+    unsigned long secs = (unsigned long)(long)arg;
+    unsigned long half_us = (secs * 1000000UL) / 2;
+    if (half_us < 100000UL) half_us = 100000UL;
+
+    uint64_t last = nle_sentinel_total_heartbeat();
+    unsigned long stalled_us = 0;
+    for (;;) {
+        usleep(half_us);
+        uint64_t now = nle_sentinel_total_heartbeat();
+        if (now != last) { last = now; stalled_us = 0; continue; }
+        /* no live envs yet? don't count it as a stall */
+        if (now == 0) { continue; }
+        stalled_us += half_us;
+        if (stalled_us >= secs * 1000000UL) {
+            const char *name = "HANG (watchdog)";
+            dump_report(STDERR_FILENO, name);
+            if (g_crash_path[0]) {
+                int fd = open(g_crash_path, O_CREAT | O_WRONLY | O_APPEND, 0644);
+                if (fd >= 0) { dump_report(fd, name); close(fd); }
+            }
+            abort(); /* caught by the SIGABRT handler too; loud + attributed */
+        }
+    }
+    return NULL;
+}
+
 static void global_init_once(void) {
     build_crash_path();
     install_handlers();
-    /* watchdog is started here in Task 3 */
+    const char *wd = getenv("NLE_WATCHDOG_SECS");
+    if (wd && wd[0]) {
+        long secs = atol(wd);
+        if (secs > 0) {
+            pthread_t th;
+            if (pthread_create(&th, NULL, watchdog_main, (void *)(long)secs) == 0)
+                pthread_detach(th);
+        }
+    }
 }
 
 void nle_sentinel_global_init(void) {
