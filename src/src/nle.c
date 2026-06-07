@@ -285,8 +285,17 @@ init_nle(FILE *ttyrec, nle_obs *obs)
         extern void nle_qtlist_alloc(struct qtlists **);
         nle_qtlist_alloc(&nle->s_qt_list_p);
     }
-    nle->s9o_objects_p   = malloc(NUM_OBJECTS * sizeof(struct objclass));
-    nle->s9o_obj_descr_p = malloc(NUM_OBJECTS * sizeof(struct objdescr));
+    /* NUM_OBJECTS + 1: stock NetHack's objects[]/obj_descr[] include a
+     * trailing "Array Terminator" entry (oc_class == ILLOBJ_CLASS == 0) past
+     * the NUM_OBJECTS real entries. obj_shuffle_range() scans class ranges
+     * with `for (i = lo; objects[i].oc_class == ocls; i++)` and relies on that
+     * terminator to stop; without it the scan reads — and shuffle() then
+     * writes — past the end of this heap block, corrupting the libc heap
+     * (manifesting later as non-deterministic glibc double-free / SIGSEGV).
+     * The baseline arrays below have NUM_OBJECTS + 1 elements, so copying the
+     * terminator too is in-bounds. */
+    nle->s9o_objects_p   = malloc((NUM_OBJECTS + 1) * sizeof(struct objclass));
+    nle->s9o_obj_descr_p = malloc((NUM_OBJECTS + 1) * sizeof(struct objdescr));
     /* do_name.c name-buffer pool: NUMMBUF=5 * BUFSZ=256 = 1280 bytes. */
     nle->s_mbufs_p       = calloc(5 * 256, sizeof(char));
     /* decl.c smeq[MAXNROFROOMS+1] — calloc'd zero matches original {0,...}. */
@@ -321,9 +330,9 @@ init_nle(FILE *ttyrec, nle_obs *obs)
     nle->s_urace_p          = calloc(1, 512);
     if (nle->s9o_objects_p && nle->s9o_obj_descr_p) {
         memcpy(nle->s9o_objects_p, objects_baseline,
-               NUM_OBJECTS * sizeof(struct objclass));
+               (NUM_OBJECTS + 1) * sizeof(struct objclass));
         memcpy(nle->s9o_obj_descr_p, obj_descr_baseline,
-               NUM_OBJECTS * sizeof(struct objdescr));
+               (NUM_OBJECTS + 1) * sizeof(struct objdescr));
     }
     nle->s7_level_p         = calloc(1, sizeof(dlevel_t));
     nle->s7_rooms_p         = calloc((MAXNROFROOMS + 1) * 2, sizeof(struct mkroom));
