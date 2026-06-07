@@ -15,6 +15,7 @@
 #include "dlb.h"
 
 #include "nle.h"
+#include "nle_sentinel.h"
 
 /* Single definition of current_nle_ctx; declared extern in nle.h.
  * Stage 10'+: TLS-marked so each OMP thread chases its own context.
@@ -742,6 +743,11 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
         }
     }
 
+    nle_sentinel_global_init();
+    /* seed_init->seeds[0] is the primary dungeon seed for this env */
+    nle->sentinel = nle_sentinel_register(
+        seed_init ? (unsigned long)seed_init->seeds[0] : 0UL);
+
     return nle;
 }
 
@@ -863,6 +869,8 @@ nle_swap_out(nle_ctx_t *nle)
 nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
+    nle_sentinel_beat(nle->sentinel, obs->action,
+                      (int)obs->blstats[NLE_BL_DEPTH]);
     /* exp_039: prefetch the env context aggressively. Under puffer's
      * round-robin OMP step pattern, each c_step touches a different env's
      * 72 KB nle_ctx_t cold from L2/L3 — that single-pattern alone is
@@ -987,6 +995,8 @@ free_nle_fields(nle_ctx_t *nle)
 void
 nle_end(nle_ctx_t *nle)
 {
+    nle_sentinel_unregister(nle->sentinel);
+    nle->sentinel = NULL;
     current_nle_ctx = nle;
     nle_swap_in(nle);
     if (!nle->done) {
