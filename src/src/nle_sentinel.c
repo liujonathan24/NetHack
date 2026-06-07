@@ -123,6 +123,11 @@ static void sas_write_x(int fd, unsigned long v) {
     while (v) { b[i--] = hx[v & 0xf]; v >>= 4; }
     sas_write(fd, "0x"); sas_write(fd, &b[i + 1]);
 }
+/* long -> decimal (handles negative), async-signal-safe */
+static void sas_write_d(int fd, long v) {
+    if (v < 0) { sas_write(fd, "-"); sas_write_u(fd, (unsigned long)(-v)); }
+    else sas_write_u(fd, (unsigned long)v);
+}
 
 static void dump_report(int fd, const char *signame) {
     sas_write(fd, "=== NLE SENTINEL: ");
@@ -137,7 +142,7 @@ static void dump_report(int fd, const char *signame) {
         sas_write(fd, "FAULTING ENV: id="); sas_write_u(fd, (unsigned long)cur->env_id);
         sas_write(fd, " seed="); sas_write_x(fd, cur->seed);
         sas_write(fd, " step="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->step, memory_order_relaxed));
-        sas_write(fd, " action="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->last_action, memory_order_relaxed));
+        sas_write(fd, " action="); sas_write_d(fd, (long)atomic_load_explicit(&cur->last_action, memory_order_relaxed));
         sas_write(fd, " dlvl="); sas_write_u(fd, (unsigned long)atomic_load_explicit(&cur->dlvl, memory_order_relaxed));
         sas_write(fd, "\n");
         if (cur->panic_msg[0]) { sas_write(fd, "panic_msg="); sas_write(fd, cur->panic_msg); sas_write(fd, "\n"); }
@@ -165,6 +170,11 @@ static void dump_report(int fd, const char *signame) {
 
 static void crash_handler(int sig, siginfo_t *info, void *uctx) {
     (void)info; (void)uctx;
+    if (g_signal_fired) {
+        /* A second fault while dumping — don't recurse; leave loudly. */
+        signal(sig, SIG_DFL);
+        _exit(128 + sig);
+    }
     g_signal_fired = sig;
     const char *name =
         sig == SIGSEGV ? "SIGSEGV" :
