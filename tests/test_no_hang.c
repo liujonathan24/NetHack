@@ -66,6 +66,18 @@ static void make_vardir(const char *hackdir, char *out, size_t cap) {
     snprintf(dst, sizeof(dst), "%s/save", d); mkdir(dst, 0755);
 }
 
+static void rm_vardir(const char *dir) {
+    char path[512];
+    const char *files[] = {"nhdat", "perm", "record", "logfile", "xlogfile", "paniclog"};
+    for (int i = 0; i < 6; i++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, files[i]);
+        unlink(path);
+    }
+    snprintf(path, sizeof(path), "%s/save", dir);
+    rmdir(path);
+    rmdir(dir);
+}
+
 static void env_bind(Env *e) {
     e->obs.glyphs = e->glyphs; e->obs.chars = e->chars; e->obs.colors = e->colors;
     e->obs.blstats = e->blstats; e->obs.message = e->message;
@@ -103,7 +115,10 @@ int main(int argc, char **argv) {
     int n_envs = 64, n_threads = 8, duration = 30, stall = 5;
     if (argc > 1 && strcmp(argv[1], "--soak") == 0) {
         n_envs = 1024; n_threads = 16; duration = 180; stall = 10;
-        if (argc > 2) duration = atoi(argv[2]);
+        if (argc > 2) {
+            int d = atoi(argv[2]);
+            if (d > 0) duration = d;   /* empty/invalid -> keep 180s default */
+        }
     }
 
     const char *hackdir = getenv("NETHACKDIR");
@@ -198,6 +213,12 @@ int main(int argc, char **argv) {
            n, (unsigned long long)total, (unsigned long long)(n ? mn : 0),
            (unsigned long long)mx, total / (elapsed > 0 ? elapsed : 1), elapsed);
     free(snap);
+
+    for (int i = 0; i < n_envs; i++) {
+        if (envs[i].ctx) nle_end(envs[i].ctx);
+        rm_vardir(envs[i].vardir);
+    }
+    free(envs);
 
     if (atomic_load(&g_failed)) { printf("test_no_hang: FAIL\n"); return 1; }
     printf("test_no_hang: PASS\n");
