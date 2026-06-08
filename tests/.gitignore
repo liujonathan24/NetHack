@@ -1,0 +1,5 @@
+# compiled test binaries + core dumps from crash tests
+test_multi_env
+verify_determinism
+core
+core.*

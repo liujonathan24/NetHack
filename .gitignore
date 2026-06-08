@@ -2,3 +2,4 @@
 *.ss.o
 src/build/
 test_multi_env
+core.*
