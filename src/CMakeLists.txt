@@ -168,7 +168,8 @@ target_link_options(nethack PRIVATE
     "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/nethack.ver"
 )
 
-target_link_libraries(nethack PUBLIC m fcontext bz2 tmt)
+find_package(Threads REQUIRED)
+target_link_libraries(nethack PUBLIC m fcontext bz2 tmt Threads::Threads)
 
 # dlopen wrapper library
 add_library(nethackdl STATIC "sys/unix/nledl.c")

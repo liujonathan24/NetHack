@@ -15,6 +15,7 @@
 #include "dlb.h"
 
 #include "nle.h"
+#include "nle_sentinel.h"
 
 /* Single definition of current_nle_ctx; declared extern in nle.h.
  * Stage 10'+: TLS-marked so each OMP thread chases its own context.
@@ -285,8 +286,17 @@ init_nle(FILE *ttyrec, nle_obs *obs)
         extern void nle_qtlist_alloc(struct qtlists **);
         nle_qtlist_alloc(&nle->s_qt_list_p);
     }
-    nle->s9o_objects_p   = malloc(NUM_OBJECTS * sizeof(struct objclass));
-    nle->s9o_obj_descr_p = malloc(NUM_OBJECTS * sizeof(struct objdescr));
+    /* NUM_OBJECTS + 1: stock NetHack's objects[]/obj_descr[] include a
+     * trailing "Array Terminator" entry (oc_class == ILLOBJ_CLASS == 0) past
+     * the NUM_OBJECTS real entries. obj_shuffle_range() scans class ranges
+     * with `for (i = lo; objects[i].oc_class == ocls; i++)` and relies on that
+     * terminator to stop; without it the scan reads — and shuffle() then
+     * writes — past the end of this heap block, corrupting the libc heap
+     * (manifesting later as non-deterministic glibc double-free / SIGSEGV).
+     * The baseline arrays below have NUM_OBJECTS + 1 elements, so copying the
+     * terminator too is in-bounds. */
+    nle->s9o_objects_p   = malloc((NUM_OBJECTS + 1) * sizeof(struct objclass));
+    nle->s9o_obj_descr_p = malloc((NUM_OBJECTS + 1) * sizeof(struct objdescr));
     /* do_name.c name-buffer pool: NUMMBUF=5 * BUFSZ=256 = 1280 bytes. */
     nle->s_mbufs_p       = calloc(5 * 256, sizeof(char));
     /* decl.c smeq[MAXNROFROOMS+1] — calloc'd zero matches original {0,...}. */
@@ -321,9 +331,9 @@ init_nle(FILE *ttyrec, nle_obs *obs)
     nle->s_urace_p          = calloc(1, 512);
     if (nle->s9o_objects_p && nle->s9o_obj_descr_p) {
         memcpy(nle->s9o_objects_p, objects_baseline,
-               NUM_OBJECTS * sizeof(struct objclass));
+               (NUM_OBJECTS + 1) * sizeof(struct objclass));
         memcpy(nle->s9o_obj_descr_p, obj_descr_baseline,
-               NUM_OBJECTS * sizeof(struct objdescr));
+               (NUM_OBJECTS + 1) * sizeof(struct objdescr));
     }
     nle->s7_level_p         = calloc(1, sizeof(dlevel_t));
     nle->s7_rooms_p         = calloc((MAXNROFROOMS + 1) * 2, sizeof(struct mkroom));
@@ -733,6 +743,11 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
         }
     }
 
+    nle_sentinel_global_init();
+    /* seed_init->seeds[0] is the primary dungeon seed for this env */
+    nle->sentinel = nle_sentinel_register(
+        seed_init ? (unsigned long)seed_init->seeds[0] : 0UL);
+
     return nle;
 }
 
@@ -854,6 +869,8 @@ nle_swap_out(nle_ctx_t *nle)
 nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
+    nle_sentinel_beat(nle->sentinel, obs->action,
+                      obs->blstats ? (int)obs->blstats[NLE_BL_DEPTH] : 0);
     /* exp_039: prefetch the env context aggressively. Under puffer's
      * round-robin OMP step pattern, each c_step touches a different env's
      * 72 KB nle_ctx_t cold from L2/L3 — that single-pattern alone is
@@ -978,6 +995,8 @@ free_nle_fields(nle_ctx_t *nle)
 void
 nle_end(nle_ctx_t *nle)
 {
+    nle_sentinel_unregister(nle->sentinel);
+    nle->sentinel = NULL;
     current_nle_ctx = nle;
     nle_swap_in(nle);
     if (!nle->done) {

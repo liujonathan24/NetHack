@@ -112,6 +112,8 @@ typedef struct nle_globals {
     boolean done;
     nle_obs *observation;
 
+    void *sentinel; /* opaque nle_sentinel slot for this env (may be NULL) */
+
     /* nle_state refactor — RNG subsystem (stage 1, was static rnglist
      * in rnd.c). Accessed via nle_rng_state(idx) / nle_rng_init_flag(idx). */
     isaac64_ctx rng_state[2];
