@@ -72,6 +72,13 @@ void nle_sentinel_set_panic(void *slot_, const char *msg) {
 void nle_sentinel_unregister(void *slot_) {
     sentinel_slot *s = (sentinel_slot *)slot_;
     if (!s) return;
+    /* g_tls is per-thread, so we can only clear the caller's TLS. If a DIFFERENT
+     * thread last beat this env, its g_tls still points here; once the slot is
+     * reused by another env, that thread's g_tls is stale. This is attribution-
+     * only (g_slots is static and never freed, so a stale read can never fault),
+     * and is self-correcting: every nle_sentinel_beat refreshes g_tls. Worst
+     * case is a misattributed FAULTING ENV line if a thread faults while idle
+     * right after another thread ended its env. */
     if (g_tls == s) g_tls = NULL;
     atomic_store(&s->in_use, 0);
 }
