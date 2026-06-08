@@ -1138,3 +1138,25 @@ git commit -m "test: consolidate harnesses into tests/ and add tiered no-hang so
 **Placeholder scan:** No TBD/TODO; every code step contains complete code. The two "if the local buffer has a different name" notes (Task 4 Step 2, Task 5 Step 2) are fork-specific fallbacks with a safe default given, not placeholders.
 
 **Type consistency:** `nle_sentinel_stat` fields (`env_id, seed, step, heartbeat, last_action, dlvl, in_use`) used identically in Tasks 1 and 6. `nle_sentinel_beat(void*, int, int)`, `nle_sentinel_register(unsigned long)`, `nle_sentinel_snapshot(stat*, int)`, `nle_sentinel_total_heartbeat(void)` signatures consistent across header, impl, and all call sites. `NLE_BL_DEPTH` (12) and `NLE_SENTINEL_CAP` (16384) used consistently.
+
+---
+
+## Deviations during implementation (as built)
+
+The implementation matches this plan except for the following corrections made (and reviewed) during execution. The code in `src/` and `tests/` is the source of truth.
+
+1. **Registry hardened for live multithreading (Task 1).** `step`/`last_action`/`dlvl` were made `_Atomic`, and `nle_sentinel_register` publishes the slot payload *before* setting `in_use` (a 0→2→1 claim/publish with release/acquire) so a concurrent `snapshot` can never read a half-initialized slot. Readers treat only `in_use == 1` as live.
+
+2. **Crash handler robustness (Task 2).** Added a re-entrancy guard (`g_signal_fired`) so a fault *inside* the handler `_exit`s instead of recursing, and `last_action` is printed signed. `SIGSTKSZ` is not a compile-time constant on glibc 2.34, so the alternate stack is a fixed 64 KiB.
+
+3. **Watchdog (Task 3).** Documented in code + header that it detects a *global* stall only (sum of heartbeats); `secs` is clamped to ≤ 86400 to avoid a `secs*1e6` overflow; the 100 ms poll floor is named `NLE_WATCHDOG_MIN_POLL_US`.
+
+4. **`nle_step` beat NULL-guards `obs->blstats` (Task 4).** `obs->blstats` is an optional caller-supplied buffer (can be NULL); the beat reads depth as `obs->blstats ? (int)obs->blstats[NLE_BL_DEPTH] : 0`, matching the NULL-guard convention used elsewhere in `nle.c`.
+
+5. **Pre-existing objects[] heap fix committed separately (Task 4).** The uncommitted `init_nle` `NUM_OBJECTS+1` array-terminator fix already in the working tree was committed as its own focused commit (`fix(nle): allocate objects[]/obj_descr[] with array terminator`) before the sentinel hooks, keeping history attributable.
+
+6. **`test_no_hang.c` concurrency + linkage corrected (Task 6).** The worker/monitor structure in the Task 6 code block above had two bugs that were fixed in the built version: (a) a dedicated monitor thread plus workers that round-robin-step their *strided* env subset one step per pass (the original `while`-inside-`for` trapped each thread on a single env); (b) the test links `libnethack` **only** and does not compile `nle_sentinel.c` (the sentinel symbols are exported from the `.so`; compiling the `.c` too would create a second, separate registry). `run_tests.sh` also: records compile failures (not just run failures) into the suite exit code; passes `--soak` with no seconds as the 180s default instead of a zero-second run; and `-DNLE_ALLOW_SEEDING=1` is required to compile the seeded test. `test_no_hang` cleans up its `/tmp` vardirs at teardown.
+
+7. **Cross-thread `g_tls` caveat (post-review).** A documented attribution-only limitation: `nle_sentinel_unregister` can only clear the calling thread's `g_tls`; if another thread last beat the env, its `g_tls` is briefly stale until its next beat. `g_slots` is static and never freed, so this can never fault — worst case is a misattributed FAULTING ENV line.
+
+**Known out-of-scope issue:** `tests/verify_determinism_all.sh` fails because the golden trajectories were recorded against the pre-refactor NLE and were invalidated by already-landed behavioral commits (objects-terminator, stair-yoyo, etc.) and the cropped-obs default. Re-recording the goldens is separate follow-up work; this branch did not touch determinism logic or golden bytes.
