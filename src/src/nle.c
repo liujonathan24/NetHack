@@ -754,6 +754,20 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     nle->settings = *settings_p;
     nle->seeds_init = seed_init;
 
+    /* Apply difficulty-knob overrides supplied at start, BEFORE the mainloop
+     * below generates the first level (mklev). init_nle already seeded s_tune
+     * to vanilla defaults; tune_n == 0 leaves them untouched. */
+    {
+        int k;
+        double *tunep = (double *) &nle->s_tune;
+        int ncat = nle_tune_count();
+        for (k = 0; k < settings_p->tune_n && k < NLE_TUNE_MAX; k++) {
+            int idx = settings_p->tune_idx[k];
+            if (idx >= 0 && idx < ncat)
+                tunep[idx] = settings_p->tune_val[k];
+        }
+    }
+
     nle->stack = create_fcontext_stack(STACK_SIZE);
     nle->generatorcontext =
         make_fcontext(nle->stack.sptr, nle->stack.ssize, mainloop);
