@@ -1,2 +1,0 @@
-/usr/bin/ar qc libnethackdl.a CMakeFiles/nethackdl.dir/sys/unix/nledl.c.o
-/usr/bin/ranlib libnethackdl.a

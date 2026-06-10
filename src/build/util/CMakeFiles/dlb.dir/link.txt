@@ -1,1 +1,0 @@
-/usr/bin/cc -O2 -g -DNDEBUG CMakeFiles/dlb.dir/dlb_main.c.o CMakeFiles/dlb.dir/__/src/dlb.c.o CMakeFiles/dlb.dir/panic.c.o CMakeFiles/dlb.dir/__/src/alloc.c.o -o dlb 

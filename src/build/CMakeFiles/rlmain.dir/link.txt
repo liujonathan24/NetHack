@@ -1,1 +1,0 @@
-/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/rlmain.dir/sys/unix/rlmain.cc.o -o rlmain  libnethackdl.a -ldl 

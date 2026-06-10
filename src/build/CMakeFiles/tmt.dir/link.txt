@@ -1,2 +1,0 @@
-/usr/bin/ar qc libtmt.a CMakeFiles/tmt.dir/third_party/libtmt/tmt.c.o
-/usr/bin/ranlib libtmt.a

@@ -1,1 +1,0 @@
-/usr/bin/cc -O2 -g -DNDEBUG CMakeFiles/dgn_comp.dir/dgn_main.c.o CMakeFiles/dgn_comp.dir/panic.c.o CMakeFiles/dgn_comp.dir/__/src/alloc.c.o CMakeFiles/dgn_comp.dir/dgn_parser.c.o CMakeFiles/dgn_comp.dir/dgn_scanner.c.o -o dgn_comp 
