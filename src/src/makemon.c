@@ -1535,7 +1535,7 @@ struct nle_rndmonst_state {
 struct nle_rndmonst_state *
 rndmonst_state_alloc(void)
 {
-    struct nle_rndmonst_state *p = calloc(1, sizeof(*p));
+    struct nle_rndmonst_state *p = nle_arena_calloc(1, sizeof(*p));
     if (p) p->choice_count = -1;
     return p;
 }

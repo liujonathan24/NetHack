@@ -1125,4 +1125,8 @@ void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 isaac64_ctx *nle_rng_state(int idx);
 int          *nle_rng_init_flag(int idx);
 
+/* Arena-backed calloc (alloc.c). Per-env state allocated through this lands
+ * in the per-env arena and is captured by nle_fr_snapshot. */
+void *nle_arena_calloc(size_t count, size_t size);
+
 #endif /* NLE_H */

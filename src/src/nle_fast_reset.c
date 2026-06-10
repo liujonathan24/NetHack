@@ -19,12 +19,22 @@
 #include "hack.h"
 #include "nle.h"
 
+/* rl-port display mirror shims (win/rl/winrl.cc). The NetHackRL instance is
+ * libc-malloc'd outside the arena, and its glyph/char/color map arrays are
+ * updated incrementally, so they must be captured separately or stale cells
+ * from an abandoned branch leak into the next restore's observation. */
+extern size_t nle_rl_mirror_size(void);
+extern void   nle_rl_mirror_save(nle_ctx_t *nle, void *dst);
+extern void   nle_rl_mirror_load(nle_ctx_t *nle, const void *src);
+
 typedef struct nle_fr_snapshot {
     nle_ctx_t       saved_ctx;
     void           *saved_stack;
     size_t          stack_size;
     void           *saved_arena;
     size_t          arena_used;
+    void           *saved_mirror;
+    size_t          mirror_size;
 } nle_fr_snapshot_t;
 
 void *
@@ -58,6 +68,20 @@ nle_fr_snapshot(nle_ctx_t *nle)
     } else {
         s->saved_arena = NULL;
     }
+
+    s->mirror_size = nle_rl_mirror_size();
+    if (s->mirror_size > 0) {
+        s->saved_mirror = malloc(s->mirror_size);
+        if (!s->saved_mirror) {
+            free(s->saved_arena);
+            free(s->saved_stack);
+            free(s);
+            return NULL;
+        }
+        nle_rl_mirror_save(nle, s->saved_mirror);
+    } else {
+        s->saved_mirror = NULL;
+    }
     return s;
 }
 
@@ -82,6 +106,12 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
     nle->s_arena_used = s->arena_used;
 
     current_nle_ctx = nle;
+
+    /* Restore the rl-port display mirror (kept outside the arena). *nle above
+     * already restored the s_netHackRL_instance pointer; refill its glyph/char
+     * /color map arrays so the next observation has no abandoned-branch residue. */
+    if (s->saved_mirror)
+        nle_rl_mirror_load(nle, s->saved_mirror);
 }
 
 void
@@ -92,5 +122,6 @@ nle_fr_destroy(void *snap)
     nle_fr_snapshot_t *s = (nle_fr_snapshot_t *) snap;
     free(s->saved_stack);
     free(s->saved_arena);
+    free(s->saved_mirror);
     free(s);
 }

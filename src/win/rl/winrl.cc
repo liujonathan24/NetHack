@@ -231,6 +231,17 @@ class NetHackRL
                                  int percent, int color,
                                  unsigned long *colormasks);
 
+    /* Snapshot support (nle_fr_snapshot/restore). The map-mirror arrays below
+     * (glyphs_/chars_/colors_/specials_/screen_descriptions_) are updated only
+     * for cells that change between steps. nle_fr_restore resets the engine's
+     * gbuf to the snapshot, but this C++ object lives outside the arena, so its
+     * mirror would keep stale cells from the abandoned branch. These copy the
+     * POD map arrays to/from a fixed-size blob so the mirror is restored too.
+     * (blstats_/status_ are fully recomputed each step and need no capture.) */
+    static size_t mirror_blob_size();
+    void save_mirror(void *dst) const;
+    void load_mirror(const void *src);
+
   private:
     struct rl_menu_item {
         int glyph;            /* Character glyph */
@@ -401,6 +412,65 @@ NetHackRL::NetHackRL(int &argc, char **argv) : glyphs_(), blstats_{}
     assert(BASE_WINDOW == 0);
     windows_.emplace_back(make_libc_rl_window(NHW_BASE));
     glyphs_.fill(nul_glyph);
+}
+
+/* ---- Snapshot mirror save/restore (see declarations above) ------------- */
+
+size_t
+NetHackRL::mirror_blob_size()
+{
+    const size_t n = (size_t) (COLNO - 1) * ROWNO;
+    return n * sizeof(int16_t)                  /* glyphs_ */
+           + n                                  /* chars_ */
+           + n                                  /* colors_ */
+           + n                                  /* specials_ */
+           + n * NLE_SCREEN_DESCRIPTION_LENGTH; /* screen_descriptions_ */
+}
+
+void
+NetHackRL::save_mirror(void *dst) const
+{
+    char *p = static_cast<char *>(dst);
+    std::memcpy(p, glyphs_.data(), sizeof(glyphs_));     p += sizeof(glyphs_);
+    std::memcpy(p, chars_.data(), sizeof(chars_));       p += sizeof(chars_);
+    std::memcpy(p, colors_.data(), sizeof(colors_));     p += sizeof(colors_);
+    std::memcpy(p, specials_.data(), sizeof(specials_)); p += sizeof(specials_);
+    std::memcpy(p, screen_descriptions_.data(), sizeof(screen_descriptions_));
+}
+
+void
+NetHackRL::load_mirror(const void *src)
+{
+    const char *p = static_cast<const char *>(src);
+    std::memcpy(glyphs_.data(), p, sizeof(glyphs_));     p += sizeof(glyphs_);
+    std::memcpy(chars_.data(), p, sizeof(chars_));       p += sizeof(chars_);
+    std::memcpy(colors_.data(), p, sizeof(colors_));     p += sizeof(colors_);
+    std::memcpy(specials_.data(), p, sizeof(specials_)); p += sizeof(specials_);
+    std::memcpy(screen_descriptions_.data(), p, sizeof(screen_descriptions_));
+}
+
+/* C-callable shims used by nle_fast_reset.c. The NetHackRL instance lives on
+ * nle_ctx_t->s_netHackRL_instance (libc-malloc'd, outside the arena). */
+extern "C" size_t
+nle_rl_mirror_size(void)
+{
+    return NetHackRL::mirror_blob_size();
+}
+
+extern "C" void
+nle_rl_mirror_save(nle_ctx_t *nle, void *dst)
+{
+    if (nle && nle->s_netHackRL_instance)
+        static_cast<NetHackRL *>(nle->s_netHackRL_instance)->save_mirror(dst);
+    else
+        std::memset(dst, 0, NetHackRL::mirror_blob_size());
+}
+
+extern "C" void
+nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
+{
+    if (nle && nle->s_netHackRL_instance)
+        static_cast<NetHackRL *>(nle->s_netHackRL_instance)->load_mirror(src);
 }
 
 void

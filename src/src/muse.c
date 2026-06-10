@@ -2627,7 +2627,7 @@ void
 nle_muse_alloc(void **slot)
 {
     if (!slot) return;
-    *slot = calloc(1, sizeof(struct musable));
+    *slot = nle_arena_calloc(1, sizeof(struct musable));
 }
 
 /*muse.c*/
