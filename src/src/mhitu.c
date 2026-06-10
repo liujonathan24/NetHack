@@ -2364,6 +2364,13 @@ mdamageu(mtmp, n)
 struct monst *mtmp;
 int n;
 {
+    /* dmg_to_player_scale knob (1.0 = vanilla; 0.0 = player takes no monster
+     * damage). Guarded so the default path is byte-identical to vanilla. */
+    if (nle_tuning.dmg_to_player_scale != 1.0) {
+        n = (int) ((double) n * nle_tuning.dmg_to_player_scale + 0.5);
+        if (n < 0)
+            n = 0;
+    }
     context.botl = 1;
     if (Upolyd) {
         u.mh -= n;

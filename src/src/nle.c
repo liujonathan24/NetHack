@@ -150,6 +150,42 @@ nle_rng_init_flag(int idx)
     return &current_nle_ctx->rng_init[idx];
 }
 
+/* ---- difficulty knob catalog (catalog defined in include/nle.h) ---------- */
+
+static const char *const nle_tune_names_tbl[] = {
+#define NLE_TUNE_NAME(name, dflt) #name,
+    NLE_TUNE_FIELDS(NLE_TUNE_NAME)
+#undef NLE_TUNE_NAME
+};
+
+int
+nle_tune_count(void)
+{
+    return (int) (sizeof(nle_tune_names_tbl) / sizeof(nle_tune_names_tbl[0]));
+}
+
+const char *
+nle_tune_name(int index)
+{
+    if (index < 0 || index >= nle_tune_count())
+        return (const char *) 0;
+    return nle_tune_names_tbl[index];
+}
+
+void
+nle_tune_set_defaults(nle_tune_t *t)
+{
+#define NLE_TUNE_DFLT(name, dflt) t->name = (dflt);
+    NLE_TUNE_FIELDS(NLE_TUNE_DFLT)
+#undef NLE_TUNE_DFLT
+}
+
+nle_tune_t *
+nle_get_tune(nle_ctx_t *nle)
+{
+    return &nle->s_tune;
+}
+
 nle_ctx_t *
 init_nle(FILE *ttyrec, nle_obs *obs)
 {
@@ -162,6 +198,10 @@ init_nle(FILE *ttyrec, nle_obs *obs)
      * we crash. The pointer must be set first so the macros resolve to
      * THIS env's fields. */
     current_nle_ctx = nle;
+
+    /* Difficulty knobs default to vanilla (all scales 1.0). calloc zeroed the
+     * ctx, so the knob block must be explicitly seeded before any read-site. */
+    nle_tune_set_defaults(&nle->s_tune);
 
     /* s8_tcap_p needs to be allocated before LI/CO are read; pre-alloc
      * and seed it so tmt_open below gets valid dimensions. */
