@@ -1049,6 +1049,10 @@ newhp()
             conplus = 4;
         hp += conplus;
     }
+    /* player_hp_scale knob: scale HP gained per level (and the initial roll,
+     * though that is computed before the knob can be set via the binding). */
+    if (nle_tuning.player_hp_scale != 1.0)
+        hp = (int) ((double) hp * nle_tuning.player_hp_scale + 0.5);
     if (hp <= 0)
         hp = 1;
     if (u.ulevel < MAXULEV)

@@ -132,11 +132,29 @@ boolean resuming;
                        place after movement has been allotted, the new
                        monster effectively loses its first turn */
                     /* Change for NLE: Optionally disable monster spawning */
-                    if (nle_spawn_monsters() && !rn2(u.uevent.udemigod ? 25
+                    if (nle_spawn_monsters()) {
+                        int spawn_rate = u.uevent.udemigod ? 25
                              : (depth(&u.uz) > depth(&stronghold_level)) ? 50
-                               : 70))
-                        (void) makemon((struct permonst *) 0, 0, 0,
-                                       NO_MM_FLAGS);
+                               : 70;
+                        boolean do_spawn;
+                        /* ongoing_spawn_scale knob: scale periodic spawn rate
+                         * (1.0 = vanilla; 0 = never; >1 = more often). At the
+                         * default the rn2 draw is identical to vanilla. */
+                        if (nle_tuning.ongoing_spawn_scale <= 0.0) {
+                            do_spawn = FALSE;
+                        } else {
+                            if (nle_tuning.ongoing_spawn_scale != 1.0) {
+                                spawn_rate = (int) ((double) spawn_rate
+                                    / nle_tuning.ongoing_spawn_scale + 0.5);
+                                if (spawn_rate < 1)
+                                    spawn_rate = 1;
+                            }
+                            do_spawn = !rn2(spawn_rate);
+                        }
+                        if (do_spawn)
+                            (void) makemon((struct permonst *) 0, 0, 0,
+                                           NO_MM_FLAGS);
+                    }
 
                     /* calculate how much time passed. */
                     if (u.usteed && u.umoved) {
@@ -520,6 +538,12 @@ int wtcap;
                 heal = 1;
 
             if (heal) {
+                /* hp_regen_scale knob: scale HP recovered per regen tick. */
+                if (nle_tuning.hp_regen_scale != 1.0) {
+                    heal = (int) ((double) heal * nle_tuning.hp_regen_scale + 0.5);
+                    if (heal < 0)
+                        heal = 0;
+                }
                 context.botl = TRUE;
                 u.uhp += heal;
                 if (u.uhp > u.uhpmax)

@@ -1172,6 +1172,9 @@ int          *nle_rng_init_flag(int idx);
  * in the per-env arena and is captured by nle_fr_snapshot. */
 void *nle_arena_calloc(size_t count, size_t size);
 
+/* Full-level terrain reveal for the reveal_map / fog_of_war knobs (detect.c). */
+void nle_reveal_level(void);
+
 /* Difficulty knob catalog (nle.c). The binding calls count()/name() once to
  * learn the catalog, then reads/writes nle_get_tune(nle) as a flat double[]. */
 int          nle_tune_count(void);

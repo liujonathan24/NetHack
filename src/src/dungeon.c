@@ -1701,6 +1701,14 @@ level_difficulty()
              */
 #endif /*0*/
     }
+    /* monster_difficulty_scale knob: scale the difficulty used for monster
+     * selection/generation (1.0 = vanilla). Clamp to >= 1 so generation stays
+     * well-defined. */
+    if (nle_tuning.monster_difficulty_scale != 1.0) {
+        res = (int) ((double) res * nle_tuning.monster_difficulty_scale + 0.5);
+        if (res < 1)
+            res = 1;
+    }
     return (xchar) res;
 }
 
