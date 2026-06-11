@@ -1179,12 +1179,25 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
     getlev(fd, current_nle_ctx->hackpid, (xchar) ledger, FALSE);
     nhclose(fd);
 
-    /* Standalone-load context fixups: place the hero on a sane tile. A
-     * freshly started game already had u.ux/u.uy on level 1's upstairs;
-     * after swapping level contents we re-seat on the (new) upstairs if
-     * present, else leave the existing position. */
+    /* Standalone-load context fixups: place the hero on a sane, walkable
+     * tile of the LOADED level. The destination game's u.ux/u.uy is stale
+     * relative to the swapped-in contents and may land on rock/void, so we
+     * re-seat in priority order: the level's upstairs, else its downstairs,
+     * else the first ACCESSIBLE tile found by scanning the map. */
     if (xupstair) {
         u_on_newpos(xupstair, yupstair);
+    } else if (xdnstair) {
+        u_on_newpos(xdnstair, ydnstair);
+    } else {
+        int x, y;
+        boolean placed = FALSE;
+
+        for (x = 1; x < COLNO && !placed; x++)
+            for (y = 0; y < ROWNO && !placed; y++)
+                if (ACCESSIBLE(levl[x][y].typ)) {
+                    u_on_newpos(x, y);
+                    placed = TRUE;
+                }
     }
 
     /* The rl mirror is not reset here (no callable C reset exists from this
