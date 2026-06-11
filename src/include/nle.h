@@ -1183,6 +1183,22 @@ void *nle_save_level(nle_ctx_t *, long *out_len);
 void  nle_free_blob(void *blob);
 int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 
+/* Secure state-modification API.
+ *
+ * nle_set_state pokes a curated whitelist of simple integer player fields.
+ * "field" is one of: "hp", "max_hp", "gold", "xp_level", "hunger".
+ * Returns 0 on success, nonzero for an unknown field. The C side only
+ * provides the setters; the binding is responsible for validating bounds.
+ *
+ * nle_goto_depth schedules a DEFERRED move of the hero to dungeon level n
+ * in the current dungeon branch. It does not change levels synchronously
+ * (goto_level routes through the window port and yields the coroutine,
+ * which would crash from this entry point); instead it sets u.utolev /
+ * u.utotype so the game loop performs the change via deferred_goto() on
+ * the next nle_step(). Returns 0 on success, nonzero on bad target. */
+int nle_set_state(nle_ctx_t *, const char *field, long value);
+int nle_goto_depth(nle_ctx_t *, int n);
+
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
  * current nle_ctx_t. CORE = 0 (gameplay RNG), DISP = 1 (display RNG). */

@@ -1214,6 +1214,111 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
     return 0;
 }
 
+/* ===================================================================
+ * Secure state-modification API.
+ *
+ * A curated whitelist of player-field pokes plus a deferred dungeon-level
+ * jump. The C side only exposes the setters; the binding validates bounds.
+ * =================================================================== */
+
+/* Poke a single whitelisted integer player field. Returns 0 on success,
+ * nonzero for an unknown field name. */
+int
+nle_set_state(nle_ctx_t *nle, const char *field, long value)
+{
+    current_nle_ctx = nle;
+    if (!field)
+        return 1;
+
+    if (!strcmp(field, "hp")) {
+        u.uhp = (int) value;
+    } else if (!strcmp(field, "max_hp")) {
+        u.uhpmax = (int) value;
+    } else if (!strcmp(field, "hunger")) {
+        /* set the food counter, then recompute the derived hunger STATE
+         * (Hungry/Weak/Fainting/...) so blstats/encumbrance stay coherent. */
+        u.uhunger = (int) value;
+        newuhs(FALSE);
+    } else if (!strcmp(field, "xp_level")) {
+        int lev = (int) value;
+
+        if (lev < 1)
+            lev = 1;
+        if (lev > MAXULEV)
+            lev = MAXULEV;
+        u.ulevel = lev;
+        if (u.ulevelmax < u.ulevel)
+            u.ulevelmax = u.ulevel;
+        /* Keep experience points consistent with the new level: bump uexp
+         * up to the threshold for this level if it is currently too low, so
+         * the level does not immediately get clobbered by newexplevel(). */
+        if (u.uexp < newuexp(u.ulevel - 1))
+            u.uexp = newuexp(u.ulevel - 1);
+    } else if (!strcmp(field, "gold")) {
+        /* Gold is not a scalar field: it is a COIN_CLASS object in invent,
+         * and blstats[GOLD] == money_cnt(invent) == that object's quan.
+         * Adjust the existing gold object's quan, or create one if absent. */
+        struct obj *gold = findgold(invent);
+
+        if (value < 0L)
+            value = 0L;
+        if (!gold && value > 0L) {
+            /* mkgold(0,...) at hero pos makes a random pile; make it at an
+             * offmap-ish spot then re-quan, then move into inventory. We
+             * instead build the coin object directly via mkgold on the hero
+             * tile and pull it in. */
+            gold = mkgold(value, u.ux, u.uy);
+            if (gold) {
+                obj_extract_self(gold); /* remove from floor pile */
+                gold->quan = value;
+                gold->owt = weight(gold);
+                addinv(gold);
+            }
+        } else if (gold) {
+            gold->quan = value;
+            gold->owt = weight(gold);
+            if (value == 0L) {
+                /* an empty coin stack should not linger in inventory */
+                extract_nobj(gold, &invent);
+                dealloc_obj(gold);
+            }
+        }
+    } else {
+        return 1; /* unknown field */
+    }
+
+    context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
+
+/* Schedule a DEFERRED move of the hero to dungeon level n within the
+ * current dungeon branch. The game loop (allmain.c) processes u.utotype
+ * via deferred_goto() after rhack(), so this is safe to call from the
+ * ctypes entry point: the actual goto_level() runs in-context on the next
+ * nle_step(). Returns 0 on success, nonzero on an out-of-range target. */
+int
+nle_goto_depth(nle_ctx_t *nle, int n)
+{
+    d_level dest;
+
+    current_nle_ctx = nle;
+
+    if (n < 1 || n > (int) dunlevs_in_dungeon(&u.uz))
+        return 1;
+
+    dest.dnum = u.uz.dnum; /* stay in the current branch */
+    dest.dlevel = (xchar) n;
+
+    if (on_level(&u.uz, &dest))
+        return 0; /* already there; nothing to schedule */
+
+    /* schedule_goto sets u.utolev + u.utotype; deferred_goto() consumes
+     * them on the next step. at_stairs/falling/portal all FALSE so the hero
+     * lands on the destination's normal entry tile. */
+    schedule_goto(&dest, FALSE, FALSE, 0, (char *) 0, (char *) 0);
+    return 0;
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/
