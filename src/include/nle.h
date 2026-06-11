@@ -40,7 +40,12 @@
     X(monster_difficulty_scale, 1.0)       \
     X(monster_speed_scale,      1.0)       \
     X(xp_gain_scale,            1.0)       \
-    X(room_density,             1.0)
+    X(room_density,             1.0)       \
+    X(mob_spawn,                1.0)       \
+    X(trap_density,             1.0)       \
+    X(locked_door,              1.0)       \
+    X(corridor_connectivity,    1.0)       \
+    X(room_size,                1.0)
 
 typedef struct nle_tune {
 #define NLE_TUNE_DECL(name, dflt) double name;
