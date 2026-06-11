@@ -855,13 +855,11 @@ skip:
 
     recalc_mapseen();
 
-    /* reveal_map / fog_of_war knobs: reveal the whole level's terrain into the
-     * observation. NLE already retains remembered cells, so "disable fog" and
-     * "reveal map" coincide in this glyph-obs model. Guarded to the non-default
-     * knob path, so the vanilla game and golden parity never reveal. */
-    if ((nle_tuning.reveal_map > 0.0 || nle_tuning.fog_of_war == 0.0)
-        && !current_nle_ctx->program_state.panicking)
-        nle_reveal_level();
+    /* reveal_map / fog_of_war knobs are now applied as a render-time overlay on
+     * the emitted observation in the rl window port (NetHackRL::fill_obs), never
+     * mutating the hero's remembered map (gbuf) here. This keeps the knobs
+     * reversible and side-effect-free; the vanilla game and golden parity are
+     * untouched. */
 }
 
 /*

@@ -555,6 +555,56 @@ NetHackRL::fill_obs(nle_obs *obs)
     if (obs->specials) {
         std::memcpy(obs->specials, specials_.data(), specials_.size());
     }
+
+    /* reveal_map / fog_of_war knobs: render-time observation overlay.
+     *
+     * This fills any cell that is still "unknown" (blank stone in the emitted
+     * obs) with the actual level terrain, computed straight from levl[][] via
+     * back_to_glyph(). It writes ONLY into the emitted obs arrays -- never into
+     * gbuf, levl[][].seenv, or via newsym() -- so the hero's remembered map is
+     * untouched and the effect is fully reversible (turning the knob back to its
+     * default instantly re-hides the terrain on the next emitted obs).
+     *
+     * Guarded to the non-default knob path: when reveal_map==0 and
+     * fog_of_war==1 (the defaults) this loop never runs, so the default obs is
+     * byte-identical to vanilla and golden parity is unaffected. */
+    if (nle_tuning.reveal_map > 0.0 || nle_tuning.fog_of_war == 0.0) {
+        for (int x = 1; x < COLNO; x++) {
+            for (int y = 0; y < ROWNO; y++) {
+                size_t i = (x - 1) % (COLNO - 1);
+                size_t j = y % ROWNO;
+                size_t offset = j * (COLNO - 1) + i;
+
+                /* Only overlay cells the hero has not already seen. A blank
+                 * cell is the nul_glyph (stone) fill the port initializes
+                 * with and which store_glyph re-emits for unknown terrain. */
+                if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
+                    continue;
+
+                int glyph = back_to_glyph(x, y);
+
+                /* Map the background glyph to char/color/special exactly the
+                 * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
+                int ch;
+                int color;
+                unsigned special;
+                (void) mapglyph(glyph, &ch, &color, &special, x, y, 0);
+                if (glyph != nul_glyph && color == CLR_BLACK) {
+                    color = iflags.wc2_darkgray ? 8 : CLR_BLUE;
+                }
+
+                if (obs->glyphs)
+                    obs->glyphs[offset] = shuffled_glyph(glyph);
+                if (obs->chars)
+                    obs->chars[offset] = (unsigned char) ch;
+                if (obs->colors)
+                    obs->colors[offset] = (unsigned char) color;
+                if (obs->specials)
+                    obs->specials[offset] = (unsigned char) special;
+            }
+        }
+    }
+
     if (obs->message) {
         // TODO: This doesn't show anything in situations where there's too
         // many items at one tile, which will get displayed in a new window.
