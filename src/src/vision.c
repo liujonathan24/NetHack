@@ -539,6 +539,11 @@ int control;
     if (in_mklev || !iflags.vision_inited)
         return;
 
+    /* vision_radius knob: override the hero's night-vision range so they see
+     * this many cells in the dark (0 = vanilla). Lit areas are unaffected. */
+    if (nle_tuning.vision_radius > 0.0)
+        u.nv_range = (int) nle_tuning.vision_radius;
+
     /*
      * Either the light sources have been taken care of, or we must
      * recalculate them here.
@@ -849,6 +854,14 @@ skip:
     viz_rmax = next_rmax;
 
     recalc_mapseen();
+
+    /* reveal_map / fog_of_war knobs: reveal the whole level's terrain into the
+     * observation. NLE already retains remembered cells, so "disable fog" and
+     * "reveal map" coincide in this glyph-obs model. Guarded to the non-default
+     * knob path, so the vanilla game and golden parity never reveal. */
+    if ((nle_tuning.reveal_map > 0.0 || nle_tuning.fog_of_war == 0.0)
+        && !current_nle_ctx->program_state.panicking)
+        nle_reveal_level();
 }
 
 /*

@@ -3530,7 +3530,7 @@ struct h2o_ctx {
 #define acid_ctx (*(struct h2o_ctx *)nle_get_acid_ctx())
 static void *nle_get_acid_ctx(void) {
     if (!current_nle_ctx->s_acid_ctx) {
-        current_nle_ctx->s_acid_ctx = calloc(1, sizeof(struct h2o_ctx));
+        current_nle_ctx->s_acid_ctx = nle_arena_calloc(1, sizeof(struct h2o_ctx));
     }
     return current_nle_ctx->s_acid_ctx;
 }

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libconverter.a CMakeFiles/converter.dir/third_party/converter/converter.c.o CMakeFiles/converter.dir/third_party/converter/stripgfx.c.o
-/usr/bin/ranlib libconverter.a

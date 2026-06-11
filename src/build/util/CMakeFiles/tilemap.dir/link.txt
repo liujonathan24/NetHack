@@ -1,1 +1,0 @@
-/usr/bin/cc -O2 -g -DNDEBUG CMakeFiles/tilemap.dir/__/win/share/tilemap.c.o -o tilemap 

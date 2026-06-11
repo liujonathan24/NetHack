@@ -11,6 +11,47 @@
 #include "nleobs.h"
 #include "isaac64.h"
 
+/* ---------------------------------------------------------------------------
+ * nle_tune_t — parametric difficulty knobs.
+ *
+ * The knob catalog is defined ONCE via the X-macro below; the struct, the
+ * defaults, and the name table are all generated from it, and the binding
+ * treats nle_tune_t as a flat array of doubles indexed by the name table.
+ * Adding a knob = add one X() line here + read it at one engine decision
+ * site; no get/set plumbing changes anywhere (binding or C).
+ *
+ * Every knob is a double so the generic get/set works uniformly: floats are
+ * scales (1.0 = vanilla), bools are 0.0/1.0, ints are truncated. A scale knob
+ * that should be "off"/"use vanilla" uses the documented sentinel in its
+ * read-site (e.g. vision_radius <= 0 means "vanilla").
+ *
+ * X(name, default) — v1 = Layer 3 live (per-step) mechanics knobs.
+ */
+#define NLE_TUNE_FIELDS(X)                 \
+    X(dmg_to_player_scale,      1.0)       \
+    X(dmg_by_player_scale,      1.0)       \
+    X(player_hp_scale,          1.0)       \
+    X(hp_regen_scale,           1.0)       \
+    X(vision_radius,            0.0)       \
+    X(fog_of_war,               1.0)       \
+    X(reveal_map,               0.0)       \
+    X(hunger_rate_scale,        1.0)       \
+    X(ongoing_spawn_scale,      1.0)       \
+    X(monster_difficulty_scale, 1.0)       \
+    X(monster_speed_scale,      1.0)       \
+    X(xp_gain_scale,            1.0)       \
+    X(room_density,             1.0)
+
+typedef struct nle_tune {
+#define NLE_TUNE_DECL(name, dflt) double name;
+    NLE_TUNE_FIELDS(NLE_TUNE_DECL)
+#undef NLE_TUNE_DECL
+} nle_tune_t;
+
+/* Convenience accessor for engine read-sites: `nle_tuning.<knob>`. Resolves to
+ * the current env's knob block (current_nle_ctx is anchored on every step). */
+#define nle_tuning (current_nle_ctx->s_tune)
+
 /* TODO: Fix this. */
 #undef SIG_RET_TYPE
 #define SIG_RET_TYPE void (*)(int)
@@ -1093,6 +1134,9 @@ typedef struct nle_globals {
     signed char          s_launchplace_y;
     /* Per-env topten linked list head (topten.c). */
     void                *s_tt_head;
+    /* Parametric difficulty knobs. Embedded by value so nle_fr_snapshot
+     * (which copies the ctx) captures it; read at engine decision sites. */
+    nle_tune_t           s_tune;
 } nle_ctx_t;
 
 /*
@@ -1124,5 +1168,19 @@ void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
  * current nle_ctx_t. CORE = 0 (gameplay RNG), DISP = 1 (display RNG). */
 isaac64_ctx *nle_rng_state(int idx);
 int          *nle_rng_init_flag(int idx);
+
+/* Arena-backed calloc (alloc.c). Per-env state allocated through this lands
+ * in the per-env arena and is captured by nle_fr_snapshot. */
+void *nle_arena_calloc(size_t count, size_t size);
+
+/* Full-level terrain reveal for the reveal_map / fog_of_war knobs (detect.c). */
+void nle_reveal_level(void);
+
+/* Difficulty knob catalog (nle.c). The binding calls count()/name() once to
+ * learn the catalog, then reads/writes nle_get_tune(nle) as a flat double[]. */
+int          nle_tune_count(void);
+const char  *nle_tune_name(int index);
+void         nle_tune_set_defaults(nle_tune_t *t);
+nle_tune_t  *nle_get_tune(nle_ctx_t *nle);
 
 #endif /* NLE_H */

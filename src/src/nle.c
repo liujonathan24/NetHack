@@ -150,6 +150,42 @@ nle_rng_init_flag(int idx)
     return &current_nle_ctx->rng_init[idx];
 }
 
+/* ---- difficulty knob catalog (catalog defined in include/nle.h) ---------- */
+
+static const char *const nle_tune_names_tbl[] = {
+#define NLE_TUNE_NAME(name, dflt) #name,
+    NLE_TUNE_FIELDS(NLE_TUNE_NAME)
+#undef NLE_TUNE_NAME
+};
+
+int
+nle_tune_count(void)
+{
+    return (int) (sizeof(nle_tune_names_tbl) / sizeof(nle_tune_names_tbl[0]));
+}
+
+const char *
+nle_tune_name(int index)
+{
+    if (index < 0 || index >= nle_tune_count())
+        return (const char *) 0;
+    return nle_tune_names_tbl[index];
+}
+
+void
+nle_tune_set_defaults(nle_tune_t *t)
+{
+#define NLE_TUNE_DFLT(name, dflt) t->name = (dflt);
+    NLE_TUNE_FIELDS(NLE_TUNE_DFLT)
+#undef NLE_TUNE_DFLT
+}
+
+nle_tune_t *
+nle_get_tune(nle_ctx_t *nle)
+{
+    return &nle->s_tune;
+}
+
 nle_ctx_t *
 init_nle(FILE *ttyrec, nle_obs *obs)
 {
@@ -163,9 +199,13 @@ init_nle(FILE *ttyrec, nle_obs *obs)
      * THIS env's fields. */
     current_nle_ctx = nle;
 
+    /* Difficulty knobs default to vanilla (all scales 1.0). calloc zeroed the
+     * ctx, so the knob block must be explicitly seeded before any read-site. */
+    nle_tune_set_defaults(&nle->s_tune);
+
     /* s8_tcap_p needs to be allocated before LI/CO are read; pre-alloc
      * and seed it so tmt_open below gets valid dimensions. */
-    nle->s8_tcap_p = calloc(1, sizeof(struct nle_tcap_t));
+    nle->s8_tcap_p = nle_arena_calloc(1, sizeof(struct nle_tcap_t));
     LI = NLE_TERM_LI;
     CO = NLE_TERM_CO;
 
@@ -200,17 +240,17 @@ init_nle(FILE *ttyrec, nle_obs *obs)
 
     /* Stage 4 player state: allocate the struct you on the heap so the
      * `u` macro in decl.h can resolve to (*current_nle_ctx->u_ptr). */
-    nle->u_ptr = (struct you *) calloc(1, sizeof(struct you));
+    nle->u_ptr = (struct you *) nle_arena_calloc(1, sizeof(struct you));
     if (!nle->u_ptr) {
         fprintf(stderr, "init_nle: failed to allocate struct you\n");
         abort();
     }
 
     /* Stage 5 flags / iflags / sysflags */
-    nle->flags_ptr = (struct flag *) calloc(1, sizeof(struct flag));
-    nle->iflags_ptr = (struct instance_flags *) calloc(1, sizeof(struct instance_flags));
+    nle->flags_ptr = (struct flag *) nle_arena_calloc(1, sizeof(struct flag));
+    nle->iflags_ptr = (struct instance_flags *) nle_arena_calloc(1, sizeof(struct instance_flags));
 #ifdef SYSFLAGS
-    nle->sysflags_ptr = (struct sysflag *) calloc(1, sizeof(struct sysflag));
+    nle->sysflags_ptr = (struct sysflag *) nle_arena_calloc(1, sizeof(struct sysflag));
 #endif
     if (!nle->flags_ptr || !nle->iflags_ptr) {
         fprintf(stderr, "init_nle: failed to allocate flags/iflags\n");
@@ -236,16 +276,16 @@ init_nle(FILE *ttyrec, nle_obs *obs)
 
     /* Stage 6' — dungeon topology heap allocations. All zero-init via calloc;
      * matches the original {0,...} static initializers in decl.c. */
-    nle->s6_topology_p = calloc(1, sizeof(struct dgn_topology));
-    nle->s6_dungeons_p = calloc(MAXDUNGEON, sizeof(dungeon));
-    nle->s6_upstair_p  = calloc(1, sizeof(stairway));
-    nle->s6_dnstair_p  = calloc(1, sizeof(stairway));
-    nle->s6_upladder_p = calloc(1, sizeof(stairway));
-    nle->s6_dnladder_p = calloc(1, sizeof(stairway));
-    nle->s6_sstairs_p  = calloc(1, sizeof(stairway));
-    nle->s6_updest_p   = calloc(1, sizeof(dest_area));
-    nle->s6_dndest_p   = calloc(1, sizeof(dest_area));
-    nle->s6_inv_pos_p  = calloc(1, sizeof(coord));
+    nle->s6_topology_p = nle_arena_calloc(1, sizeof(struct dgn_topology));
+    nle->s6_dungeons_p = nle_arena_calloc(MAXDUNGEON, sizeof(dungeon));
+    nle->s6_upstair_p  = nle_arena_calloc(1, sizeof(stairway));
+    nle->s6_dnstair_p  = nle_arena_calloc(1, sizeof(stairway));
+    nle->s6_upladder_p = nle_arena_calloc(1, sizeof(stairway));
+    nle->s6_dnladder_p = nle_arena_calloc(1, sizeof(stairway));
+    nle->s6_sstairs_p  = nle_arena_calloc(1, sizeof(stairway));
+    nle->s6_updest_p   = nle_arena_calloc(1, sizeof(dest_area));
+    nle->s6_dndest_p   = nle_arena_calloc(1, sizeof(dest_area));
+    nle->s6_inv_pos_p  = nle_arena_calloc(1, sizeof(coord));
     if (!nle->s6_topology_p || !nle->s6_dungeons_p
         || !nle->s6_upstair_p || !nle->s6_dnstair_p
         || !nle->s6_upladder_p || !nle->s6_dnladder_p
@@ -261,22 +301,22 @@ init_nle(FILE *ttyrec, nle_obs *obs)
      * `= DUMMY` ({0}) initializer at the old definition sites. Spell book
      * is an array of (MAXSPELL+1) entries. m_shot needs a non-zero
      * STRANGE_OBJECT for its `.o` field (matches decl.c old initializer). */
-    nle->s9c_m_shot_p       = calloc(1, sizeof(struct multishot));
-    nle->s9c_urealtime_p    = calloc(1, sizeof(struct u_realtime));
-    nle->s9c_quest_status_p = calloc(1, sizeof(struct q_score));
-    nle->s9c_spl_book_p     = calloc(MAXSPELL + 1, sizeof(struct spell));
-    nle->s9c_youmonst_p     = calloc(1, sizeof(struct monst));
-    nle->s9c_mvitals_p      = calloc(NUMMONS, sizeof(struct nle_mvitals_t));
-    nle->s9c_killer_p       = calloc(1, sizeof(struct kinfo));
+    nle->s9c_m_shot_p       = nle_arena_calloc(1, sizeof(struct multishot));
+    nle->s9c_urealtime_p    = nle_arena_calloc(1, sizeof(struct u_realtime));
+    nle->s9c_quest_status_p = nle_arena_calloc(1, sizeof(struct q_score));
+    nle->s9c_spl_book_p     = nle_arena_calloc(MAXSPELL + 1, sizeof(struct spell));
+    nle->s9c_youmonst_p     = nle_arena_calloc(1, sizeof(struct monst));
+    nle->s9c_mvitals_p      = nle_arena_calloc(NUMMONS, sizeof(struct nle_mvitals_t));
+    nle->s9c_killer_p       = nle_arena_calloc(1, sizeof(struct kinfo));
     /* s8_tcap_p already calloc'd at top of init_nle (LI/CO needed early). */
-    nle->s5_cmd_p           = calloc(1, sizeof(struct cmd));
-    nle->s_disco_p          = calloc(NUM_OBJECTS, sizeof(short));
+    nle->s5_cmd_p           = nle_arena_calloc(1, sizeof(struct cmd));
+    nle->s_disco_p          = nle_arena_calloc(NUM_OBJECTS, sizeof(short));
     /* obufs is NUMOBUF * BUFSZ bytes, defined in objnam.c. */
-    nle->s_obufs_p          = calloc(12 * 256, sizeof(char));
+    nle->s_obufs_p          = nle_arena_calloc(12 * 256, sizeof(char));
     /* tty_status is 2 * MAXBLSTATS * sizeof(struct tty_status_fields).
      * sizeof is opaque here — over-allocate (4096 is plenty for ~1840 B). */
-    nle->s_tty_status_p     = calloc(4096, 1);
-    nle->s_context_p        = calloc(1, sizeof(struct context_info));
+    nle->s_tty_status_p     = nle_arena_calloc(4096, 1);
+    nle->s_context_p        = nle_arena_calloc(1, sizeof(struct context_info));
     {
         extern struct nle_rndmonst_state *rndmonst_state_alloc(void);
         nle->s_rndmonst_state_p = rndmonst_state_alloc();
@@ -295,55 +335,55 @@ init_nle(FILE *ttyrec, nle_obs *obs)
      * (manifesting later as non-deterministic glibc double-free / SIGSEGV).
      * The baseline arrays below have NUM_OBJECTS + 1 elements, so copying the
      * terminator too is in-bounds. */
-    nle->s9o_objects_p   = malloc((NUM_OBJECTS + 1) * sizeof(struct objclass));
-    nle->s9o_obj_descr_p = malloc((NUM_OBJECTS + 1) * sizeof(struct objdescr));
+    nle->s9o_objects_p   = nle_arena_calloc(NUM_OBJECTS + 1, sizeof(struct objclass));
+    nle->s9o_obj_descr_p = nle_arena_calloc(NUM_OBJECTS + 1, sizeof(struct objdescr));
     /* do_name.c name-buffer pool: NUMMBUF=5 * BUFSZ=256 = 1280 bytes. */
-    nle->s_mbufs_p       = calloc(5 * 256, sizeof(char));
+    nle->s_mbufs_p       = nle_arena_calloc(5 * 256, sizeof(char));
     /* decl.c smeq[MAXNROFROOMS+1] — calloc'd zero matches original {0,...}. */
-    nle->s_smeq_p        = calloc(MAXNROFROOMS + 1, sizeof(int));
-    nle->s_bases_p       = calloc(MAXOCLASSES, sizeof(int));
+    nle->s_smeq_p        = nle_arena_calloc(MAXNROFROOMS + 1, sizeof(int));
+    nle->s_bases_p       = nle_arena_calloc(MAXOCLASSES, sizeof(int));
     /* CLR_MAX is 16 in the standard build. */
-    nle->s_hilites_p     = calloc(16, sizeof(char *));
+    nle->s_hilites_p     = nle_arena_calloc(16, sizeof(char *));
     /* Per-env work buffers from various src files. sizes are opaque
      * here (the struct types are defined in display.h / botl.h /
      * vision.h, which we deliberately don't pull into nle.h to keep
      * the util-build include cascade small). Bound generously by
      * counting bytes. ROWNO=21, COLNO=80, MAXBLSTATS=23. */
-    nle->s_gbuf_p           = calloc(ROWNO * COLNO, 64);   /* gbuf_entry */
-    nle->s_blstats_p        = calloc(2 * 23, 256);          /* struct istat_s */
-    nle->s_status_hilites_p = calloc(23, 256);              /* struct hilite_s */
-    nle->s_could_see_p      = calloc(2 * ROWNO * COLNO, 1);
-    nle->s_viz_clear_p      = calloc(ROWNO * COLNO, 1);
-    nle->s_left_ptrs_p      = calloc(ROWNO * COLNO, 1);
-    nle->s_right_ptrs_p     = calloc(ROWNO * COLNO, 1);
-    nle->s_SpLev_Map_p      = calloc(COLNO * ROWNO, 1);
+    nle->s_gbuf_p           = nle_arena_calloc(ROWNO * COLNO, 64);   /* gbuf_entry */
+    nle->s_blstats_p        = nle_arena_calloc(2 * 23, 256);          /* struct istat_s */
+    nle->s_status_hilites_p = nle_arena_calloc(23, 256);              /* struct hilite_s */
+    nle->s_could_see_p      = nle_arena_calloc(2 * ROWNO * COLNO, 1);
+    nle->s_viz_clear_p      = nle_arena_calloc(ROWNO * COLNO, 1);
+    nle->s_left_ptrs_p      = nle_arena_calloc(ROWNO * COLNO, 1);
+    nle->s_right_ptrs_p     = nle_arena_calloc(ROWNO * COLNO, 1);
+    nle->s_SpLev_Map_p      = nle_arena_calloc(COLNO * ROWNO, 1);
     /* fqn_filename_buffer = char[FQN_NUMBUF=4][FQN_MAX_FILENAME=512] = 2048 B */
-    nle->s_fqn_fname_p      = calloc(4 * 512, 1);
+    nle->s_fqn_fname_p      = nle_arena_calloc(4 * 512, 1);
     /* worm tables (worm.c). MAX_NUM_WORMS=32. */
-    nle->s_wheads_p         = calloc(32, sizeof(void *));
-    nle->s_wtails_p         = calloc(32, sizeof(void *));
-    nle->s_wgrowtime_p      = calloc(32, sizeof(long));
+    nle->s_wheads_p         = nle_arena_calloc(32, sizeof(void *));
+    nle->s_wtails_p         = nle_arena_calloc(32, sizeof(void *));
+    nle->s_wgrowtime_p      = nle_arena_calloc(32, sizeof(long));
     /* boolopt baseline is 2088 B; compopt is 1920 B. Generous alloc bounds. */
-    nle->s_boolopt_p        = calloc(1, 4096);
-    nle->s_compopt_p        = calloc(1, 4096);
+    nle->s_boolopt_p        = nle_arena_calloc(1, 4096);
+    nle->s_compopt_p        = nle_arena_calloc(1, 4096);
     /* urole / urace (struct Role / struct Race in you.h). Sizes opaque. */
-    nle->s_urole_p          = calloc(1, 512);
-    nle->s_urace_p          = calloc(1, 512);
+    nle->s_urole_p          = nle_arena_calloc(1, 512);
+    nle->s_urace_p          = nle_arena_calloc(1, 512);
     if (nle->s9o_objects_p && nle->s9o_obj_descr_p) {
         memcpy(nle->s9o_objects_p, objects_baseline,
                (NUM_OBJECTS + 1) * sizeof(struct objclass));
         memcpy(nle->s9o_obj_descr_p, obj_descr_baseline,
                (NUM_OBJECTS + 1) * sizeof(struct objdescr));
     }
-    nle->s7_level_p         = calloc(1, sizeof(dlevel_t));
-    nle->s7_rooms_p         = calloc((MAXNROFROOMS + 1) * 2, sizeof(struct mkroom));
-    nle->s7_doors_p         = calloc(DOORMAX, sizeof(coord));
-    nle->s7_level_info_p    = calloc(MAXLINFO, sizeof(struct linfo));
-    nle->s7_lastseentyp_p   = calloc(COLNO * ROWNO, sizeof(schar));
+    nle->s7_level_p         = nle_arena_calloc(1, sizeof(dlevel_t));
+    nle->s7_rooms_p         = nle_arena_calloc((MAXNROFROOMS + 1) * 2, sizeof(struct mkroom));
+    nle->s7_doors_p         = nle_arena_calloc(DOORMAX, sizeof(coord));
+    nle->s7_level_info_p    = nle_arena_calloc(MAXLINFO, sizeof(struct linfo));
+    nle->s7_lastseentyp_p   = nle_arena_calloc(COLNO * ROWNO, sizeof(schar));
     /* bhitpos per-env. */
-    nle->bhitpos_p          = calloc(1, sizeof(coord));
+    nle->bhitpos_p          = nle_arena_calloc(1, sizeof(coord));
     /* Utrack[UTSZ=50] per-env (track.c). */
-    nle->s_utrack           = calloc(50, sizeof(coord));
+    nle->s_utrack           = nle_arena_calloc(50, sizeof(coord));
     /* subrooms points into the rooms array (slot MAXNROFROOMS+1). */
     nle->s7_subrooms        = nle->s7_rooms_p + (MAXNROFROOMS + 1);
     /* upstairs_room/dnstairs_room/sstairs_room/ftrap left NULL — original
@@ -714,6 +754,20 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     nle->settings = *settings_p;
     nle->seeds_init = seed_init;
 
+    /* Apply difficulty-knob overrides supplied at start, BEFORE the mainloop
+     * below generates the first level (mklev). init_nle already seeded s_tune
+     * to vanilla defaults; tune_n == 0 leaves them untouched. */
+    {
+        int k;
+        double *tunep = (double *) &nle->s_tune;
+        int ncat = nle_tune_count();
+        for (k = 0; k < settings_p->tune_n && k < NLE_TUNE_MAX; k++) {
+            int idx = settings_p->tune_idx[k];
+            if (idx >= 0 && idx < ncat)
+                tunep[idx] = settings_p->tune_val[k];
+        }
+    }
+
     nle->stack = create_fcontext_stack(STACK_SIZE);
     nle->generatorcontext =
         make_fcontext(nle->stack.sptr, nle->stack.ssize, mainloop);
@@ -928,68 +982,15 @@ nle_step(nle_ctx_t *nle, nle_obs *obs)
 static void
 free_nle_fields(nle_ctx_t *nle)
 {
-    free(nle->u_ptr);
-    free(nle->flags_ptr);
-    free(nle->iflags_ptr);
-#ifdef SYSFLAGS
-    free(nle->sysflags_ptr);
-#endif
-    free(nle->s6_topology_p);
-    free(nle->s6_dungeons_p);
-    free(nle->s6_upstair_p);
-    free(nle->s6_dnstair_p);
-    free(nle->s6_upladder_p);
-    free(nle->s6_dnladder_p);
-    free(nle->s6_sstairs_p);
-    free(nle->s6_updest_p);
-    free(nle->s6_dndest_p);
-    free(nle->s6_inv_pos_p);
-    free(nle->s9c_m_shot_p);
-    free(nle->s9c_urealtime_p);
-    free(nle->s9c_quest_status_p);
-    free(nle->s9c_spl_book_p);
-    free(nle->s9c_youmonst_p);
-    free(nle->s9c_mvitals_p);
-    free(nle->s9c_killer_p);
-    free(nle->s8_tcap_p);
-    free(nle->s5_cmd_p);
-    free(nle->s_disco_p);
-    free(nle->s_obufs_p);
-    free(nle->s_tty_status_p);
-    free(nle->s_context_p);
-    free(nle->s_rndmonst_state_p);
-    /* s_artilist_p and s_qt_list_p are allocated via alloc() (arena),
-     * not libc malloc — freed when the arena is munmap'd. */
-    free(nle->s9o_objects_p);
-    free(nle->s9o_obj_descr_p);
-    free(nle->s_mbufs_p);
-    free(nle->s_smeq_p);
-    free(nle->s_bases_p);
-    free(nle->s_hilites_p);
-    free(nle->s_gbuf_p);
-    free(nle->s_blstats_p);
-    free(nle->s_status_hilites_p);
-    free(nle->s_could_see_p);
-    free(nle->s_viz_clear_p);
-    free(nle->s_left_ptrs_p);
-    free(nle->s_right_ptrs_p);
-    free(nle->s_SpLev_Map_p);
-    free(nle->s_fqn_fname_p);
-    free(nle->s_wheads_p);
-    free(nle->s_wtails_p);
-    free(nle->s_wgrowtime_p);
-    free(nle->s_boolopt_p);
-    free(nle->s_compopt_p);
-    free(nle->s_urole_p);
-    free(nle->s_urace_p);
-    free(nle->s7_level_p);
-    free(nle->s7_rooms_p);
-    free(nle->s7_doors_p);
-    free(nle->s7_level_info_p);
-    free(nle->s7_lastseentyp_p);
-    free(nle->bhitpos_p);
-    free(nle->s_utrack);
-    free(nle->s_muse_m_p);
+    /* All per-env heap buffers hanging off nle_ctx_t are now allocated via
+     * nle_arena_calloc() / alloc() (the per-env arena), so that nle_fr_snapshot
+     * captures their contents wholesale. Arena memory is reclaimed when the
+     * arena is munmap'd in nle_end — calling libc free() on these (arena)
+     * pointers would corrupt the heap. So there is nothing to free here; the
+     * function is retained as the documented teardown hook. (This mirrors the
+     * long-standing handling of s_artilist_p / s_qt_list_p, which were already
+     * arena-allocated and intentionally never libc-freed.) */
+    (void) nle;
 }
 
 void

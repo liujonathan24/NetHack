@@ -228,10 +228,22 @@ STATIC_OVL void
 makerooms()
 {
     boolean tried_vault = FALSE;
+    int room_cap = MAXNROFROOMS;
+
+    /* room_density knob: cap the number of rooms (1.0 = vanilla). Values < 1
+     * thin the level out; the natural count is space-limited (rnd_rect), so a
+     * cap below it reduces rooms while 1.0 leaves the vanilla loop unchanged. */
+    if (nle_tuning.room_density != 1.0) {
+        room_cap = (int) (nle_tuning.room_density * MAXNROFROOMS + 0.5);
+        if (room_cap < 1)
+            room_cap = 1;
+        if (room_cap > MAXNROFROOMS)
+            room_cap = MAXNROFROOMS;
+    }
 
     /* make rooms until satisfied */
     /* rnd_rect() will returns 0 if no more rects are available... */
-    while (nroom < MAXNROFROOMS && rnd_rect()) {
+    while (nroom < room_cap && rnd_rect()) {
         if (nroom >= (MAXNROFROOMS / 6) && rn2(2) && !tried_vault) {
             tried_vault = TRUE;
             if (create_vault()) {

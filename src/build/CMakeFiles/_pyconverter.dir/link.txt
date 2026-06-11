@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC -O2 -g -DNDEBUG -shared  -o _pyconverter.cpython-39-x86_64-linux-gnu.so CMakeFiles/_pyconverter.dir/third_party/converter/pyconverter.cc.o  libconverter.a -lbz2 libtmt.a 

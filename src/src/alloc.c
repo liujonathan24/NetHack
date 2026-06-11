@@ -303,6 +303,22 @@ register unsigned int lth;
 
 #endif /* NLE_USE_ARENA_FREE */
 
+/* calloc()-equivalent that routes through alloc() so the allocation lives in
+ * the per-env arena and is therefore captured wholesale by nle_fr_snapshot
+ * (which memcpy's the arena). init_nle uses this for every per-env heap buffer
+ * hanging off nle_ctx_t that must survive snapshot/restore; raw libc calloc()
+ * would place them outside the arena and silently drop them from snapshots.
+ * alloc() panics on failure, so the result is always non-NULL. Memory is
+ * zeroed to preserve calloc semantics regardless of arena page reuse. */
+void *
+nle_arena_calloc(size_t count, size_t size)
+{
+    size_t bytes = count * size;
+    void *p = (void *) alloc((unsigned int) bytes);
+    (void) memset(p, 0, bytes);
+    return p;
+}
+
 #ifdef HAS_PTR_FMT
 #define PTR_FMT "%p"
 #define PTR_TYP genericptr_t

@@ -679,6 +679,14 @@ struct monst *mon;
     if (rn2(NORMAL_SPEED) < mmove_adj)
         mmove += NORMAL_SPEED;
 
+    /* monster_speed_scale knob: scale monster movement points (1.0 = vanilla;
+     * affects monsters only — the hero's movement does not route through here). */
+    if (nle_tuning.monster_speed_scale != 1.0) {
+        mmove = (int) ((double) mmove * nle_tuning.monster_speed_scale + 0.5);
+        if (mmove < 0)
+            mmove = 0;
+    }
+
     return mmove;
 }
 

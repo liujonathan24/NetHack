@@ -1299,6 +1299,31 @@ register int x, y;
     }
 }
 
+/* Silent full-level terrain reveal for the reveal_map / fog_of_war knobs.
+ * Mirrors show_map_spot() minus the Confusion RNG check and any windowing UI:
+ * writes the real background of every cell into hero memory / the display so it
+ * appears in the glyph observation, while leaving in-sight monster and object
+ * glyphs intact. Guarded by its callers to the non-default knob path, so the
+ * vanilla game (and golden parity) never invokes it. */
+void
+nle_reveal_level()
+{
+    register int zx, zy;
+    struct rm *lev;
+
+    for (zx = 1; zx < COLNO; zx++)
+        for (zy = 0; zy < ROWNO; zy++) {
+            lev = &levl[zx][zy];
+            lev->seenv = SVALL;
+            if (lev->typ == SCORR) {
+                lev->typ = CORR;
+                unblock_point(zx, zy);
+            }
+            magic_map_background(zx, zy, 0);
+            newsym(zx, zy); /* propagate into the glyph observation */
+        }
+}
+
 void
 do_mapping()
 {
