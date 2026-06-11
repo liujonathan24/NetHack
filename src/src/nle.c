@@ -1,6 +1,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <fcntl.h>     /* O_WRONLY/O_CREAT/O_TRUNC for nle_load_level */
 #include <sys/time.h>
 #include <sys/mman.h>  /* munmap per-env arena in nle_end */
 
@@ -11,6 +12,7 @@
 #undef MONITOR_HEAP
 #endif
 #include "hack.h"
+#include "lev.h"        /* WRITE_SAVE / FREE_SAVE for savelev() */
 
 #include "dlb.h"
 
@@ -1058,6 +1060,146 @@ nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
     *reseed = current_nle_ctx->has_strong_rngseed;
 }
 #endif
+
+/* ===================================================================
+ * Single-level blob save/load.
+ * =================================================================== */
+
+/* Serialize the CURRENT dungeon level to a malloc'd byte blob.
+ * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
+ * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
+ * Returns the blob (and writes its length to *out_len), or NULL on error. */
+void *
+nle_save_level(nle_ctx_t *nle, long *out_len)
+{
+    int fd, ledger;
+    char errbuf[BUFSZ];
+    const char *fq;
+    long sz;
+    void *blob;
+    FILE *fp;
+
+    current_nle_ctx = nle;
+    if (out_len)
+        *out_len = 0;
+
+    ledger = ledger_no(&u.uz);
+    /* Write the in-memory current level to its <lock>.<ledger> file.
+     * WRITE_SAVE without FREE_SAVE so the live level stays intact. */
+    fd = create_levelfile(ledger, errbuf);
+    if (fd < 0)
+        return (void *) 0;
+    /* Exactly the do.c goto_level levelfile shape: no version header,
+     * just savelev() bytes. bufon/bufoff bracket the zerocomp stream. */
+    bufon(fd);
+    savelev(fd, ledger, WRITE_SAVE);
+    bflush(fd);
+    bufoff(fd);
+    nhclose(fd);
+
+    /* Slurp the file back into a blob. */
+    set_levelfile_name(lock, ledger);
+    fq = fqname(lock, LEVELPREFIX, 0);
+    fp = fopen(fq, "rb");
+    if (!fp)
+        return (void *) 0;
+    fseek(fp, 0, SEEK_END);
+    sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (sz <= 0) { /* ftell error or empty file: nothing valid to return */
+        fclose(fp);
+        return (void *) 0;
+    }
+    blob = malloc((size_t) sz);
+    if (!blob) {
+        fclose(fp);
+        return (void *) 0;
+    }
+    if (fread(blob, 1, (size_t) sz, fp) != (size_t) sz) {
+        free(blob);
+        fclose(fp);
+        return (void *) 0;
+    }
+    fclose(fp);
+    if (out_len)
+        *out_len = sz;
+    return blob;
+}
+
+/* Release a blob returned by nle_save_level. */
+void
+nle_free_blob(void *blob)
+{
+    free(blob);
+}
+
+/* Load a level blob (from nle_save_level) as the CURRENT level of this
+ * (already-started) game. The game must have been started (nle_start) so
+ * the dungeon graph / u.uz / player struct exist; we overwrite the level
+ * CONTENTS in place.
+ *
+ * Two-phase: this mutates state and resets vision but does NOT re-render.
+ * Returns 0 on success, nonzero on error. */
+int
+nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+{
+    int fd, ledger;
+    char errbuf[BUFSZ];
+    const char *fq;
+
+    current_nle_ctx = nle;
+    if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
+        return 4;
+    ledger = ledger_no(&u.uz);
+
+    /* Stamp the blob over the target ledger's levelfile, then getlev it. */
+    set_levelfile_name(lock, ledger);
+    fq = fqname(lock, LEVELPREFIX, 0);
+    {
+        int wfd = open(fq, O_WRONLY | O_CREAT | O_TRUNC, FCMASK);
+        if (wfd < 0)
+            return 1;
+        if (write(wfd, blob, (size_t) len) != (ssize_t) len) {
+            close(wfd);
+            return 2;
+        }
+        close(wfd);
+        level_info[ledger].linfo_flags |= LFILE_EXISTS;
+    }
+
+    fd = open_levelfile(ledger, errbuf);
+    if (fd < 0)
+        return 3;
+
+    minit();                 /* ZEROCOMP reader init */
+    /* Discard the live current level so getlev's allocations don't leak/
+     * collide; FREE_SAVE tears down monsters/objs/timers of current level. */
+    savelev(-1, ledger, FREE_SAVE);
+
+    getlev(fd, current_nle_ctx->hackpid, (xchar) ledger, FALSE);
+    nhclose(fd);
+
+    /* Standalone-load context fixups: place the hero on a sane tile. A
+     * freshly started game already had u.ux/u.uy on level 1's upstairs;
+     * after swapping level contents we re-seat on the (new) upstairs if
+     * present, else leave the existing position. */
+    if (xupstair) {
+        u_on_newpos(xupstair, yupstair);
+    }
+
+    /* The rl mirror is not reset here (no callable C reset exists from this
+     * translation unit); the next nle_step()'s full docrt() repaints every
+     * tile and so clears any prior-level glyph residue. */
+
+    /* docrt()/flush_screen()/pline() route through the rl window port, which
+     * YIELDS the game coroutine (jump_fcontext). They MUST NOT be called from
+     * this entry point (main context) or we jump to a dead fcontext and
+     * SIGSEGV. vision_reset() is pure computation (no window calls), so it is
+     * safe here; the actual re-render happens on the next nle_step(), which
+     * runs docrt() inside the coroutine. */
+    vision_reset();
+    return 0;
+}
 
 /* From unixtty.c */
 /* fatal error */

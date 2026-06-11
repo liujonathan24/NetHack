@@ -1163,6 +1163,21 @@ void nle_end(nle_ctx_t *);
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 
+/* Single-level blob save/load.
+ *
+ * nle_save_level serializes the current dungeon level to a malloc'd byte
+ * blob (length written to *out_len); the caller owns it and must release
+ * it with nle_free_blob. nle_load_level stamps a previously saved blob over
+ * the current level and reloads its contents in place.
+ *
+ * NOTE: nle_load_level is two-phase. It mutates engine state and resets
+ * vision but does NOT re-render the map (re-rendering routes through the
+ * window port, which yields the game coroutine and is unsafe from this
+ * entry point). The caller must step the game once to render. */
+void *nle_save_level(nle_ctx_t *, long *out_len);
+void  nle_free_blob(void *blob);
+int   nle_load_level(nle_ctx_t *, const void *blob, long len);
+
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
  * current nle_ctx_t. CORE = 0 (gameplay RNG), DISP = 1 (display RNG). */
