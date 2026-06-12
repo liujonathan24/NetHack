@@ -1182,6 +1182,31 @@ void *nle_save_level(nle_ctx_t *, long *out_len);
 void  nle_free_blob(void *blob);
 int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 
+/* Hero (player) state blob save/load.
+ *
+ * nle_save_player serializes the full hero gamestate -- the `u` struct,
+ * inventory, attributes, killers/timers/light-sources and the dungeon graph
+ * (everything dosave0()'s gamestate tail writes), WITHOUT the level map -- to
+ * a malloc'd byte blob (length written to *out_len). The live game is left
+ * intact (WRITE_SAVE, not FREE_SAVE). Caller owns the blob; free it with
+ * nle_free_blob. Pairs with nle_save_level: a checkpoint = level blob +
+ * player blob. Returns the blob, or NULL on error.
+ *
+ * nle_load_player restores such a blob onto the CURRENT level. Returns 0 on
+ * success, nonzero on error.
+ *
+ * LOAD ORDERING CONTRACT: call nle_load_level BEFORE nle_load_player. The
+ * player restore relinks u.ustuck / u.usteed and the worn ball/chain against
+ * the current level's monster/object chains, so the target level must already
+ * be installed.
+ *
+ * NOTE: nle_load_player is two-phase, like nle_load_level. It mutates engine
+ * state and resets vision but does NOT re-render (re-rendering routes through
+ * the window port, which yields the game coroutine and is unsafe from this
+ * entry point). The caller must step the game once to render. */
+void *nle_save_player(nle_ctx_t *, long *out_len);
+int   nle_load_player(nle_ctx_t *, const void *blob, long len);
+
 /* Secure state-modification API.
  *
  * nle_set_state pokes a curated whitelist of simple integer player fields.

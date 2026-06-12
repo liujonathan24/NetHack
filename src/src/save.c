@@ -386,6 +386,103 @@ register int fd, mode;
     bflush(fd);
 }
 
+/* ===================================================================
+ * Hero (player) state blob save.
+ *
+ * nle_save_player serializes the full hero gamestate -- the `u` struct,
+ * inventory, attributes, killers/timers/light-sources, the dungeon graph,
+ * fruit/names/waterlevel/msghistory -- to a malloc'd byte blob, WITHOUT
+ * the current level map. It mirrors dosave0()'s gamestate tail but uses
+ * WRITE_SAVE (NOT FREE_SAVE), so the live game is left fully intact.
+ *
+ * Pairs with nle_save_level: a checkpoint = level blob + player blob.
+ * Caller owns the blob and frees it via nle_free_blob.
+ *
+ * Implemented here (not nle.c) because savegamestate() is file-static.
+ * Returns the blob and writes its length to *out_len, or NULL on error.
+ * =================================================================== */
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
+{
+    int fd, ledger;
+    char fq_player[BUFSZ];
+    const char *fq_save;
+    long sz;
+    void *blob;
+    FILE *fp;
+
+    current_nle_ctx = nle;
+    if (out_len)
+        *out_len = 0;
+
+    /* Derive a per-env scratch path. NLE leaves `lock[]` empty during play
+     * (it is only populated when a level file is created), so we populate it
+     * the same way nle_save_level does -- set_levelfile_name(lock, ledger) --
+     * then root it in the env's hackdir via fqname and append a `.player`
+     * suffix so we never clobber a real level file. Each env owns its own
+     * lock[] (migrated to nle_ctx_t), so this is concurrency-safe. fqname
+     * returns a static buffer, so copy it out. */
+    ledger = ledger_no(&u.uz);
+    set_levelfile_name(lock, ledger);
+    fq_save = fqname(lock, LEVELPREFIX, 0);
+    if ((strlen(fq_save) + sizeof ".player") > sizeof fq_player)
+        return (genericptr_t) 0;
+    Strcpy(fq_player, fq_save);
+    Strcat(fq_player, ".player");
+
+    fd = open(fq_player, O_WRONLY | O_CREAT | O_TRUNC, FCMASK);
+    if (fd < 0)
+        return (genericptr_t) 0;
+
+    /* Mirror dosave0()'s tail: stamp the stuck/steed monster ids (so the
+     * restore side can relink u.ustuck / u.usteed against the target level's
+     * monster chain), then write the gamestate. WRITE_SAVE only -- no
+     * FREE_SAVE -- keeps invent / dungeon / timers live in the running game.
+     * No store_version / store_plname here: this is a raw gamestate blob,
+     * read back by nle_load_player via restgamestate(), not by dorecover(). */
+    ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
+    usteed_id = (u.usteed ? u.usteed->m_id : 0);
+    bufon(fd);
+    savegamestate(fd, WRITE_SAVE);
+    bflush(fd);
+    bufoff(fd);
+    (void) nhclose(fd);
+
+    /* Slurp the scratch file into a malloc'd blob, then unlink it. */
+    fp = fopen(fq_player, "rb");
+    if (!fp) {
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    (void) fseek(fp, 0L, SEEK_END);
+    sz = ftell(fp);
+    (void) fseek(fp, 0L, SEEK_SET);
+    if (sz <= 0) { /* ftell error or empty file: nothing valid to return */
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    blob = malloc((size_t) sz);
+    if (!blob) {
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    if (fread(blob, 1, (size_t) sz, fp) != (size_t) sz) {
+        free(blob);
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    (void) fclose(fp);
+    (void) unlink(fq_player);
+    if (out_len)
+        *out_len = sz;
+    return blob;
+}
+
 boolean
 tricked_fileremoved(fd, whynot)
 int fd;
