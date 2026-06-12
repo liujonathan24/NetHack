@@ -665,6 +665,36 @@ NetHackRL::fill_obs(nle_obs *obs)
         }
     }
 
+    /* vision_radius: constrict the EMITTED view to a disc of that radius around
+     * the hero -- a "flashlight". Viewer-only: blanks every obs cell outside the
+     * radius (including remembered terrain), so the display shows only the
+     * hero's immediate surroundings and never reveals map memory behind walls.
+     * Pairs with the vision_recalc sight-limit (the hero truly can't see past
+     * the radius); this just makes the rendered frame match. Never touches gbuf
+     * or game state. Guarded on the non-default knob, so default play is
+     * byte-identical (golden parity preserved). */
+    if (nle_tuning.vision_radius > 0.0) {
+        int vr = (int) nle_tuning.vision_radius;
+        for (int x = 1; x < COLNO; x++) {
+            for (int y = 0; y < ROWNO; y++) {
+                int ddx = x - u.ux, ddy = y - u.uy;
+                if (ddx * ddx + ddy * ddy <= vr * vr)
+                    continue; /* inside the disc: leave the cell as-is */
+                size_t i = (x - 1) % (COLNO - 1);
+                size_t j = y % ROWNO;
+                size_t offset = j * (COLNO - 1) + i;
+                if (obs->glyphs)
+                    obs->glyphs[offset] = nul_glyph;
+                if (obs->chars)
+                    obs->chars[offset] = ' ';
+                if (obs->colors)
+                    obs->colors[offset] = 0;
+                if (obs->specials)
+                    obs->specials[offset] = 0;
+            }
+        }
+    }
+
     if (obs->message) {
         // TODO: This doesn't show anything in situations where there's too
         // many items at one tile, which will get displayed in a new window.
