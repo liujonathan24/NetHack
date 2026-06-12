@@ -1319,6 +1319,26 @@ nle_goto_depth(nle_ctx_t *nle, int n)
     return 0;
 }
 
+/* Seat the hero on the down (or up) staircase of the current level, if present.
+ * Two-phase like goto_depth: caller steps once to re-render. Returns 0 on
+ * success, nonzero if the requested stair does not exist on this level. */
+int
+nle_seat_on_stair(nle_ctx_t *nle, int down)
+{
+    current_nle_ctx = nle;
+
+    if (down && xdnstair > 0) {
+        u_on_newpos(xdnstair, ydnstair);
+    } else if (!down && xupstair > 0) {
+        u_on_newpos(xupstair, yupstair);
+    } else {
+        return 1; /* no such stair on this level */
+    }
+
+    context.botl = TRUE; /* hero position / status is now stale */
+    return 0;
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/

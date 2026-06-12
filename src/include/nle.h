@@ -1198,6 +1198,11 @@ int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 int nle_set_state(nle_ctx_t *, const char *field, long value);
 int nle_goto_depth(nle_ctx_t *, int n);
 
+/* nle_seat_on_stair seats the hero on the down (down != 0) or up staircase of
+ * the current level, if present. Two-phase like goto_depth: the caller steps
+ * once to re-render. Returns 0 on success, nonzero if no such stair exists. */
+int nle_seat_on_stair(nle_ctx_t *, int down);
+
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
  * current nle_ctx_t. CORE = 0 (gameplay RNG), DISP = 1 (display RNG). */
