@@ -33,7 +33,6 @@
     X(player_hp_scale,          1.0)       \
     X(hp_regen_scale,           1.0)       \
     X(vision_radius,            0.0)       \
-    X(fog_of_war,               1.0)       \
     X(reveal_map,               0.0)       \
     X(hunger_rate_scale,        1.0)       \
     X(ongoing_spawn_scale,      1.0)       \

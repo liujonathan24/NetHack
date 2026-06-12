@@ -855,7 +855,7 @@ skip:
 
     recalc_mapseen();
 
-    /* reveal_map / fog_of_war knobs are now applied as a render-time overlay on
+    /* reveal_map knob is now applied as a render-time overlay on
      * the emitted observation in the rl window port (NetHackRL::fill_obs), never
      * mutating the hero's remembered map (gbuf) here. This keeps the knobs
      * reversible and side-effect-free; the vanilla game and golden parity are
