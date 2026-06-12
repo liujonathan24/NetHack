@@ -1176,7 +1176,17 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
      * collide; FREE_SAVE tears down monsters/objs/timers of current level. */
     savelev(-1, ledger, FREE_SAVE);
 
-    getlev(fd, current_nle_ctx->hackpid, (xchar) ledger, FALSE);
+    /* Pass pid=0, lev=0 to skip getlev()'s "is this the level/pid I expect?"
+     * sanity check. A standalone load DELIBERATELY installs an arbitrary level
+     * blob into the current ledger slot, so a mismatch is normal: e.g. resuming
+     * a checkpoint taken on dungeon level 5 stamps that blob over the level-1
+     * slot. With the check on, getlev() would call trickery() -> pline(...) ->
+     * done(TRICKED), and the pline() routes through the rl window port, which
+     * yields the game coroutine (jump_fcontext) from THIS (main) context -> jump
+     * to a dead fcontext -> SIGSEGV. (pid=0 likewise makes cross-process resume
+     * safe, since a checkpoint saved in another server run has a different
+     * hackpid.) pid/lev are used nowhere else in getlev(). */
+    getlev(fd, 0, (xchar) 0, FALSE);
     nhclose(fd);
 
     /* Standalone-load context fixups: place the hero on a sane, walkable
