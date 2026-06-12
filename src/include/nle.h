@@ -40,7 +40,12 @@
     X(monster_difficulty_scale, 1.0)       \
     X(monster_speed_scale,      1.0)       \
     X(xp_gain_scale,            1.0)       \
-    X(room_density,             1.0)
+    X(room_density,             1.0)       \
+    X(mob_spawn,                1.0)       \
+    X(trap_density,             1.0)       \
+    X(locked_door,              1.0)       \
+    X(corridor_connectivity,    1.0)       \
+    X(room_size,                1.0)
 
 typedef struct nle_tune {
 #define NLE_TUNE_DECL(name, dflt) double name;
@@ -1162,6 +1167,37 @@ void nle_end(nle_ctx_t *);
 
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
+
+/* Single-level blob save/load.
+ *
+ * nle_save_level serializes the current dungeon level to a malloc'd byte
+ * blob (length written to *out_len); the caller owns it and must release
+ * it with nle_free_blob. nle_load_level stamps a previously saved blob over
+ * the current level and reloads its contents in place.
+ *
+ * NOTE: nle_load_level is two-phase. It mutates engine state and resets
+ * vision but does NOT re-render the map (re-rendering routes through the
+ * window port, which yields the game coroutine and is unsafe from this
+ * entry point). The caller must step the game once to render. */
+void *nle_save_level(nle_ctx_t *, long *out_len);
+void  nle_free_blob(void *blob);
+int   nle_load_level(nle_ctx_t *, const void *blob, long len);
+
+/* Secure state-modification API.
+ *
+ * nle_set_state pokes a curated whitelist of simple integer player fields.
+ * "field" is one of: "hp", "max_hp", "gold", "xp_level", "hunger".
+ * Returns 0 on success, nonzero for an unknown field. The C side only
+ * provides the setters; the binding is responsible for validating bounds.
+ *
+ * nle_goto_depth schedules a DEFERRED move of the hero to dungeon level n
+ * in the current dungeon branch. It does not change levels synchronously
+ * (goto_level routes through the window port and yields the coroutine,
+ * which would crash from this entry point); instead it sets u.utolev /
+ * u.utotype so the game loop performs the change via deferred_goto() on
+ * the next nle_step(). Returns 0 on success, nonzero on bad target. */
+int nle_set_state(nle_ctx_t *, const char *field, long value);
+int nle_goto_depth(nle_ctx_t *, int n);
 
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
