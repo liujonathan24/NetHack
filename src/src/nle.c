@@ -1339,6 +1339,43 @@ nle_seat_on_stair(nle_ctx_t *nle, int down)
     return 0;
 }
 
+/* Real level-up: raise the hero n experience levels with the normal HP/stat
+ * gains (pluslvl). Also bumps u.uexp to the new level threshold so the next
+ * newexplevel() won't undo it. Caller steps once to refresh blstats.
+ * Returns 0 on success. */
+int
+nle_level_up(nle_ctx_t *nle, int n)
+{
+    int i;
+    boolean saved_window_inited;
+
+    current_nle_ctx = nle;
+
+    /* pluslvl() emits messages (You_feel/pline "Welcome to experience
+     * level N"). Emitting through the window port from this bare entry
+     * point (outside nle_step's render context) yields the coroutine and
+     * crashes. Temporarily clear window_inited so pline() falls back to
+     * raw_print (safe: no coroutine yield), then restore it. The caller
+     * steps once afterward to re-render normally. */
+    saved_window_inited = iflags.window_inited;
+    iflags.window_inited = FALSE;
+
+    for (i = 0; i < n && u.ulevel < 30; i++)
+        pluslvl(FALSE);
+
+    iflags.window_inited = saved_window_inited;
+
+    /* Keep experience points consistent with the new level: bump uexp up to
+     * the threshold for this level if it is currently too low, so the level
+     * does not immediately get clobbered by newexplevel(). Mirrors the
+     * xp_level setter in nle_set_state. */
+    if (u.uexp < newuexp(u.ulevel - 1))
+        u.uexp = newuexp(u.ulevel - 1);
+
+    context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/

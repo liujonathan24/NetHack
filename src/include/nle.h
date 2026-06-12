@@ -1200,8 +1200,14 @@ int nle_goto_depth(nle_ctx_t *, int n);
 
 /* nle_seat_on_stair seats the hero on the down (down != 0) or up staircase of
  * the current level, if present. Two-phase like goto_depth: the caller steps
- * once to re-render. Returns 0 on success, nonzero if no such stair exists. */
+ * once to re-render. Returns 0 on success, nonzero if no such stair exists.
+ *
+ * nle_level_up raises the hero n experience levels with the normal HP/stat
+ * gains (pluslvl), capped at level 30, and bumps u.uexp to the new level
+ * threshold so the next newexplevel() won't undo it. Caller steps once to
+ * refresh blstats. Returns 0 on success. */
 int nle_seat_on_stair(nle_ctx_t *, int down);
+int nle_level_up(nle_ctx_t *, int n);
 
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
