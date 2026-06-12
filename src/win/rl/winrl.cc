@@ -556,19 +556,21 @@ NetHackRL::fill_obs(nle_obs *obs)
         std::memcpy(obs->specials, specials_.data(), specials_.size());
     }
 
-    /* reveal_map / fog_of_war knobs: render-time observation overlay.
+    /* reveal_map knob: render-time observation overlay.
      *
      * This fills any cell that is still "unknown" (blank stone in the emitted
      * obs) with the actual level terrain, computed straight from levl[][] via
-     * back_to_glyph(). It writes ONLY into the emitted obs arrays -- never into
-     * gbuf, levl[][].seenv, or via newsym() -- so the hero's remembered map is
-     * untouched and the effect is fully reversible (turning the knob back to its
-     * default instantly re-hides the terrain on the next emitted obs).
+     * back_to_glyph(), and then overlays every live monster on the level. It
+     * writes ONLY into the emitted obs arrays -- never into gbuf, levl[][]
+     * (except a fully-restored temporary seenv poke, see below), or via
+     * newsym() -- so the hero's remembered map is untouched and the effect is
+     * fully reversible (turning the knob back to its default instantly
+     * re-hides everything on the next emitted obs).
      *
-     * Guarded to the non-default knob path: when reveal_map==0 and
-     * fog_of_war==1 (the defaults) this loop never runs, so the default obs is
-     * byte-identical to vanilla and golden parity is unaffected. */
-    if (nle_tuning.reveal_map > 0.0 || nle_tuning.fog_of_war == 0.0) {
+     * Guarded to the non-default knob path: when reveal_map==0 (the default)
+     * this loop never runs, so the default obs is byte-identical to vanilla
+     * and golden parity is unaffected. */
+    if (nle_tuning.reveal_map > 0.0) {
         for (int x = 1; x < COLNO; x++) {
             for (int y = 0; y < ROWNO; y++) {
                 size_t i = (x - 1) % (COLNO - 1);
@@ -581,7 +583,26 @@ NetHackRL::fill_obs(nle_obs *obs)
                 if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
+                /* back_to_glyph() returns S_stone for any wall whose seenv
+                 * bits are all clear (display.c: idx = seenv ? wall_angle()
+                 * : S_stone), so an unseen wall would overlay as blank stone
+                 * and stay masked. For wall cells (incl. secret doors) with
+                 * seenv==0, temporarily set seenv = SVALL so wall_angle()
+                 * computes a wall face, then restore the original value
+                 * immediately. Fully reversible: levl[][] is unchanged after
+                 * this call. */
+                schar typ = levl[x][y].typ;
+                uchar saved_seenv = levl[x][y].seenv;
+                boolean poked = FALSE;
+                if ((IS_WALL(typ) || typ == SDOOR) && saved_seenv == 0) {
+                    levl[x][y].seenv = SVALL;
+                    poked = TRUE;
+                }
+
                 int glyph = back_to_glyph(x, y);
+
+                if (poked)
+                    levl[x][y].seenv = saved_seenv;
 
                 /* Map the background glyph to char/color/special exactly the
                  * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
@@ -602,6 +623,45 @@ NetHackRL::fill_obs(nle_obs *obs)
                 if (obs->specials)
                     obs->specials[offset] = (unsigned char) special;
             }
+        }
+
+        /* Overlay every live monster on the level so reveal_map shows the
+         * full monster picture, refreshed each step. Uses the engine's normal
+         * monster->glyph mapping (mon_to_glyph with the display RNG, exactly
+         * as display.c's show path does), then maps glyph->char/color the same
+         * way as the terrain branch above. Monsters overwrite terrain. */
+        struct monst *mtmp;
+        for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
+            if (DEADMONSTER(mtmp))
+                continue;
+
+            int mx = mtmp->mx;
+            int my = mtmp->my;
+            if (mx < 1 || mx >= COLNO || my < 0 || my >= ROWNO)
+                continue;
+
+            size_t i = (mx - 1) % (COLNO - 1);
+            size_t j = my % ROWNO;
+            size_t offset = j * (COLNO - 1) + i;
+
+            int glyph = mon_to_glyph(mtmp, rn2_on_display_rng);
+
+            int ch;
+            int color;
+            unsigned special;
+            (void) mapglyph(glyph, &ch, &color, &special, mx, my, 0);
+            if (glyph != nul_glyph && color == CLR_BLACK) {
+                color = iflags.wc2_darkgray ? 8 : CLR_BLUE;
+            }
+
+            if (obs->glyphs)
+                obs->glyphs[offset] = shuffled_glyph(glyph);
+            if (obs->chars)
+                obs->chars[offset] = (unsigned char) ch;
+            if (obs->colors)
+                obs->colors[offset] = (unsigned char) color;
+            if (obs->specials)
+                obs->specials[offset] = (unsigned char) special;
         }
     }
 
