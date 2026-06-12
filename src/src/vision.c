@@ -750,6 +750,22 @@ int control;
 
         for (col = start; col <= stop;
              lev += ROWNO, sv += (int) colbump[++col]) {
+            /* vision_radius knob (hard sight limit): force any cell farther than
+             * `vision_radius` from the hero out of sight -- even inside a lit
+             * room, which NetHack would otherwise reveal whole. Routing through
+             * not_in_sight makes the existing newsym() logic re-hide a cell that
+             * just left sight (unexplored -> stone, explored -> dim memory), so
+             * shrinking the radius live removes newly-unseen area for free.
+             * Guarded on the non-default knob (>0), so vanilla play is
+             * byte-identical (golden parity preserved). */
+            if (nle_tuning.vision_radius > 0.0) {
+                int vr = (int) nle_tuning.vision_radius;
+                int vdx = col - u.ux, vdy = row - u.uy;
+                if (vdx * vdx + vdy * vdy > vr * vr) {
+                    next_row[col] &= ~(IN_SIGHT | COULD_SEE);
+                    goto not_in_sight;
+                }
+            }
             if (next_row[col] & IN_SIGHT) {
                 /*
                  * We see this position because of night- or xray-vision.
