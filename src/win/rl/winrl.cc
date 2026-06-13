@@ -167,7 +167,17 @@ class ScopedStack
 
     ~ScopedStack()
     {
-        deque_.pop_back();
+        /* Guard against pop-on-empty. nle_fr_restore swaps the coroutine stack
+         * back to a snapshot, but the win-proc deque (libc-backed, outside the
+         * snapshot) keeps its live contents. The restored stack's still-pending
+         * ScopedStack destructors then pop entries this deque no longer holds —
+         * especially under repeated restore (the Monte-Carlo / checkpoint demo).
+         * std::deque::pop_back() on an empty deque is UB: it walks _M_finish
+         * past _M_start, leaving _M_cur garbage, so the next push_back writes to
+         * a near-null slot and SIGSEGVs. The deque is purely a diagnostic call
+         * stack (never read), so skipping the unmatched pop is harmless. */
+        if (!deque_.empty())
+            deque_.pop_back();
     }
 
   private:
@@ -471,6 +481,19 @@ nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
 {
     if (nle && nle->s_netHackRL_instance)
         static_cast<NetHackRL *>(nle->s_netHackRL_instance)->load_mirror(src);
+}
+
+/* Reset the win-proc diagnostic deque to empty on restore. The deque (libc-
+ * backed, outside the arena/snapshot) keeps its live depth, but the restored
+ * coroutine stack expects the snapshot-time depth; clearing here keeps the
+ * deque from drifting/growing across restores. The matching ScopedStack dtor
+ * guards pop-on-empty, so the restored stack's still-pending destructors are
+ * harmless no-ops against the now-empty deque. */
+extern "C" void
+nle_rl_winproc_reset(nle_ctx_t *nle)
+{
+    if (nle && nle->s_win_proc_calls)
+        static_cast<WinProcDeque *>(nle->s_win_proc_calls)->clear();
 }
 
 void
