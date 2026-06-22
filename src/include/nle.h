@@ -33,14 +33,18 @@
     X(player_hp_scale,          1.0)       \
     X(hp_regen_scale,           1.0)       \
     X(vision_radius,            0.0)       \
-    X(fog_of_war,               1.0)       \
     X(reveal_map,               0.0)       \
     X(hunger_rate_scale,        1.0)       \
     X(ongoing_spawn_scale,      1.0)       \
     X(monster_difficulty_scale, 1.0)       \
     X(monster_speed_scale,      1.0)       \
     X(xp_gain_scale,            1.0)       \
-    X(room_density,             1.0)
+    X(room_density,             1.0)       \
+    X(mob_spawn,                1.0)       \
+    X(trap_density,             1.0)       \
+    X(locked_door,              1.0)       \
+    X(corridor_connectivity,    1.0)       \
+    X(room_size,                1.0)
 
 typedef struct nle_tune {
 #define NLE_TUNE_DECL(name, dflt) double name;
@@ -1163,6 +1167,73 @@ void nle_end(nle_ctx_t *);
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 
+/* Single-level blob save/load.
+ *
+ * nle_save_level serializes the current dungeon level to a malloc'd byte
+ * blob (length written to *out_len); the caller owns it and must release
+ * it with nle_free_blob. nle_load_level stamps a previously saved blob over
+ * the current level and reloads its contents in place.
+ *
+ * NOTE: nle_load_level is two-phase. It mutates engine state and resets
+ * vision but does NOT re-render the map (re-rendering routes through the
+ * window port, which yields the game coroutine and is unsafe from this
+ * entry point). The caller must step the game once to render. */
+void *nle_save_level(nle_ctx_t *, long *out_len);
+void  nle_free_blob(void *blob);
+int   nle_load_level(nle_ctx_t *, const void *blob, long len);
+
+/* Hero (player) state blob save/load.
+ *
+ * nle_save_player serializes the full hero gamestate -- the `u` struct,
+ * inventory, attributes, killers/timers/light-sources and the dungeon graph
+ * (everything dosave0()'s gamestate tail writes), WITHOUT the level map -- to
+ * a malloc'd byte blob (length written to *out_len). The live game is left
+ * intact (WRITE_SAVE, not FREE_SAVE). Caller owns the blob; free it with
+ * nle_free_blob. Pairs with nle_save_level: a checkpoint = level blob +
+ * player blob. Returns the blob, or NULL on error.
+ *
+ * nle_load_player restores such a blob onto the CURRENT level. Returns 0 on
+ * success, nonzero on error.
+ *
+ * LOAD ORDERING CONTRACT: call nle_load_level BEFORE nle_load_player. The
+ * player restore relinks u.ustuck / u.usteed and the worn ball/chain against
+ * the current level's monster/object chains, so the target level must already
+ * be installed.
+ *
+ * NOTE: nle_load_player is two-phase, like nle_load_level. It mutates engine
+ * state and resets vision but does NOT re-render (re-rendering routes through
+ * the window port, which yields the game coroutine and is unsafe from this
+ * entry point). The caller must step the game once to render. */
+void *nle_save_player(nle_ctx_t *, long *out_len);
+int   nle_load_player(nle_ctx_t *, const void *blob, long len);
+
+/* Secure state-modification API.
+ *
+ * nle_set_state pokes a curated whitelist of simple integer player fields.
+ * "field" is one of: "hp", "max_hp", "gold", "xp_level", "hunger".
+ * Returns 0 on success, nonzero for an unknown field. The C side only
+ * provides the setters; the binding is responsible for validating bounds.
+ *
+ * nle_goto_depth schedules a DEFERRED move of the hero to dungeon level n
+ * in the current dungeon branch. It does not change levels synchronously
+ * (goto_level routes through the window port and yields the coroutine,
+ * which would crash from this entry point); instead it sets u.utolev /
+ * u.utotype so the game loop performs the change via deferred_goto() on
+ * the next nle_step(). Returns 0 on success, nonzero on bad target. */
+int nle_set_state(nle_ctx_t *, const char *field, long value);
+int nle_goto_depth(nle_ctx_t *, int n);
+
+/* nle_seat_on_stair seats the hero on the down (down != 0) or up staircase of
+ * the current level, if present. Two-phase like goto_depth: the caller steps
+ * once to re-render. Returns 0 on success, nonzero if no such stair exists.
+ *
+ * nle_level_up raises the hero n experience levels with the normal HP/stat
+ * gains (pluslvl), capped at level 30, and bumps u.uexp to the new level
+ * threshold so the next newexplevel() won't undo it. Caller steps once to
+ * refresh blstats. Returns 0 on success. */
+int nle_seat_on_stair(nle_ctx_t *, int down);
+int nle_level_up(nle_ctx_t *, int n);
+
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
  * current nle_ctx_t. CORE = 0 (gameplay RNG), DISP = 1 (display RNG). */
@@ -1172,9 +1243,6 @@ int          *nle_rng_init_flag(int idx);
 /* Arena-backed calloc (alloc.c). Per-env state allocated through this lands
  * in the per-env arena and is captured by nle_fr_snapshot. */
 void *nle_arena_calloc(size_t count, size_t size);
-
-/* Full-level terrain reveal for the reveal_map / fog_of_war knobs (detect.c). */
-void nle_reveal_level(void);
 
 /* Difficulty knob catalog (nle.c). The binding calls count()/name() once to
  * learn the catalog, then reads/writes nle_get_tune(nle) as a flat double[]. */

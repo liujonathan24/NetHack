@@ -354,14 +354,28 @@ makecorridors()
                 any = TRUE;
             }
     }
-    if (nroom > 2)
-        for (i = rn2(nroom) + 4; i; i--) {
+    if (nroom > 2) {
+        /* corridor_connectivity knob: scale the count of extra/redundant
+         * corridors (1.0 = vanilla; the rn2(nroom) draw is preserved so 1.0
+         * is byte-identical). The vanilla base is "+ 4" redundant joins;
+         * scaling that constant raises/lowers redundant connectivity. Floor
+         * at 0 extra joins (the mandatory spanning joins above already
+         * guarantee the level is connected). */
+        int extra = 4;
+        if (nle_tuning.corridor_connectivity != 1.0) {
+            extra = (int) ((double) 4 * nle_tuning.corridor_connectivity
+                           + 0.5);
+            if (extra < 0)
+                extra = 0;
+        }
+        for (i = rn2(nroom) + extra; i; i--) {
             a = rn2(nroom);
             b = rn2(nroom - 2);
             if (b >= a)
                 b += 2;
             join(a, b, TRUE);
         }
+    }
 }
 
 void
@@ -410,9 +424,30 @@ int type;
     levl[x][y].typ = type;
     if (type == DOOR) {
         if (!rn2(3)) { /* is it a locked door, closed, or a doorway? */
+            /* locked_door knob: scale the 1-in-6 lock chance (1.0 =
+             * vanilla; the rn2(6) draw is preserved so 1.0 is byte-
+             * identical). Larger values shrink the modulus -> more locks;
+             * smaller values widen it -> fewer. knob <= 0 means "none":
+             * a huge modulus makes rn2() essentially never roll 0, so
+             * doors are never locked. A finite cap on the scaled value
+             * keeps the (int) cast in range (never compute (int)+inf). */
+            int lock_mod = 6;
+            if (nle_tuning.locked_door != 1.0) {
+                double k = nle_tuning.locked_door;
+                if (k <= 0.0) {
+                    lock_mod = 100000;
+                } else {
+                    double m = 6.0 / k + 0.5;
+                    if (m > 100000.0)
+                        m = 100000.0;
+                    lock_mod = (int) m;
+                    if (lock_mod < 1)
+                        lock_mod = 1;
+                }
+            }
             if (!rn2(5))
                 levl[x][y].doormask = D_ISOPEN;
-            else if (!rn2(6))
+            else if (!rn2(lock_mod))
                 levl[x][y].doormask = D_LOCKED;
             else
                 levl[x][y].doormask = D_CLOSED;
@@ -827,7 +862,29 @@ makelevel()
            while a monster was on the stairs. Conclusion:
            we have to check for monsters on the stairs anyway. */
 
-        if (u.uhave.amulet || !rn2(3)) {
+        /* mob_spawn knob: scale the 1-in-3 per-room sleeping-monster
+         * chance (1.0 = vanilla; the rn2(3) draw is preserved so 1.0 is
+         * byte-identical). Larger values shrink the modulus -> more rooms
+         * spawn a monster; smaller values widen it -> fewer. knob <= 0
+         * means "none": a huge modulus makes rn2() essentially never roll
+         * 0, so rooms never spawn an initial monster. A finite cap on the
+         * scaled value keeps the (int) cast in range (never (int)+inf). */
+        {
+            int mob_mod = 3;
+            if (nle_tuning.mob_spawn != 1.0) {
+                double k = nle_tuning.mob_spawn;
+                if (k <= 0.0) {
+                    mob_mod = 100000;
+                } else {
+                    double m = 3.0 / k + 0.5;
+                    if (m > 100000.0)
+                        m = 100000.0;
+                    mob_mod = (int) m;
+                    if (mob_mod < 1)
+                        mob_mod = 1;
+                }
+            }
+        if (u.uhave.amulet || !rn2(mob_mod)) {
             x = somex(croom);
             y = somey(croom);
             tmonst = makemon((struct permonst *) 0, x, y, MM_NOGRP);
@@ -835,10 +892,32 @@ makelevel()
                 && !occupied(x, y))
                 (void) maketrap(x, y, WEB);
         }
+        }
         /* put traps and mimics inside */
+        /* trap_density knob: scale the per-room trap count (1.0 = vanilla;
+         * the rn2(x) draw is preserved so 1.0 is byte-identical). The
+         * vanilla loop places a trap with geometric probability 1/x each
+         * iteration; shrinking x raises the trap rate, growing x lowers it.
+         * knob <= 0 means "none": a huge x makes rn2(x) essentially never
+         * roll 0, so the loop terminates immediately and no traps appear.
+         * A finite cap on the scaled value keeps the (int) cast in range
+         * (never compute (int)+inf). Floor x at 2 (vanilla's own minimum). */
         x = 8 - (level_difficulty() / 6);
         if (x <= 1)
             x = 2;
+        if (nle_tuning.trap_density != 1.0) {
+            double k = nle_tuning.trap_density;
+            if (k <= 0.0) {
+                x = 100000;
+            } else {
+                double m = (double) x / k + 0.5;
+                if (m > 100000.0)
+                    m = 100000.0;
+                x = (int) m;
+                if (x < 2)
+                    x = 2;
+            }
+        }
         while (!rn2(x))
             mktrap(0, 0, croom, (coord *) 0);
         if (!rn2(3))

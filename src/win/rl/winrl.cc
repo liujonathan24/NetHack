@@ -167,7 +167,17 @@ class ScopedStack
 
     ~ScopedStack()
     {
-        deque_.pop_back();
+        /* Guard against pop-on-empty. nle_fr_restore swaps the coroutine stack
+         * back to a snapshot, but the win-proc deque (libc-backed, outside the
+         * snapshot) keeps its live contents. The restored stack's still-pending
+         * ScopedStack destructors then pop entries this deque no longer holds —
+         * especially under repeated restore (the Monte-Carlo / checkpoint demo).
+         * std::deque::pop_back() on an empty deque is UB: it walks _M_finish
+         * past _M_start, leaving _M_cur garbage, so the next push_back writes to
+         * a near-null slot and SIGSEGVs. The deque is purely a diagnostic call
+         * stack (never read), so skipping the unmatched pop is harmless. */
+        if (!deque_.empty())
+            deque_.pop_back();
     }
 
   private:
@@ -473,6 +483,19 @@ nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
         static_cast<NetHackRL *>(nle->s_netHackRL_instance)->load_mirror(src);
 }
 
+/* Reset the win-proc diagnostic deque to empty on restore. The deque (libc-
+ * backed, outside the arena/snapshot) keeps its live depth, but the restored
+ * coroutine stack expects the snapshot-time depth; clearing here keeps the
+ * deque from drifting/growing across restores. The matching ScopedStack dtor
+ * guards pop-on-empty, so the restored stack's still-pending destructors are
+ * harmless no-ops against the now-empty deque. */
+extern "C" void
+nle_rl_winproc_reset(nle_ctx_t *nle)
+{
+    if (nle && nle->s_win_proc_calls)
+        static_cast<WinProcDeque *>(nle->s_win_proc_calls)->clear();
+}
+
 void
 NetHackRL::player_selection_method()
 {
@@ -555,6 +578,116 @@ NetHackRL::fill_obs(nle_obs *obs)
     if (obs->specials) {
         std::memcpy(obs->specials, specials_.data(), specials_.size());
     }
+
+    /* reveal_map knob: render-time observation overlay.
+     *
+     * This fills any cell that is still "unknown" (blank stone in the emitted
+     * obs) with the actual level terrain, computed straight from levl[][] via
+     * back_to_glyph(), and then overlays every live monster on the level. It
+     * writes ONLY into the emitted obs arrays -- never into gbuf, levl[][]
+     * (except a fully-restored temporary seenv poke, see below), or via
+     * newsym() -- so the hero's remembered map is untouched and the effect is
+     * fully reversible (turning the knob back to its default instantly
+     * re-hides everything on the next emitted obs).
+     *
+     * Guarded to the non-default knob path: when reveal_map==0 (the default)
+     * this loop never runs, so the default obs is byte-identical to vanilla
+     * and golden parity is unaffected. */
+    if (nle_tuning.reveal_map > 0.0) {
+        for (int x = 1; x < COLNO; x++) {
+            for (int y = 0; y < ROWNO; y++) {
+                size_t i = (x - 1) % (COLNO - 1);
+                size_t j = y % ROWNO;
+                size_t offset = j * (COLNO - 1) + i;
+
+                /* Only overlay cells the hero has not already seen. A blank
+                 * cell is the nul_glyph (stone) fill the port initializes
+                 * with and which store_glyph re-emits for unknown terrain. */
+                if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
+                    continue;
+
+                /* back_to_glyph() returns S_stone for any wall whose seenv
+                 * bits are all clear (display.c: idx = seenv ? wall_angle()
+                 * : S_stone), so an unseen wall would overlay as blank stone
+                 * and stay masked. For wall cells (incl. secret doors) with
+                 * seenv==0, temporarily set seenv = SVALL so wall_angle()
+                 * computes a wall face, then restore the original value
+                 * immediately. Fully reversible: levl[][] is unchanged after
+                 * this call. */
+                schar typ = levl[x][y].typ;
+                uchar saved_seenv = levl[x][y].seenv;
+                boolean poked = FALSE;
+                if ((IS_WALL(typ) || typ == SDOOR) && saved_seenv == 0) {
+                    levl[x][y].seenv = SVALL;
+                    poked = TRUE;
+                }
+
+                int glyph = back_to_glyph(x, y);
+
+                if (poked)
+                    levl[x][y].seenv = saved_seenv;
+
+                /* Map the background glyph to char/color/special exactly the
+                 * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
+                int ch;
+                int color;
+                unsigned special;
+                (void) mapglyph(glyph, &ch, &color, &special, x, y, 0);
+                if (glyph != nul_glyph && color == CLR_BLACK) {
+                    color = iflags.wc2_darkgray ? 8 : CLR_BLUE;
+                }
+
+                if (obs->glyphs)
+                    obs->glyphs[offset] = shuffled_glyph(glyph);
+                if (obs->chars)
+                    obs->chars[offset] = (unsigned char) ch;
+                if (obs->colors)
+                    obs->colors[offset] = (unsigned char) color;
+                if (obs->specials)
+                    obs->specials[offset] = (unsigned char) special;
+            }
+        }
+
+        /* Overlay every live monster on the level so reveal_map shows the
+         * full monster picture, refreshed each step. Uses the engine's normal
+         * monster->glyph mapping (mon_to_glyph with the display RNG, exactly
+         * as display.c's show path does), then maps glyph->char/color the same
+         * way as the terrain branch above. Monsters overwrite terrain. */
+        struct monst *mtmp;
+        for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
+            if (DEADMONSTER(mtmp))
+                continue;
+
+            int mx = mtmp->mx;
+            int my = mtmp->my;
+            if (mx < 1 || mx >= COLNO || my < 0 || my >= ROWNO)
+                continue;
+
+            size_t i = (mx - 1) % (COLNO - 1);
+            size_t j = my % ROWNO;
+            size_t offset = j * (COLNO - 1) + i;
+
+            int glyph = mon_to_glyph(mtmp, rn2_on_display_rng);
+
+            int ch;
+            int color;
+            unsigned special;
+            (void) mapglyph(glyph, &ch, &color, &special, mx, my, 0);
+            if (glyph != nul_glyph && color == CLR_BLACK) {
+                color = iflags.wc2_darkgray ? 8 : CLR_BLUE;
+            }
+
+            if (obs->glyphs)
+                obs->glyphs[offset] = shuffled_glyph(glyph);
+            if (obs->chars)
+                obs->chars[offset] = (unsigned char) ch;
+            if (obs->colors)
+                obs->colors[offset] = (unsigned char) color;
+            if (obs->specials)
+                obs->specials[offset] = (unsigned char) special;
+        }
+    }
+
     if (obs->message) {
         // TODO: This doesn't show anything in situations where there's too
         // many items at one tile, which will get displayed in a new window.

@@ -1233,6 +1233,30 @@ xchar rtype, rlit;
             else {
                 dx = 2 + rn2((hx - lx > 28) ? 12 : 8);
                 dy = 2 + rn2(4);
+                /* room_size knob: scale the random room extents (1.0 =
+                 * vanilla; the rn2() draw is preserved so 1.0 is byte-
+                 * identical). The base "2" is NetHack's minimum interior
+                 * dimension, so we only scale the random component and keep
+                 * the floor so a room still generates. Clamp the knob to a
+                 * finite range before the multiply so the (int) cast can't
+                 * overflow, and clamp each scaled extent to 25 so the
+                 * downstream area cap (dx*dy > 50 => dy = 50/dx) can never
+                 * zero out a dimension (25*2 = 50). */
+                if (nle_tuning.room_size != 1.0) {
+                    double rs = nle_tuning.room_size;
+                    if (rs > 50.0)
+                        rs = 50.0;
+                    dx = 2 + (int) ((double) (dx - 2) * rs + 0.5);
+                    dy = 2 + (int) ((double) (dy - 2) * rs + 0.5);
+                    if (dx < 2)
+                        dx = 2;
+                    if (dy < 2)
+                        dy = 2;
+                    if (dx > 25)
+                        dx = 25;
+                    if (dy > 25)
+                        dy = 25;
+                }
                 if (dx * dy > 50)
                     dy = 50 / dx;
             }

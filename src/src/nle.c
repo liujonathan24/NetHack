@@ -1,6 +1,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <fcntl.h>     /* O_WRONLY/O_CREAT/O_TRUNC for nle_load_level */
 #include <sys/time.h>
 #include <sys/mman.h>  /* munmap per-env arena in nle_end */
 
@@ -11,6 +12,7 @@
 #undef MONITOR_HEAP
 #endif
 #include "hack.h"
+#include "lev.h"        /* WRITE_SAVE / FREE_SAVE for savelev() */
 
 #include "dlb.h"
 
@@ -1058,6 +1060,331 @@ nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
     *reseed = current_nle_ctx->has_strong_rngseed;
 }
 #endif
+
+/* ===================================================================
+ * Single-level blob save/load.
+ * =================================================================== */
+
+/* Serialize the CURRENT dungeon level to a malloc'd byte blob.
+ * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
+ * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
+ * Returns the blob (and writes its length to *out_len), or NULL on error. */
+void *
+nle_save_level(nle_ctx_t *nle, long *out_len)
+{
+    int fd, ledger;
+    char errbuf[BUFSZ];
+    const char *fq;
+    long sz;
+    void *blob;
+    FILE *fp;
+
+    current_nle_ctx = nle;
+    if (out_len)
+        *out_len = 0;
+
+    ledger = ledger_no(&u.uz);
+    /* Write the in-memory current level to its <lock>.<ledger> file.
+     * WRITE_SAVE without FREE_SAVE so the live level stays intact. */
+    fd = create_levelfile(ledger, errbuf);
+    if (fd < 0)
+        return (void *) 0;
+    /* Exactly the do.c goto_level levelfile shape: no version header,
+     * just savelev() bytes. bufon/bufoff bracket the zerocomp stream. */
+    bufon(fd);
+    savelev(fd, ledger, WRITE_SAVE);
+    bflush(fd);
+    bufoff(fd);
+    nhclose(fd);
+
+    /* Slurp the file back into a blob. */
+    set_levelfile_name(lock, ledger);
+    fq = fqname(lock, LEVELPREFIX, 0);
+    fp = fopen(fq, "rb");
+    if (!fp)
+        return (void *) 0;
+    fseek(fp, 0, SEEK_END);
+    sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (sz <= 0) { /* ftell error or empty file: nothing valid to return */
+        fclose(fp);
+        return (void *) 0;
+    }
+    blob = malloc((size_t) sz);
+    if (!blob) {
+        fclose(fp);
+        return (void *) 0;
+    }
+    if (fread(blob, 1, (size_t) sz, fp) != (size_t) sz) {
+        free(blob);
+        fclose(fp);
+        return (void *) 0;
+    }
+    fclose(fp);
+    if (out_len)
+        *out_len = sz;
+    return blob;
+}
+
+/* Release a blob returned by nle_save_level. */
+void
+nle_free_blob(void *blob)
+{
+    free(blob);
+}
+
+/* Load a level blob (from nle_save_level) as the CURRENT level of this
+ * (already-started) game. The game must have been started (nle_start) so
+ * the dungeon graph / u.uz / player struct exist; we overwrite the level
+ * CONTENTS in place.
+ *
+ * Two-phase: this mutates state and resets vision but does NOT re-render.
+ * Returns 0 on success, nonzero on error. */
+int
+nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+{
+    int fd, ledger;
+    char errbuf[BUFSZ];
+    const char *fq;
+
+    current_nle_ctx = nle;
+    if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
+        return 4;
+    ledger = ledger_no(&u.uz);
+
+    /* Stamp the blob over the target ledger's levelfile, then getlev it. */
+    set_levelfile_name(lock, ledger);
+    fq = fqname(lock, LEVELPREFIX, 0);
+    {
+        int wfd = open(fq, O_WRONLY | O_CREAT | O_TRUNC, FCMASK);
+        if (wfd < 0)
+            return 1;
+        if (write(wfd, blob, (size_t) len) != (ssize_t) len) {
+            close(wfd);
+            return 2;
+        }
+        close(wfd);
+        level_info[ledger].linfo_flags |= LFILE_EXISTS;
+    }
+
+    fd = open_levelfile(ledger, errbuf);
+    if (fd < 0)
+        return 3;
+
+    minit();                 /* ZEROCOMP reader init */
+    /* Discard the live current level so getlev's allocations don't leak/
+     * collide; FREE_SAVE tears down monsters/objs/timers of current level. */
+    savelev(-1, ledger, FREE_SAVE);
+
+    /* Pass pid=0, lev=0 to skip getlev()'s "is this the level/pid I expect?"
+     * sanity check. A standalone load DELIBERATELY installs an arbitrary level
+     * blob into the current ledger slot, so a mismatch is normal: e.g. resuming
+     * a checkpoint taken on dungeon level 5 stamps that blob over the level-1
+     * slot. With the check on, getlev() would call trickery() -> pline(...) ->
+     * done(TRICKED), and the pline() routes through the rl window port, which
+     * yields the game coroutine (jump_fcontext) from THIS (main) context -> jump
+     * to a dead fcontext -> SIGSEGV. (pid=0 likewise makes cross-process resume
+     * safe, since a checkpoint saved in another server run has a different
+     * hackpid.) pid/lev are used nowhere else in getlev(). */
+    getlev(fd, 0, (xchar) 0, FALSE);
+    nhclose(fd);
+
+    /* Standalone-load context fixups: place the hero on a sane, walkable
+     * tile of the LOADED level. The destination game's u.ux/u.uy is stale
+     * relative to the swapped-in contents and may land on rock/void, so we
+     * re-seat in priority order: the level's upstairs, else its downstairs,
+     * else the first ACCESSIBLE tile found by scanning the map. */
+    if (xupstair) {
+        u_on_newpos(xupstair, yupstair);
+    } else if (xdnstair) {
+        u_on_newpos(xdnstair, ydnstair);
+    } else {
+        int x, y;
+        boolean placed = FALSE;
+
+        for (x = 1; x < COLNO && !placed; x++)
+            for (y = 0; y < ROWNO && !placed; y++)
+                if (ACCESSIBLE(levl[x][y].typ)) {
+                    u_on_newpos(x, y);
+                    placed = TRUE;
+                }
+    }
+
+    /* The rl mirror is not reset here (no callable C reset exists from this
+     * translation unit); the next nle_step()'s full docrt() repaints every
+     * tile and so clears any prior-level glyph residue. */
+
+    /* docrt()/flush_screen()/pline() route through the rl window port, which
+     * YIELDS the game coroutine (jump_fcontext). They MUST NOT be called from
+     * this entry point (main context) or we jump to a dead fcontext and
+     * SIGSEGV. vision_reset() is pure computation (no window calls), so it is
+     * safe here; the actual re-render happens on the next nle_step(), which
+     * runs docrt() inside the coroutine. */
+    vision_reset();
+    return 0;
+}
+
+/* ===================================================================
+ * Secure state-modification API.
+ *
+ * A curated whitelist of player-field pokes plus a deferred dungeon-level
+ * jump. The C side only exposes the setters; the binding validates bounds.
+ * =================================================================== */
+
+/* Poke a single whitelisted integer player field. Returns 0 on success,
+ * nonzero for an unknown field name. */
+int
+nle_set_state(nle_ctx_t *nle, const char *field, long value)
+{
+    current_nle_ctx = nle;
+    if (!field)
+        return 1;
+
+    if (!strcmp(field, "hp")) {
+        u.uhp = (int) value;
+    } else if (!strcmp(field, "max_hp")) {
+        u.uhpmax = (int) value;
+    } else if (!strcmp(field, "hunger")) {
+        /* set the food counter, then recompute the derived hunger STATE
+         * (Hungry/Weak/Fainting/...) so blstats/encumbrance stay coherent. */
+        u.uhunger = (int) value;
+        newuhs(FALSE);
+    } else if (!strcmp(field, "xp_level")) {
+        int lev = (int) value;
+
+        if (lev < 1)
+            lev = 1;
+        if (lev > MAXULEV)
+            lev = MAXULEV;
+        u.ulevel = lev;
+        if (u.ulevelmax < u.ulevel)
+            u.ulevelmax = u.ulevel;
+        /* Keep experience points consistent with the new level: bump uexp
+         * up to the threshold for this level if it is currently too low, so
+         * the level does not immediately get clobbered by newexplevel(). */
+        if (u.uexp < newuexp(u.ulevel - 1))
+            u.uexp = newuexp(u.ulevel - 1);
+    } else if (!strcmp(field, "gold")) {
+        /* Gold is not a scalar field: it is a COIN_CLASS object in invent,
+         * and blstats[GOLD] == money_cnt(invent) == that object's quan.
+         * Adjust the existing gold object's quan, or create one if absent. */
+        struct obj *gold = findgold(invent);
+
+        if (value < 0L)
+            value = 0L;
+        if (!gold && value > 0L) {
+            /* mkgold(0,...) at hero pos makes a random pile; make it at an
+             * offmap-ish spot then re-quan, then move into inventory. We
+             * instead build the coin object directly via mkgold on the hero
+             * tile and pull it in. */
+            gold = mkgold(value, u.ux, u.uy);
+            if (gold) {
+                obj_extract_self(gold); /* remove from floor pile */
+                gold->quan = value;
+                gold->owt = weight(gold);
+                addinv(gold);
+            }
+        } else if (gold) {
+            gold->quan = value;
+            gold->owt = weight(gold);
+            if (value == 0L) {
+                /* an empty coin stack should not linger in inventory */
+                extract_nobj(gold, &invent);
+                dealloc_obj(gold);
+            }
+        }
+    } else {
+        return 1; /* unknown field */
+    }
+
+    context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
+
+/* Schedule a DEFERRED move of the hero to dungeon level n within the
+ * current dungeon branch. The game loop (allmain.c) processes u.utotype
+ * via deferred_goto() after rhack(), so this is safe to call from the
+ * ctypes entry point: the actual goto_level() runs in-context on the next
+ * nle_step(). Returns 0 on success, nonzero on an out-of-range target. */
+int
+nle_goto_depth(nle_ctx_t *nle, int n)
+{
+    d_level dest;
+
+    current_nle_ctx = nle;
+
+    if (n < 1 || n > (int) dunlevs_in_dungeon(&u.uz))
+        return 1;
+
+    dest.dnum = u.uz.dnum; /* stay in the current branch */
+    dest.dlevel = (xchar) n;
+
+    if (on_level(&u.uz, &dest))
+        return 0; /* already there; nothing to schedule */
+
+    /* schedule_goto sets u.utolev + u.utotype; deferred_goto() consumes
+     * them on the next step. at_stairs/falling/portal all FALSE so the hero
+     * lands on the destination's normal entry tile. */
+    schedule_goto(&dest, FALSE, FALSE, 0, (char *) 0, (char *) 0);
+    return 0;
+}
+
+/* Seat the hero on the down (or up) staircase of the current level, if present.
+ * Two-phase like goto_depth: caller steps once to re-render. Returns 0 on
+ * success, nonzero if the requested stair does not exist on this level. */
+int
+nle_seat_on_stair(nle_ctx_t *nle, int down)
+{
+    current_nle_ctx = nle;
+
+    if (down && xdnstair > 0) {
+        u_on_newpos(xdnstair, ydnstair);
+    } else if (!down && xupstair > 0) {
+        u_on_newpos(xupstair, yupstair);
+    } else {
+        return 1; /* no such stair on this level */
+    }
+
+    context.botl = TRUE; /* hero position / status is now stale */
+    return 0;
+}
+
+/* Real level-up: raise the hero n experience levels with the normal HP/stat
+ * gains (pluslvl). Also bumps u.uexp to the new level threshold so the next
+ * newexplevel() won't undo it. Caller steps once to refresh blstats.
+ * Returns 0 on success. */
+int
+nle_level_up(nle_ctx_t *nle, int n)
+{
+    int i;
+    boolean saved_window_inited;
+
+    current_nle_ctx = nle;
+
+    /* pluslvl() emits messages (You_feel/pline "Welcome to experience
+     * level N"). Emitting through the window port from this bare entry
+     * point (outside nle_step's render context) yields the coroutine and
+     * crashes. Temporarily clear window_inited so pline() falls back to
+     * raw_print (safe: no coroutine yield), then restore it. The caller
+     * steps once afterward to re-render normally. */
+    saved_window_inited = iflags.window_inited;
+    iflags.window_inited = FALSE;
+
+    for (i = 0; i < n && u.ulevel < 30; i++)
+        pluslvl(FALSE);
+
+    iflags.window_inited = saved_window_inited;
+
+    /* Keep experience points consistent with the new level: bump uexp up to
+     * the threshold for this level if it is currently too low, so the level
+     * does not immediately get clobbered by newexplevel(). Mirrors the
+     * xp_level setter in nle_set_state. */
+    if (u.uexp < newuexp(u.ulevel - 1))
+        u.uexp = newuexp(u.ulevel - 1);
+
+    context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
 
 /* From unixtty.c */
 /* fatal error */

@@ -750,6 +750,22 @@ int control;
 
         for (col = start; col <= stop;
              lev += ROWNO, sv += (int) colbump[++col]) {
+            /* vision_radius knob (hard sight limit): force any cell farther than
+             * `vision_radius` from the hero out of sight -- even inside a lit
+             * room, which NetHack would otherwise reveal whole. Routing through
+             * not_in_sight makes the existing newsym() logic re-hide a cell that
+             * just left sight (unexplored -> stone, explored -> dim memory), so
+             * shrinking the radius live removes newly-unseen area for free.
+             * Guarded on the non-default knob (>0), so vanilla play is
+             * byte-identical (golden parity preserved). */
+            if (nle_tuning.vision_radius > 0.0) {
+                int vr = (int) nle_tuning.vision_radius;
+                int vdx = col - u.ux, vdy = row - u.uy;
+                if (vdx * vdx + vdy * vdy > vr * vr) {
+                    next_row[col] &= ~(IN_SIGHT | COULD_SEE);
+                    goto not_in_sight;
+                }
+            }
             if (next_row[col] & IN_SIGHT) {
                 /*
                  * We see this position because of night- or xray-vision.
@@ -855,13 +871,11 @@ skip:
 
     recalc_mapseen();
 
-    /* reveal_map / fog_of_war knobs: reveal the whole level's terrain into the
-     * observation. NLE already retains remembered cells, so "disable fog" and
-     * "reveal map" coincide in this glyph-obs model. Guarded to the non-default
-     * knob path, so the vanilla game and golden parity never reveal. */
-    if ((nle_tuning.reveal_map > 0.0 || nle_tuning.fog_of_war == 0.0)
-        && !current_nle_ctx->program_state.panicking)
-        nle_reveal_level();
+    /* reveal_map knob is now applied as a render-time overlay on
+     * the emitted observation in the rl window port (NetHackRL::fill_obs), never
+     * mutating the hero's remembered map (gbuf) here. This keeps the knobs
+     * reversible and side-effect-free; the vanilla game and golden parity are
+     * untouched. */
 }
 
 /*

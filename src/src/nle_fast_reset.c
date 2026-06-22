@@ -29,6 +29,7 @@
 extern size_t nle_rl_mirror_size(void);
 extern void   nle_rl_mirror_save(nle_ctx_t *nle, void *dst);
 extern void   nle_rl_mirror_load(nle_ctx_t *nle, const void *src);
+extern void   nle_rl_winproc_reset(nle_ctx_t *nle);
 
 /* A bundled copy of one off-current dungeon level file. NetHack writes the
  * levels you've left to disk (savelev/getlev) as "<s_lock>.<n>" in the hackdir;
@@ -239,6 +240,12 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
     nle->s_arena_used = s->arena_used;
 
     current_nle_ctx = nle;
+
+    /* Reset the win-proc diagnostic deque to empty: it lives outside the arena/
+     * snapshot and would otherwise keep the pre-restore depth, which the
+     * restored coroutine stack's pending ScopedStack dtors no longer match
+     * (pop-on-empty corrupts the deque -> SIGSEGV on the next push). */
+    nle_rl_winproc_reset(nle);
 
     /* Restore the rl-port display mirror (kept outside the arena). *nle above
      * already restored the s_netHackRL_instance pointer; refill its glyph/char
