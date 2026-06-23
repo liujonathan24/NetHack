@@ -1293,6 +1293,30 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
                 dealloc_obj(gold);
             }
         }
+    } else if (!strcmp(field, "str") || !strcmp(field, "dex")
+               || !strcmp(field, "con") || !strcmp(field, "int")
+               || !strcmp(field, "wis") || !strcmp(field, "cha")) {
+        /* Set a single attribute (base + max).  The caller passes NetHack's
+         * encoded value: 3..18 normal, 19..118 == 18/01..18/00 strength
+         * percentile, 119..125 == 19..25 (exceptional, magic only).  The
+         * displayed attribute is acurr (== ABASE) plus item/temp bonuses,
+         * which are zero for an injected hero, so this is what shows up.
+         * Used by the curriculum stat-upgrade on the deep jump. */
+        int idx = (!strcmp(field, "str")) ? A_STR
+                : (!strcmp(field, "int")) ? A_INT
+                : (!strcmp(field, "wis")) ? A_WIS
+                : (!strcmp(field, "dex")) ? A_DEX
+                : (!strcmp(field, "con")) ? A_CON
+                : A_CHA;
+        int v = (int) value;
+
+        if (v < 3)
+            v = 3;
+        if (v > 125)
+            v = 125;
+        u.acurr.a[idx] = (schar) v;
+        if (u.amax.a[idx] < (schar) v)
+            u.amax.a[idx] = (schar) v;
     } else {
         return 1; /* unknown field */
     }
@@ -1383,6 +1407,87 @@ nle_level_up(nle_ctx_t *nle, int n)
         u.uexp = newuexp(u.ulevel - 1);
 
     context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
+
+/* ===================================================================
+ * Curriculum traversal: cross-branch goto + dungeon-table query.
+ * nle_goto_depth can only move WITHIN the current branch (it pins
+ * dest.dnum = u.uz.dnum) and is clamped to that branch's length, so it
+ * cannot reach Gehennom (levels ~26-50) or the Elemental Planes.  These
+ * entry points expose the dungeon layout and an arbitrary (dnum, dlevel)
+ * jump so a curriculum can stitch e.g. DoD 1-3 to Gehennom 48-50.
+ * =================================================================== */
+
+/* Number of dungeon branches currently defined (DoD, Gehennom, Mines, ...). */
+int
+nle_num_dungeons(nle_ctx_t *nle)
+{
+    current_nle_ctx = nle;
+    return nle->s_n_dgns;
+}
+
+/* Report the layout of dungeon branch `idx`: its name, logical depth_start
+ * (the absolute depth of its first level) and number of levels.  Lets the
+ * caller map an absolute "Dlvl N" to a concrete (dnum, dlevel) and locate
+ * branches (Gehennom, "The Elemental Planes") by name.  Any of the out
+ * pointers may be NULL.  Returns 0 on success, 1 if idx is out of range. */
+int
+nle_dungeon_info(nle_ctx_t *nle, int idx, char *name_out, int name_cap,
+                 int *depth_start_out, int *num_dunlevs_out)
+{
+    current_nle_ctx = nle;
+    if (idx < 0 || idx >= nle->s_n_dgns)
+        return 1;
+    if (name_out && name_cap > 0) {
+        (void) strncpy(name_out, dungeons[idx].dname, (size_t) (name_cap - 1));
+        name_out[name_cap - 1] = '\0';
+    }
+    if (depth_start_out)
+        *depth_start_out = dungeons[idx].depth_start;
+    if (num_dunlevs_out)
+        *num_dunlevs_out = (int) dungeons[idx].num_dunlevs;
+    return 0;
+}
+
+/* Schedule a DEFERRED move of the hero to an ARBITRARY (dnum, dlevel),
+ * including a dungeon branch other than the hero's current one (e.g.
+ * Gehennom or the Elemental Planes).  Like nle_goto_depth this is two-phase:
+ * the actual goto_level() runs via deferred_goto() on the next nle_step(),
+ * which handles cross-branch movement and generates the destination level on
+ * demand (mklev) if it has not been visited.  at_stairs/falling/portal are
+ * all FALSE so the hero lands on a random valid spot (the destination's
+ * branch stairs may not be registered for a teleport-style jump).
+ *
+ * Entering the endgame (the Elemental Planes) requires the Amulet of Yendor
+ * (goto_level returns early without it); we grant it here so the curriculum
+ * can reach the planes.  The non-wizard gate in goto_level then routes the
+ * hero to the Plane of Earth, which is the natural plane entry point.
+ *
+ * Returns 0 on success, nonzero for an out-of-range (dnum, dlevel). */
+int
+nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
+{
+    d_level dest;
+
+    current_nle_ctx = nle;
+
+    if (dnum < 0 || dnum >= nle->s_n_dgns)
+        return 1;
+    if (dlevel < 1 || dlevel > (int) dungeons[dnum].num_dunlevs)
+        return 1;
+
+    dest.dnum = (xchar) dnum;
+    dest.dlevel = (xchar) dlevel;
+
+    if (on_level(&u.uz, &dest))
+        return 0; /* already there; nothing to schedule */
+
+    /* The endgame gate in goto_level() needs the Amulet. */
+    if (dest.dnum == astral_level.dnum)
+        u.uhave.amulet = 1;
+
+    schedule_goto(&dest, FALSE, FALSE, 0, (char *) 0, (char *) 0);
     return 0;
 }
 
