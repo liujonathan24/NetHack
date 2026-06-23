@@ -486,19 +486,40 @@ mainloop(fcontext_transfer_t ctx_transfer)
         s->hackdir[len] = '\0';
     }
 
+    /* Read-only data directory. When supplied, the immutable game data lives
+     * here (shared across envs, read-only) and only the writable game-state
+     * files stay under hackdir — so a fresh env needs only a tiny writable dir
+     * rather than a full copy of the dat tree. Empty => fall back to hackdir,
+     * which reproduces the original single-directory behavior exactly. */
+    char *datadir = s->hackdir;
+    if (s->datadir[0] != '\0') {
+        int dlen = strnlen(s->datadir, sizeof(s->datadir));
+        if (dlen >= (int) sizeof(s->datadir) - 1) {
+            error("DATADIR too long");
+            return;
+        }
+        if (s->datadir[dlen - 1] != '/') {
+            s->datadir[dlen] = '/';
+            s->datadir[dlen + 1] = '\0';
+        }
+        datadir = s->datadir;
+    }
+
     char *scoreprefix = (s->scoreprefix[0] != '\0')
                             ? s->scoreprefix
                             : s->hackdir;
-    fqn_prefix[SYSCONFPREFIX] = s->hackdir;
-    fqn_prefix[CONFIGPREFIX] = s->hackdir;
-    fqn_prefix[HACKPREFIX] = s->hackdir;
+    /* Read-only prefixes -> shared datadir (never written by the engine). */
+    fqn_prefix[DATAPREFIX] = datadir;
+    fqn_prefix[HACKPREFIX] = datadir;
+    fqn_prefix[SYSCONFPREFIX] = datadir;
+    fqn_prefix[CONFIGPREFIX] = datadir;
+    /* Writable prefixes -> per-env hackdir. */
     fqn_prefix[SAVEPREFIX] = s->hackdir;
     fqn_prefix[LEVELPREFIX] = s->hackdir;
     fqn_prefix[BONESPREFIX] = s->hackdir;
     fqn_prefix[SCOREPREFIX] = scoreprefix;
     fqn_prefix[LOCKPREFIX] = s->hackdir;
     fqn_prefix[TROUBLEPREFIX] = s->hackdir;
-    fqn_prefix[DATAPREFIX] = s->hackdir;
 
     char *argv[1] = { "nethack" };
 

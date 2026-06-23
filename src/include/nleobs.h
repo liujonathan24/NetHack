@@ -97,6 +97,14 @@ typedef struct nle_settings {
     int    tune_n;
     int    tune_idx[NLE_TUNE_MAX];
     double tune_val[NLE_TUNE_MAX];
+    /* Optional read-only data directory holding the shared, immutable game
+     * data (the DLB `nhdat`, data/oracles/rumors, config, …). When non-empty,
+     * the read-only file prefixes (DATA/HACK/SYSCONF/CONFIG) resolve here while
+     * the writable prefixes (LEVEL/SAVE/BONES/SCORE/LOCK/TROUBLE) stay under
+     * `hackdir`. This lets many envs share one data dir read-only and keep only
+     * a tiny per-env writable `hackdir`, instead of each copying the ~3.7MB dat
+     * tree. Empty => every prefix resolves under `hackdir` (legacy behavior). */
+    char datadir[256];
 } nle_settings;
 
 #endif /* NLEOBS_H */
