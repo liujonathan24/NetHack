@@ -645,6 +645,22 @@ NetHackRL::fill_obs(nle_obs *obs)
                     obs->colors[offset] = (unsigned char) color;
                 if (obs->specials)
                     obs->specials[offset] = (unsigned char) special;
+                /* Also overlay into the tty buffer: harness consumers
+                 * (render_map_view, feature/hostile extraction) render the
+                 * agent's map from tty_chars, so reveal_map must reach it too.
+                 * The tty map cell for level (x,y) is row (j+1), col i
+                 * (row 0 is the message line); tty_chars is filled by the TMT
+                 * callback BEFORE fill_obs, so writing here overlays it. */
+                {
+                    size_t tj = j + 1;
+                    if (tj < (size_t) NLE_TERM_LI && i < (size_t) NLE_TERM_CO) {
+                        size_t toff = tj * NLE_TERM_CO + i;
+                        if (obs->tty_chars)
+                            obs->tty_chars[toff] = (unsigned char) ch;
+                        if (obs->tty_colors)
+                            obs->tty_colors[toff] = (signed char) color;
+                    }
+                }
             }
         }
 
@@ -685,6 +701,17 @@ NetHackRL::fill_obs(nle_obs *obs)
                 obs->colors[offset] = (unsigned char) color;
             if (obs->specials)
                 obs->specials[offset] = (unsigned char) special;
+            /* Overlay the monster into the tty buffer too (see terrain loop). */
+            {
+                size_t tj = j + 1;
+                if (tj < (size_t) NLE_TERM_LI && i < (size_t) NLE_TERM_CO) {
+                    size_t toff = tj * NLE_TERM_CO + i;
+                    if (obs->tty_chars)
+                        obs->tty_chars[toff] = (unsigned char) ch;
+                    if (obs->tty_colors)
+                        obs->tty_colors[toff] = (signed char) color;
+                }
+            }
         }
     }
 
