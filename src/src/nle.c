@@ -943,6 +943,108 @@ nle_swap_out(nle_ctx_t *nle)
     }
 }
 
+static long
+nle_arena_off(char *base, void *p)
+{
+    return p ? (long) ((char *) p - base) : -1L;
+}
+
+/* Arena memory map. Dumps every named per-env buffer (by arena offset), the
+ * live monster (fmon) and object (fobj) chains, and the monster grid with
+ * fmon-membership — so an arbitrary arena pointer can be classified (which
+ * buffer/monster/object it falls in) and stale grid pointers (in the grid but
+ * not in fmon) are flagged. Writes to `path`, or stderr if NULL. */
+void
+nle_dbg_memmap(nle_ctx_t *nle, const char *path)
+{
+    extern const struct permonst mons[];
+    FILE *f = path ? fopen(path, "w") : stderr;
+    struct monst *m;
+    struct obj *o;
+    char *base;
+    int x, y, n;
+    if (!f)
+        return;
+    if (!nle) {
+        if (path)
+            fclose(f);
+        return;
+    }
+    current_nle_ctx = nle;
+    base = nle->s_arena_base;
+
+    fprintf(f, "# nle arena memory map\n");
+    fprintf(f, "arena_base=%p used=%zu cap=%zu obs_dlvl=%d moves=%ld\n\n",
+            (void *) base, nle->s_arena_used, nle->s_arena_cap,
+            nle->s7_level_p ? (int) depth(&u.uz) : -1, (long) moves);
+
+    {
+        struct { const char *name; void *p; } b[] = {
+            { "gbuf", nle->s_gbuf_p }, { "context", nle->s_context_p },
+            { "obufs", nle->s_obufs_p }, { "mbufs", nle->s_mbufs_p },
+            { "disco", nle->s_disco_p }, { "blstats", nle->s_blstats_p },
+            { "level(struct)", nle->s7_level_p }, { "rooms", nle->s7_rooms_p },
+            { "doors", nle->s7_doors_p }, { "level_info", nle->s7_level_info_p },
+            { "lastseentyp", nle->s7_lastseentyp_p },
+            { "youmonst", nle->s9c_youmonst_p }, { "mvitals", nle->s9c_mvitals_p },
+            { "killer", nle->s9c_killer_p }, { "spl_book", nle->s9c_spl_book_p },
+            { "quest_status", nle->s9c_quest_status_p },
+            { "objects", nle->s9o_objects_p }, { "obj_descr", nle->s9o_obj_descr_p },
+            { "rndmonst", nle->s_rndmonst_state_p }, { "artilist", nle->s_artilist_p },
+            { "muse_m", nle->s_muse_m_p }, { "could_see", nle->s_could_see_p },
+            { "viz_clear", nle->s_viz_clear_p }, { "left_ptrs", nle->s_left_ptrs_p },
+            { "right_ptrs", nle->s_right_ptrs_p }, { "wheads", nle->s_wheads_p },
+            { "wtails", nle->s_wtails_p }, { "wgrowtime", nle->s_wgrowtime_p },
+            { "tty_status", nle->s_tty_status_p }, { "tcap", nle->s8_tcap_p },
+            { "topology", nle->s6_topology_p }, { "dungeons", nle->s6_dungeons_p },
+        };
+        fprintf(f, "## named buffers (arena offset, name) -- sort -n to see layout\n");
+        for (n = 0; n < (int) (sizeof(b) / sizeof(b[0])); n++)
+            fprintf(f, "%10ld  %s\n", nle_arena_off(base, b[n].p), b[n].name);
+    }
+    fflush(f);
+
+#define INAR(p) ((char *) (p) >= base \
+                 && (char *) (p) < base + nle->s_arena_used)
+    fprintf(f, "\n## monsters fmon (offset id mnum hp species)\n");
+    for (m = fmon, n = 0; m && INAR(m) && n < 100000; m = m->nmon, n++) {
+        int valid = (m->data >= &mons[0] && m->data < &mons[NUMMONS]);
+        fprintf(f, "%10ld  id=%u mnum=%d hp=%d %s\n", nle_arena_off(base, m),
+                m->m_id, m->mnum, m->mhp,
+                valid ? mons[m->mnum].mname : "<BAD data>");
+    }
+    if (m && !INAR(m))
+        fprintf(f, "  (fmon walk hit OOB ptr %p at #%d)\n", (void *) m, n);
+    fflush(f);
+
+    fprintf(f, "\n## objects fobj (offset id otyp)\n");
+    for (o = fobj, n = 0; o && INAR(o) && n < 100000; o = o->nobj, n++)
+        fprintf(f, "%10ld  id=%u otyp=%d\n", nle_arena_off(base, o), o->o_id,
+                o->otyp);
+    fflush(f);
+
+    fprintf(f, "\n## grid monster ptrs (x y offset in_fmon valid_data)\n");
+    for (x = 0; x < COLNO; x++)
+        for (y = 0; y < ROWNO; y++) {
+            struct monst *gm = level.monsters[x][y], *fm;
+            int in = 0, fn = 0;
+            if (!gm)
+                continue;
+            for (fm = fmon; fm && INAR(fm) && fn < 100000;
+                 fm = fm->nmon, fn++)
+                if (fm == gm) { in = 1; break; }
+            fprintf(f, "%3d %3d  %10ld  in_fmon=%d valid_data=%d%s\n", x, y,
+                    nle_arena_off(base, gm), in,
+                    INAR(gm) && gm->data >= &mons[0]
+                        && gm->data < &mons[NUMMONS],
+                    in ? "" : "  <<< STALE GRID PTR");
+        }
+#undef INAR
+    fflush(f);
+    if (path)
+        fclose(f);
+}
+
 nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {

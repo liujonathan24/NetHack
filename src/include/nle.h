@@ -1167,6 +1167,11 @@ void nle_end(nle_ctx_t *);
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 
+/* Debug: dump the per-env arena memory map (named buffers + fmon/fobj chains +
+ * monster grid with fmon-membership/data-validity) to `path` (NULL => stderr).
+ * Diagnostic for arena-reuse / dangling-pointer investigations. */
+void nle_dbg_memmap(nle_ctx_t *, const char *);
+
 /* Single-level blob save/load.
  *
  * nle_save_level serializes the current dungeon level to a malloc'd byte
