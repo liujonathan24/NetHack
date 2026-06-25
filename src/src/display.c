@@ -998,7 +998,7 @@ nle_display(void)
     if (!current_nle_ctx) return NULL;
     struct nle_display_state *s = (struct nle_display_state *) current_nle_ctx->s_display_state;
     if (!s) {
-        s = (struct nle_display_state *) calloc(1, sizeof(struct nle_display_state));
+        s = (struct nle_display_state *) nle_arena_calloc(1, sizeof(struct nle_display_state));
         current_nle_ctx->s_display_state = s;
     }
     return s;

@@ -80,7 +80,7 @@ nle_rip(void)
     if (!current_nle_ctx) return NULL;
     struct nle_rip_state *s = (struct nle_rip_state *) current_nle_ctx->s_rip_state;
     if (!s) {
-        s = (struct nle_rip_state *) calloc(1, sizeof(struct nle_rip_state));
+        s = (struct nle_rip_state *) nle_arena_calloc(1, sizeof(struct nle_rip_state));
         current_nle_ctx->s_rip_state = s;
     }
     return s;

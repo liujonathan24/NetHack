@@ -61,7 +61,7 @@ nle_do_name(void)
     if (!current_nle_ctx) return NULL;
     struct nle_do_name_state *s = (struct nle_do_name_state *) current_nle_ctx->s_do_name_state;
     if (!s) {
-        s = (struct nle_do_name_state *) calloc(1, sizeof(struct nle_do_name_state));
+        s = (struct nle_do_name_state *) nle_arena_calloc(1, sizeof(struct nle_do_name_state));
         current_nle_ctx->s_do_name_state = s;
     }
     return s;

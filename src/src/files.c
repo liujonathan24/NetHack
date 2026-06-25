@@ -1685,7 +1685,7 @@ nle_files(void)
     if (!current_nle_ctx) return NULL;
     struct nle_files_state *s = (struct nle_files_state *) current_nle_ctx->s_files_state;
     if (!s) {
-        s = (struct nle_files_state *) calloc(1, sizeof(struct nle_files_state));
+        s = (struct nle_files_state *) nle_arena_calloc(1, sizeof(struct nle_files_state));
         s->_lockfd = -1;  /* non-zero default */
         current_nle_ctx->s_files_state = s;
     }

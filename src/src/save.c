@@ -835,7 +835,7 @@ nle_save(void)
     if (!current_nle_ctx) return NULL;
     struct nle_save_state *s = (struct nle_save_state *) current_nle_ctx->s_save_state;
     if (!s) {
-        s = (struct nle_save_state *) calloc(1, sizeof(struct nle_save_state));
+        s = (struct nle_save_state *) nle_arena_calloc(1, sizeof(struct nle_save_state));
         s->_bw_fd = -1;
         current_nle_ctx->s_save_state = s;
     }

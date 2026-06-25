@@ -282,7 +282,14 @@ nle_pline(void)
         return NULL;
     struct nle_pline_state *s = (struct nle_pline_state *) current_nle_ctx->s_pline_state;
     if (!s) {
-        s = (struct nle_pline_state *) calloc(1, sizeof(struct nle_pline_state));
+        /* Arena-allocate (not libc calloc): this struct holds `_you_buf`, an
+         * arena pointer. If the struct lived on the libc heap it would NOT be
+         * captured by nle_fr_snapshot, so after a restore (which rewinds the
+         * arena) `_you_buf` would dangle into a reused arena offset and the
+         * next You_hear/pline would write its message over whatever now lives
+         * there (e.g. a live monster's struct) -> corruption/SIGSEGV. */
+        s = (struct nle_pline_state *) nle_arena_calloc(
+            1, sizeof(struct nle_pline_state));
         current_nle_ctx->s_pline_state = s;
     }
     return s;

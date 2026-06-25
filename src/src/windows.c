@@ -103,7 +103,7 @@ nle_windows(void)
     if (!current_nle_ctx) return NULL;
     struct nle_windows_state *s = (struct nle_windows_state *) current_nle_ctx->s_windows_state;
     if (!s) {
-        s = (struct nle_windows_state *) calloc(1, sizeof(struct nle_windows_state));
+        s = (struct nle_windows_state *) nle_arena_calloc(1, sizeof(struct nle_windows_state));
         current_nle_ctx->s_windows_state = s;
     }
     return s;

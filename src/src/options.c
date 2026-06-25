@@ -59,7 +59,7 @@ nle_options(void)
     if (!current_nle_ctx) return NULL;
     struct nle_options_state *s = (struct nle_options_state *) current_nle_ctx->s_options_state;
     if (!s) {
-        s = (struct nle_options_state *) calloc(1, sizeof(struct nle_options_state));
+        s = (struct nle_options_state *) nle_arena_calloc(1, sizeof(struct nle_options_state));
         current_nle_ctx->s_options_state = s;
     }
     return s;

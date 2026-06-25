@@ -38,7 +38,7 @@ nle_botl(void)
     if (!current_nle_ctx) return NULL;
     struct nle_botl_state *s = (struct nle_botl_state *) current_nle_ctx->s_botl_state;
     if (!s) {
-        s = (struct nle_botl_state *) calloc(1, sizeof(struct nle_botl_state));
+        s = (struct nle_botl_state *) nle_arena_calloc(1, sizeof(struct nle_botl_state));
         current_nle_ctx->s_botl_state = s;
     }
     return s;

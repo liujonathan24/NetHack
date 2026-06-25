@@ -50,7 +50,7 @@ static struct nle_shk_state *nle_shk(void) {
     if (!current_nle_ctx) return NULL;
     struct nle_shk_state *s = (struct nle_shk_state *) current_nle_ctx->s_shk_state;
     if (!s) {
-        s = (struct nle_shk_state *) calloc(1, sizeof(struct nle_shk_state));
+        s = (struct nle_shk_state *) nle_arena_calloc(1, sizeof(struct nle_shk_state));
         if (s) s->_sell_response = 'a';
         current_nle_ctx->s_shk_state = s;
     }

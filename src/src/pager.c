@@ -21,7 +21,7 @@ nle_pager(void)
     if (!current_nle_ctx) return NULL;
     struct nle_pager_state *s = (struct nle_pager_state *) current_nle_ctx->s_pager_state;
     if (!s) {
-        s = (struct nle_pager_state *) calloc(1, sizeof(struct nle_pager_state));
+        s = (struct nle_pager_state *) nle_arena_calloc(1, sizeof(struct nle_pager_state));
         current_nle_ctx->s_pager_state = s;
     }
     return s;
