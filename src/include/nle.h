@@ -1167,6 +1167,11 @@ void nle_end(nle_ctx_t *);
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 
+/* Debug: dump the per-env arena memory map (named buffers + fmon/fobj chains +
+ * monster grid with fmon-membership/data-validity) to `path` (NULL => stderr).
+ * Diagnostic for arena-reuse / dangling-pointer investigations. */
+void nle_dbg_memmap(nle_ctx_t *, const char *);
+
 /* Single-level blob save/load.
  *
  * nle_save_level serializes the current dungeon level to a malloc'd byte
@@ -1210,7 +1215,9 @@ int   nle_load_player(nle_ctx_t *, const void *blob, long len);
 /* Secure state-modification API.
  *
  * nle_set_state pokes a curated whitelist of simple integer player fields.
- * "field" is one of: "hp", "max_hp", "gold", "xp_level", "hunger".
+ * "field" is one of: "hp", "max_hp", "gold", "xp_level", "hunger", or one of
+ * the six attributes "str"/"dex"/"con"/"int"/"wis"/"cha" (value is NetHack's
+ * encoded attribute: 3..18, 19..118 == 18/01..18/00, 119..125 == 19..25).
  * Returns 0 on success, nonzero for an unknown field. The C side only
  * provides the setters; the binding is responsible for validating bounds.
  *
@@ -1233,6 +1240,23 @@ int nle_goto_depth(nle_ctx_t *, int n);
  * refresh blstats. Returns 0 on success. */
 int nle_seat_on_stair(nle_ctx_t *, int down);
 int nle_level_up(nle_ctx_t *, int n);
+
+/* Curriculum traversal: cross-branch goto + dungeon-table query.
+ *
+ * nle_num_dungeons returns the number of dungeon branches defined.
+ * nle_dungeon_info reports branch `idx`'s name / depth_start / num_dunlevs
+ * (any out pointer may be NULL); lets the caller map an absolute "Dlvl N" to
+ * a (dnum, dlevel) and find Gehennom / the Elemental Planes by name.
+ * nle_goto_abs schedules a DEFERRED move to an arbitrary (dnum, dlevel),
+ * including a different branch than the hero's current one (unlike
+ * nle_goto_depth, which pins the branch). Two-phase: goto_level() runs via
+ * deferred_goto() on the next nle_step() and generates the level on demand.
+ * Reaching the Elemental Planes grants the Amulet (the goto_level gate). All
+ * return 0 on success, nonzero on a bad index / out-of-range target. */
+int nle_num_dungeons(nle_ctx_t *);
+int nle_dungeon_info(nle_ctx_t *, int idx, char *name_out, int name_cap,
+                     int *depth_start_out, int *num_dunlevs_out);
+int nle_goto_abs(nle_ctx_t *, int dnum, int dlevel);
 
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the

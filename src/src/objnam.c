@@ -92,7 +92,7 @@ nle_objnam(void)
     if (!current_nle_ctx) return NULL;
     struct nle_objnam_state *s = (struct nle_objnam_state *) current_nle_ctx->s_objnam_state;
     if (!s) {
-        s = (struct nle_objnam_state *) calloc(1, sizeof(struct nle_objnam_state));
+        s = (struct nle_objnam_state *) nle_arena_calloc(1, sizeof(struct nle_objnam_state));
         current_nle_ctx->s_objnam_state = s;
     }
     return s;

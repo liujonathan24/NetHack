@@ -486,19 +486,40 @@ mainloop(fcontext_transfer_t ctx_transfer)
         s->hackdir[len] = '\0';
     }
 
+    /* Read-only data directory. When supplied, the immutable game data lives
+     * here (shared across envs, read-only) and only the writable game-state
+     * files stay under hackdir — so a fresh env needs only a tiny writable dir
+     * rather than a full copy of the dat tree. Empty => fall back to hackdir,
+     * which reproduces the original single-directory behavior exactly. */
+    char *datadir = s->hackdir;
+    if (s->datadir[0] != '\0') {
+        int dlen = strnlen(s->datadir, sizeof(s->datadir));
+        if (dlen >= (int) sizeof(s->datadir) - 1) {
+            error("DATADIR too long");
+            return;
+        }
+        if (s->datadir[dlen - 1] != '/') {
+            s->datadir[dlen] = '/';
+            s->datadir[dlen + 1] = '\0';
+        }
+        datadir = s->datadir;
+    }
+
     char *scoreprefix = (s->scoreprefix[0] != '\0')
                             ? s->scoreprefix
                             : s->hackdir;
-    fqn_prefix[SYSCONFPREFIX] = s->hackdir;
-    fqn_prefix[CONFIGPREFIX] = s->hackdir;
-    fqn_prefix[HACKPREFIX] = s->hackdir;
+    /* Read-only prefixes -> shared datadir (never written by the engine). */
+    fqn_prefix[DATAPREFIX] = datadir;
+    fqn_prefix[HACKPREFIX] = datadir;
+    fqn_prefix[SYSCONFPREFIX] = datadir;
+    fqn_prefix[CONFIGPREFIX] = datadir;
+    /* Writable prefixes -> per-env hackdir. */
     fqn_prefix[SAVEPREFIX] = s->hackdir;
     fqn_prefix[LEVELPREFIX] = s->hackdir;
     fqn_prefix[BONESPREFIX] = s->hackdir;
     fqn_prefix[SCOREPREFIX] = scoreprefix;
     fqn_prefix[LOCKPREFIX] = s->hackdir;
     fqn_prefix[TROUBLEPREFIX] = s->hackdir;
-    fqn_prefix[DATAPREFIX] = s->hackdir;
 
     char *argv[1] = { "nethack" };
 
@@ -922,6 +943,130 @@ nle_swap_out(nle_ctx_t *nle)
     }
 }
 
+static long
+nle_arena_off(char *base, void *p)
+{
+    return p ? (long) ((char *) p - base) : -1L;
+}
+
+/* Arena memory map. Dumps every named per-env buffer (by arena offset), the
+ * live monster (fmon) and object (fobj) chains, and the monster grid with
+ * fmon-membership — so an arbitrary arena pointer can be classified (which
+ * buffer/monster/object it falls in) and stale grid pointers (in the grid but
+ * not in fmon) are flagged. Writes to `path`, or stderr if NULL. */
+void
+nle_dbg_memmap(nle_ctx_t *nle, const char *path)
+{
+    extern const struct permonst mons[];
+    FILE *f = path ? fopen(path, "w") : stderr;
+    struct monst *m;
+    struct obj *o;
+    char *base;
+    int x, y, n;
+    if (!f)
+        return;
+    if (!nle) {
+        if (path)
+            fclose(f);
+        return;
+    }
+    current_nle_ctx = nle;
+    base = nle->s_arena_base;
+
+    fprintf(f, "# nle whole-game memory map\n");
+    fprintf(f, "obs_dlvl=%d moves=%ld\n\n",
+            nle->s7_level_p ? (int) depth(&u.uz) : -1, (long) moves);
+
+    /* Every region that holds per-env game state. The arena holds the bulk
+     * (all dynamic NetHack allocations); the others live outside it and are
+     * captured separately by the snapshot (ctx struct + coroutine stack + rl
+     * display mirror). This is the complete footprint a snapshot must cover. */
+    {
+        extern size_t nle_rl_mirror_size(void);
+        char *stk_hi = (char *) nle->stack.sptr;
+        char *stk_lo = stk_hi - nle->stack.ssize;
+        fprintf(f, "## whole-game regions (addr  size  what)\n");
+        fprintf(f, "%18p  %10zu  nle_ctx_t struct (fixed per-env state)\n",
+                (void *) nle, sizeof(*nle));
+        fprintf(f, "%18p  %10zu  arena (used; cap=%zu) -- all dynamic state\n",
+                (void *) base, nle->s_arena_used, nle->s_arena_cap);
+        fprintf(f, "%18p  %10zu  coroutine stack (fcontext)\n",
+                (void *) stk_lo, nle->stack.ssize);
+        fprintf(f, "%18p  %10zu  rl display mirror (libc, outside arena)\n",
+                nle->s_netHackRL_instance, nle_rl_mirror_size());
+        fprintf(f, "\n");
+    }
+
+    fprintf(f, "## arena named buffers + chains (offsets relative to arena_base"
+               "=%p)\n\n", (void *) base);
+
+    {
+        struct { const char *name; void *p; } b[] = {
+            { "gbuf", nle->s_gbuf_p }, { "context", nle->s_context_p },
+            { "obufs", nle->s_obufs_p }, { "mbufs", nle->s_mbufs_p },
+            { "disco", nle->s_disco_p }, { "blstats", nle->s_blstats_p },
+            { "level(struct)", nle->s7_level_p }, { "rooms", nle->s7_rooms_p },
+            { "doors", nle->s7_doors_p }, { "level_info", nle->s7_level_info_p },
+            { "lastseentyp", nle->s7_lastseentyp_p },
+            { "youmonst", nle->s9c_youmonst_p }, { "mvitals", nle->s9c_mvitals_p },
+            { "killer", nle->s9c_killer_p }, { "spl_book", nle->s9c_spl_book_p },
+            { "quest_status", nle->s9c_quest_status_p },
+            { "objects", nle->s9o_objects_p }, { "obj_descr", nle->s9o_obj_descr_p },
+            { "rndmonst", nle->s_rndmonst_state_p }, { "artilist", nle->s_artilist_p },
+            { "muse_m", nle->s_muse_m_p }, { "could_see", nle->s_could_see_p },
+            { "viz_clear", nle->s_viz_clear_p }, { "left_ptrs", nle->s_left_ptrs_p },
+            { "right_ptrs", nle->s_right_ptrs_p }, { "wheads", nle->s_wheads_p },
+            { "wtails", nle->s_wtails_p }, { "wgrowtime", nle->s_wgrowtime_p },
+            { "tty_status", nle->s_tty_status_p }, { "tcap", nle->s8_tcap_p },
+            { "topology", nle->s6_topology_p }, { "dungeons", nle->s6_dungeons_p },
+        };
+        fprintf(f, "## named buffers (arena offset, name) -- sort -n to see layout\n");
+        for (n = 0; n < (int) (sizeof(b) / sizeof(b[0])); n++)
+            fprintf(f, "%10ld  %s\n", nle_arena_off(base, b[n].p), b[n].name);
+    }
+    fflush(f);
+
+#define INAR(p) ((char *) (p) >= base \
+                 && (char *) (p) < base + nle->s_arena_used)
+    fprintf(f, "\n## monsters fmon (offset id mnum hp species)\n");
+    for (m = fmon, n = 0; m && INAR(m) && n < 100000; m = m->nmon, n++) {
+        int valid = (m->data >= &mons[0] && m->data < &mons[NUMMONS]);
+        fprintf(f, "%10ld  id=%u mnum=%d hp=%d %s\n", nle_arena_off(base, m),
+                m->m_id, m->mnum, m->mhp,
+                valid ? mons[m->mnum].mname : "<BAD data>");
+    }
+    if (m && !INAR(m))
+        fprintf(f, "  (fmon walk hit OOB ptr %p at #%d)\n", (void *) m, n);
+    fflush(f);
+
+    fprintf(f, "\n## objects fobj (offset id otyp)\n");
+    for (o = fobj, n = 0; o && INAR(o) && n < 100000; o = o->nobj, n++)
+        fprintf(f, "%10ld  id=%u otyp=%d\n", nle_arena_off(base, o), o->o_id,
+                o->otyp);
+    fflush(f);
+
+    fprintf(f, "\n## grid monster ptrs (x y offset in_fmon valid_data)\n");
+    for (x = 0; x < COLNO; x++)
+        for (y = 0; y < ROWNO; y++) {
+            struct monst *gm = level.monsters[x][y], *fm;
+            int in = 0, fn = 0;
+            if (!gm)
+                continue;
+            for (fm = fmon; fm && INAR(fm) && fn < 100000;
+                 fm = fm->nmon, fn++)
+                if (fm == gm) { in = 1; break; }
+            fprintf(f, "%3d %3d  %10ld  in_fmon=%d valid_data=%d%s\n", x, y,
+                    nle_arena_off(base, gm), in,
+                    INAR(gm) && gm->data >= &mons[0]
+                        && gm->data < &mons[NUMMONS],
+                    in ? "" : "  <<< STALE GRID PTR");
+        }
+#undef INAR
+    fflush(f);
+    if (path)
+        fclose(f);
+}
+
 nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
@@ -1293,6 +1438,30 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
                 dealloc_obj(gold);
             }
         }
+    } else if (!strcmp(field, "str") || !strcmp(field, "dex")
+               || !strcmp(field, "con") || !strcmp(field, "int")
+               || !strcmp(field, "wis") || !strcmp(field, "cha")) {
+        /* Set a single attribute (base + max).  The caller passes NetHack's
+         * encoded value: 3..18 normal, 19..118 == 18/01..18/00 strength
+         * percentile, 119..125 == 19..25 (exceptional, magic only).  The
+         * displayed attribute is acurr (== ABASE) plus item/temp bonuses,
+         * which are zero for an injected hero, so this is what shows up.
+         * Used by the curriculum stat-upgrade on the deep jump. */
+        int idx = (!strcmp(field, "str")) ? A_STR
+                : (!strcmp(field, "int")) ? A_INT
+                : (!strcmp(field, "wis")) ? A_WIS
+                : (!strcmp(field, "dex")) ? A_DEX
+                : (!strcmp(field, "con")) ? A_CON
+                : A_CHA;
+        int v = (int) value;
+
+        if (v < 3)
+            v = 3;
+        if (v > 125)
+            v = 125;
+        u.acurr.a[idx] = (schar) v;
+        if (u.amax.a[idx] < (schar) v)
+            u.amax.a[idx] = (schar) v;
     } else {
         return 1; /* unknown field */
     }
@@ -1383,6 +1552,87 @@ nle_level_up(nle_ctx_t *nle, int n)
         u.uexp = newuexp(u.ulevel - 1);
 
     context.botl = TRUE; /* bottom-line status is now stale */
+    return 0;
+}
+
+/* ===================================================================
+ * Curriculum traversal: cross-branch goto + dungeon-table query.
+ * nle_goto_depth can only move WITHIN the current branch (it pins
+ * dest.dnum = u.uz.dnum) and is clamped to that branch's length, so it
+ * cannot reach Gehennom (levels ~26-50) or the Elemental Planes.  These
+ * entry points expose the dungeon layout and an arbitrary (dnum, dlevel)
+ * jump so a curriculum can stitch e.g. DoD 1-3 to Gehennom 48-50.
+ * =================================================================== */
+
+/* Number of dungeon branches currently defined (DoD, Gehennom, Mines, ...). */
+int
+nle_num_dungeons(nle_ctx_t *nle)
+{
+    current_nle_ctx = nle;
+    return nle->s_n_dgns;
+}
+
+/* Report the layout of dungeon branch `idx`: its name, logical depth_start
+ * (the absolute depth of its first level) and number of levels.  Lets the
+ * caller map an absolute "Dlvl N" to a concrete (dnum, dlevel) and locate
+ * branches (Gehennom, "The Elemental Planes") by name.  Any of the out
+ * pointers may be NULL.  Returns 0 on success, 1 if idx is out of range. */
+int
+nle_dungeon_info(nle_ctx_t *nle, int idx, char *name_out, int name_cap,
+                 int *depth_start_out, int *num_dunlevs_out)
+{
+    current_nle_ctx = nle;
+    if (idx < 0 || idx >= nle->s_n_dgns)
+        return 1;
+    if (name_out && name_cap > 0) {
+        (void) strncpy(name_out, dungeons[idx].dname, (size_t) (name_cap - 1));
+        name_out[name_cap - 1] = '\0';
+    }
+    if (depth_start_out)
+        *depth_start_out = dungeons[idx].depth_start;
+    if (num_dunlevs_out)
+        *num_dunlevs_out = (int) dungeons[idx].num_dunlevs;
+    return 0;
+}
+
+/* Schedule a DEFERRED move of the hero to an ARBITRARY (dnum, dlevel),
+ * including a dungeon branch other than the hero's current one (e.g.
+ * Gehennom or the Elemental Planes).  Like nle_goto_depth this is two-phase:
+ * the actual goto_level() runs via deferred_goto() on the next nle_step(),
+ * which handles cross-branch movement and generates the destination level on
+ * demand (mklev) if it has not been visited.  at_stairs/falling/portal are
+ * all FALSE so the hero lands on a random valid spot (the destination's
+ * branch stairs may not be registered for a teleport-style jump).
+ *
+ * Entering the endgame (the Elemental Planes) requires the Amulet of Yendor
+ * (goto_level returns early without it); we grant it here so the curriculum
+ * can reach the planes.  The non-wizard gate in goto_level then routes the
+ * hero to the Plane of Earth, which is the natural plane entry point.
+ *
+ * Returns 0 on success, nonzero for an out-of-range (dnum, dlevel). */
+int
+nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
+{
+    d_level dest;
+
+    current_nle_ctx = nle;
+
+    if (dnum < 0 || dnum >= nle->s_n_dgns)
+        return 1;
+    if (dlevel < 1 || dlevel > (int) dungeons[dnum].num_dunlevs)
+        return 1;
+
+    dest.dnum = (xchar) dnum;
+    dest.dlevel = (xchar) dlevel;
+
+    if (on_level(&u.uz, &dest))
+        return 0; /* already there; nothing to schedule */
+
+    /* The endgame gate in goto_level() needs the Amulet. */
+    if (dest.dnum == astral_level.dnum)
+        u.uhave.amulet = 1;
+
+    schedule_goto(&dest, FALSE, FALSE, 0, (char *) 0, (char *) 0);
     return 0;
 }
 

@@ -41,7 +41,7 @@ static struct nle_uhitm_state *nle_uhitm(void) {
     if (!current_nle_ctx) return NULL;
     struct nle_uhitm_state *s = (struct nle_uhitm_state *) current_nle_ctx->s_uhitm_state;
     if (!s) {
-        s = (struct nle_uhitm_state *) calloc(1, sizeof(struct nle_uhitm_state));
+        s = (struct nle_uhitm_state *) nle_arena_calloc(1, sizeof(struct nle_uhitm_state));
         current_nle_ctx->s_uhitm_state = s;
     }
     return s;

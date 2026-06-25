@@ -58,7 +58,7 @@ static struct nle_end_state *nle_end_st(void) {
     if (!current_nle_ctx) return NULL;
     struct nle_end_state *s = (struct nle_end_state *) current_nle_ctx->s_end_state;
     if (!s) {
-        s = (struct nle_end_state *) calloc(1, sizeof(struct nle_end_state));
+        s = (struct nle_end_state *) nle_arena_calloc(1, sizeof(struct nle_end_state));
         current_nle_ctx->s_end_state = s;
     }
     if (!s->_valuables_inited) {
