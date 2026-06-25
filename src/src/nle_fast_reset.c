@@ -22,6 +22,22 @@
 #include "hack.h"
 #include "nle.h"
 
+/* The coroutine (fcontext) stack is copied wholesale by snapshot/restore. ASAN
+ * doesn't know about the fiber stack and reports false stack-buffer-underflows
+ * on those memcpys, so unpoison the region first under an ASAN build. No-op
+ * otherwise. */
+#if defined(__SANITIZE_ADDRESS__)
+#include <sanitizer/asan_interface.h>
+#define NLE_ASAN_UNPOISON(p, n) __asan_unpoison_memory_region((p), (n))
+/* The snapshot scratch buffers (saved_stack/arena/mirror/levelfiles) are plain
+ * malloc()'d, but NetHack's `free` macro routes to nle_arena_free->__libc_free,
+ * which bypasses ASAN's malloc interceptor and aborts ("invalid pointer"). Use
+ * the real (ASAN-intercepted) free here so the allocator pairs match. */
+#undef free
+#else
+#define NLE_ASAN_UNPOISON(p, n) ((void) 0)
+#endif
+
 /* rl-port display mirror shims (win/rl/winrl.cc). The NetHackRL instance is
  * libc-malloc'd outside the arena, and its glyph/char/color map arrays are
  * updated incrementally, so they must be captured separately or stale cells
@@ -184,6 +200,7 @@ nle_fr_snapshot(nle_ctx_t *nle)
         return NULL;
     }
     void *stack_lo = (char *) nle->stack.sptr - s->stack_size;
+    NLE_ASAN_UNPOISON(stack_lo, s->stack_size);
     memcpy(s->saved_stack, stack_lo, s->stack_size);
 
     s->arena_used = nle->s_arena_used;
@@ -230,6 +247,7 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
     nle->s_arena_used = s->arena_used;
 
     void *stack_lo = (char *) nle->stack.sptr - s->stack_size;
+    NLE_ASAN_UNPOISON(stack_lo, s->stack_size);
     memcpy(stack_lo, s->saved_stack, s->stack_size);
 
     char *arena_base = nle->s_arena_base;

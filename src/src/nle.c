@@ -973,10 +973,32 @@ nle_dbg_memmap(nle_ctx_t *nle, const char *path)
     current_nle_ctx = nle;
     base = nle->s_arena_base;
 
-    fprintf(f, "# nle arena memory map\n");
-    fprintf(f, "arena_base=%p used=%zu cap=%zu obs_dlvl=%d moves=%ld\n\n",
-            (void *) base, nle->s_arena_used, nle->s_arena_cap,
+    fprintf(f, "# nle whole-game memory map\n");
+    fprintf(f, "obs_dlvl=%d moves=%ld\n\n",
             nle->s7_level_p ? (int) depth(&u.uz) : -1, (long) moves);
+
+    /* Every region that holds per-env game state. The arena holds the bulk
+     * (all dynamic NetHack allocations); the others live outside it and are
+     * captured separately by the snapshot (ctx struct + coroutine stack + rl
+     * display mirror). This is the complete footprint a snapshot must cover. */
+    {
+        extern size_t nle_rl_mirror_size(void);
+        char *stk_hi = (char *) nle->stack.sptr;
+        char *stk_lo = stk_hi - nle->stack.ssize;
+        fprintf(f, "## whole-game regions (addr  size  what)\n");
+        fprintf(f, "%18p  %10zu  nle_ctx_t struct (fixed per-env state)\n",
+                (void *) nle, sizeof(*nle));
+        fprintf(f, "%18p  %10zu  arena (used; cap=%zu) -- all dynamic state\n",
+                (void *) base, nle->s_arena_used, nle->s_arena_cap);
+        fprintf(f, "%18p  %10zu  coroutine stack (fcontext)\n",
+                (void *) stk_lo, nle->stack.ssize);
+        fprintf(f, "%18p  %10zu  rl display mirror (libc, outside arena)\n",
+                nle->s_netHackRL_instance, nle_rl_mirror_size());
+        fprintf(f, "\n");
+    }
+
+    fprintf(f, "## arena named buffers + chains (offsets relative to arena_base"
+               "=%p)\n\n", (void *) base);
 
     {
         struct { const char *name; void *p; } b[] = {
