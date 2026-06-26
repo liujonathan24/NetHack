@@ -80,6 +80,9 @@ typedef struct {
 #endif
 } nle_seeds_init_t;
 
+/* Max difficulty-knob overrides passable at start (>= the catalog size). */
+#define NLE_TUNE_MAX 64
+
 typedef struct nle_settings {
     char hackdir[256];
     char scoreprefix[256];
@@ -87,6 +90,21 @@ typedef struct nle_settings {
     char wizkit[256];
     int spawn_monsters;
     char ttyrecname[256];
+    /* Difficulty-knob overrides applied before the starting level is generated
+     * (so reset/generation-time knobs take effect at game start). Zero-safe:
+     * tune_n == 0 means "no overrides" (a zeroed struct keeps vanilla defaults).
+     * Apply tune_val[k] to knob catalog index tune_idx[k] for k in [0, tune_n). */
+    int    tune_n;
+    int    tune_idx[NLE_TUNE_MAX];
+    double tune_val[NLE_TUNE_MAX];
+    /* Optional read-only data directory holding the shared, immutable game
+     * data (the DLB `nhdat`, data/oracles/rumors, config, …). When non-empty,
+     * the read-only file prefixes (DATA/HACK/SYSCONF/CONFIG) resolve here while
+     * the writable prefixes (LEVEL/SAVE/BONES/SCORE/LOCK/TROUBLE) stay under
+     * `hackdir`. This lets many envs share one data dir read-only and keep only
+     * a tiny per-env writable `hackdir`, instead of each copying the ~3.7MB dat
+     * tree. Empty => every prefix resolves under `hackdir` (legacy behavior). */
+    char datadir[256];
 } nle_settings;
 
 #endif /* NLEOBS_H */
