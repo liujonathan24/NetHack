@@ -1636,6 +1636,21 @@ nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
     return 0;
 }
 
+/* Report whether the hero is standing on a staircase: +1 on the down stair,
+ * -1 on the up stair, 0 otherwise. Lets a curriculum decide, BEFORE issuing a
+ * descend/ascend, whether the hero has genuinely navigated onto the stairs (so
+ * the cross-branch jump only fires on a real stair use, never a teleport). */
+int
+nle_hero_on_stair(nle_ctx_t *nle)
+{
+    current_nle_ctx = nle;
+    if (xdnstair > 0 && u.ux == xdnstair && u.uy == ydnstair)
+        return 1;
+    if (xupstair > 0 && u.ux == xupstair && u.uy == yupstair)
+        return -1;
+    return 0;
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/

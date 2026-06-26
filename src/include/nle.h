@@ -1257,6 +1257,8 @@ int nle_num_dungeons(nle_ctx_t *);
 int nle_dungeon_info(nle_ctx_t *, int idx, char *name_out, int name_cap,
                      int *depth_start_out, int *num_dunlevs_out);
 int nle_goto_abs(nle_ctx_t *, int dnum, int dlevel);
+/* nle_hero_on_stair: +1 on the down stair, -1 on the up stair, 0 otherwise. */
+int nle_hero_on_stair(nle_ctx_t *);
 
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
