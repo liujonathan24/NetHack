@@ -730,6 +730,16 @@ NetHackRL::fill_obs(nle_obs *obs)
                 if (poked)
                     levl[x][y].seenv = saved_seenv;
 
+                /* Full vision must also reveal SECRET corridors/doors, which
+                 * back_to_glyph() renders as plain stone (they are "hidden").
+                 * For "lights on" we want a connected, walkable map, so map a
+                 * secret corridor to a corridor and a secret door to a door.
+                 * levl[][] is untouched (we only change the emitted glyph). */
+                if (typ == SCORR)
+                    glyph = cmap_to_glyph(S_corr);
+                else if (typ == SDOOR)
+                    glyph = cmap_to_glyph(S_ndoor);
+
                 /* Map the background glyph to char/color/special exactly the
                  * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
                 int ch;
