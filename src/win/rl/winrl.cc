@@ -703,10 +703,30 @@ NetHackRL::fill_obs(nle_obs *obs)
                 size_t j = y % ROWNO;
                 size_t offset = j * (COLNO - 1) + i;
 
-                /* Only overlay cells the hero has not already seen. A blank
-                 * cell is the nul_glyph (stone) fill the port initializes
-                 * with and which store_glyph re-emits for unknown terrain. */
-                if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
+                /* Navigation-isolation: convert secret doors/corridors to their
+                 * real, TRAVERSABLE forms so the fully-revealed map is actually
+                 * navigable. reveal_map is a render overlay that would otherwise
+                 * only *show* terrain — but secret passages (SDOOR/SCORR) stay
+                 * impassable in levl[][] until searched, leaving some down-stairs
+                 * unreachable and forcing the search skill. Doing the same
+                 * conversion search would (cvt_sdoor_to_door / SCORR->CORR) makes
+                 * the level genuinely connected. Run for EVERY cell (even ones
+                 * already "seen" as a wall) and force a re-render of those so the
+                 * emitted obs shows the now-passable glyph. Idempotent; only on
+                 * the opt-in reveal_map>0 path, so default obs is unaffected. */
+                boolean was_secret = (levl[x][y].typ == SDOOR
+                                      || levl[x][y].typ == SCORR);
+                if (levl[x][y].typ == SDOOR) {
+                    cvt_sdoor_to_door(&levl[x][y]);
+                } else if (levl[x][y].typ == SCORR) {
+                    levl[x][y].typ = CORR;
+                    unblock_point(x, y);
+                }
+
+                /* Only overlay cells the hero has not already seen (a blank
+                 * nul_glyph cell) -- EXCEPT cells we just de-secreted, which must
+                 * be re-rendered to replace their stale wall glyph. */
+                if (!was_secret && obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
                 /* back_to_glyph() returns S_stone for any wall whose seenv
