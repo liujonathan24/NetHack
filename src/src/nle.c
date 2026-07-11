@@ -1648,6 +1648,13 @@ nle_hero_on_stair(nle_ctx_t *nle)
         return 1;
     if (xupstair > 0 && u.ux == xupstair && u.uy == yupstair)
         return -1;
+    /* Also report the BRANCH staircase (sstairs) — e.g. the Gnomish Mines
+     * entrance on Dungeons-of-Doom levels. Without this the curriculum's
+     * DoD3->Gehennom jump only fires on the main dnstair, so an agent that
+     * descends the branch '>' silently falls into the Mines instead of the
+     * deep segment. Any downstair out of DoD3 should count. */
+    if (sstairs.sx > 0 && u.ux == sstairs.sx && u.uy == sstairs.sy)
+        return sstairs.up ? -1 : 1;
     return 0;
 }
 
