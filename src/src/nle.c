@@ -1649,12 +1649,15 @@ nle_hero_on_stair(nle_ctx_t *nle)
     if (xupstair > 0 && u.ux == xupstair && u.uy == yupstair)
         return -1;
     /* Also report the BRANCH staircase (sstairs) — e.g. the Gnomish Mines
-     * entrance on Dungeons-of-Doom levels. Without this the curriculum's
-     * DoD3->Gehennom jump only fires on the main dnstair, so an agent that
-     * descends the branch '>' silently falls into the Mines instead of the
-     * deep segment. Any downstair out of DoD3 should count. */
+     * entrance on Dungeons-of-Doom levels — but with a DISTINCT magnitude (2 =
+     * branch down, -2 = branch up) so callers can tell it apart from the level's
+     * own main stair (1/-1). The curriculum needs this: any downstair out of
+     * DoD3 should jump to Gehennom, but on DoD1/2 only the *branch* '>' must be
+     * redirected (the main '>' should descend normally). Callers that only test
+     * ==1/==-1 are unaffected (they treat the branch as "not on stair", as
+     * before). */
     if (sstairs.sx > 0 && u.ux == sstairs.sx && u.uy == sstairs.sy)
-        return sstairs.up ? -1 : 1;
+        return sstairs.up ? -2 : 2;
     return 0;
 }
 
