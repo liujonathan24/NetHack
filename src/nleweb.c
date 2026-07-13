@@ -13,6 +13,35 @@ extern int nle_goto_abs(nle_ctx_t *, int, int);
 extern int nle_hero_on_stair(nle_ctx_t *);
 extern int nle_num_dungeons(nle_ctx_t *);
 extern int nle_dungeon_info(nle_ctx_t *, int, char *, int, int *, int *);
+extern int nle_tune_count(void);
+extern const char *nle_tune_name(int);
+
+/* Pending difficulty-knob overrides, applied at the next nleweb_start(). The
+ * engine consumes these from nle_settings (tune_n/tune_idx/tune_val) before the
+ * starting level is generated, so generation-time knobs take effect. */
+#define NLE_TUNE_MAX 64
+static int    g_tune_n = 0;
+static int    g_tune_idx[NLE_TUNE_MAX];
+static double g_tune_val[NLE_TUNE_MAX];
+
+/* knob catalog for the JS side */
+int nleweb_tune_count(void) { return nle_tune_count(); }
+const char *nleweb_tune_name(int i) { return nle_tune_name(i); }
+void nleweb_clear_tune(void) { g_tune_n = 0; }
+/* queue knob `idx` = `val`; overwrites a prior entry for the same idx. */
+void nleweb_set_tune(int idx, double val)
+{
+    int k;
+    if (idx < 0 || idx >= nle_tune_count())
+        return;
+    for (k = 0; k < g_tune_n; k++)
+        if (g_tune_idx[k] == idx) { g_tune_val[k] = val; return; }
+    if (g_tune_n < NLE_TUNE_MAX) {
+        g_tune_idx[g_tune_n] = idx;
+        g_tune_val[g_tune_n] = val;
+        g_tune_n++;
+    }
+}
 
 #define ROWNO 21
 #define COLNO 80
@@ -74,6 +103,12 @@ nle_ctx_t *nleweb_start(nle_obs *o, unsigned long seed, const char *opts)
     strcpy(st.datadir, "/nethackdir");
     strncpy(st.options, opts, sizeof(st.options) - 1);
     st.spawn_monsters = 1;
+    /* apply any queued difficulty-knob overrides (before level generation) */
+    st.tune_n = g_tune_n;
+    { int k; for (k = 0; k < g_tune_n; k++) {
+        st.tune_idx[k] = g_tune_idx[k];
+        st.tune_val[k] = g_tune_val[k];
+    } }
     static nle_seeds_init_t sd;
     memset(&sd, 0, sizeof sd);
     sd.seeds[0] = seed;
