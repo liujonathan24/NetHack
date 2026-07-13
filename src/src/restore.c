@@ -102,7 +102,7 @@ extern int amii_numcolors;
 
 /* exp_038 hypothesis 1: enforce identical struct sizes between save.c and
  * restore.c. Sizes verified to match save.c (see save.c comment block). */
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__EMSCRIPTEN__)
 _Static_assert(sizeof(struct eshk)  == 4936, "restore.c: sizeof(struct eshk) drifted");
 _Static_assert(sizeof(struct monst) ==  144, "restore.c: sizeof(struct monst) drifted");
 _Static_assert(sizeof(struct obj)   ==   96, "restore.c: sizeof(struct obj) drifted");

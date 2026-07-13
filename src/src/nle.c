@@ -712,8 +712,10 @@ nle_spawn_monsters()
 /* See rng.c. */
 extern int FDECL(whichrng, (int FDECL((*fn), (int) )));
 
-/* See hacklib.c. */
-extern int FDECL(set_random, (unsigned long, int FDECL((*fn), (int) )));
+/* See hacklib.c. NB: set_random is defined `void` there; declaring it `int`
+ * here is a return-type signature mismatch that traps under WebAssembly's
+ * strict indirect-call type checking (harmless on native). */
+extern void FDECL(set_random, (unsigned long, int FDECL((*fn), (int) )));
 /* An appropriate version of this must always be provided in
    port-specific code somewhere. It returns a number suitable
    as seed for the random number generator */

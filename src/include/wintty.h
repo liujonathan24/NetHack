@@ -274,7 +274,8 @@ E void FDECL(video_update_positionbar, (char *));
 #undef fflush
 E int FDECL(nle_putchar, (int) );
 E int FDECL(nle_puts, (const char *) );
-E int FDECL(nle_xputs, (const char *) );
+E void FDECL(nle_xputs, (const char *) ); /* defined `void` in nle.c; `int` here
+    trips WebAssembly's strict indirect-call signature check (harmless native) */
 E int FDECL(nle_fflush, (FILE *) );
 
 #define putchar nle_putchar

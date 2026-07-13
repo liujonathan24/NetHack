@@ -1,6 +1,18 @@
 #define _GNU_SOURCE
 #include "nle_sentinel.h"
 
+#ifdef __EMSCRIPTEN__
+/* Single-threaded WASM build: the pthread/signal/execinfo watchdog is neither
+ * available nor needed here — compile the public API as no-op stubs. */
+void nle_sentinel_global_init(void) {}
+void *nle_sentinel_register(unsigned long seed) { (void)seed; return (void *)1; }
+void nle_sentinel_beat(void *slot, int action, int dlvl) { (void)slot; (void)action; (void)dlvl; }
+void nle_sentinel_set_panic(void *slot, const char *msg) { (void)slot; (void)msg; }
+void nle_sentinel_unregister(void *slot) { (void)slot; }
+int nle_sentinel_snapshot(nle_sentinel_stat *out, int max) { (void)out; (void)max; return 0; }
+uint64_t nle_sentinel_total_heartbeat(void) { return 0; }
+#else
+
 #include <stdatomic.h>
 #include <string.h>
 #include <pthread.h>
@@ -277,3 +289,5 @@ static void global_init_once(void) {
 void nle_sentinel_global_init(void) {
     pthread_once(&g_once, global_init_once);
 }
+
+#endif /* __EMSCRIPTEN__ */
