@@ -60,6 +60,12 @@ int nleweb_tty_rows(void) { return NLE_TERM_LI; }
 int nleweb_tty_cols(void) { return NLE_TERM_CO; }
 int nleweb_blstats_size(void) { return NLE_BLSTATS_SIZE; }
 
+/* Fiber swaps unwind through Asyncify, and the value returned across the JS
+ * boundary from such a call is lost (comes back 0). The assignment INSIDE wasm
+ * is correct though, so we stash the live ctx in a static and expose it via a
+ * plain (non-suspending) accessor for the JS driver to read after start/step. */
+static nle_ctx_t *g_nle;
+
 nle_ctx_t *nleweb_start(nle_obs *o, unsigned long seed, const char *opts)
 {
     static nle_settings st;
@@ -73,25 +79,24 @@ nle_ctx_t *nleweb_start(nle_obs *o, unsigned long seed, const char *opts)
     sd.seeds[0] = seed;
     sd.seeds[1] = seed;
     sd.reseed = 0;
-    return nle_start(o, NULL, &sd, &st);
+    g_nle = nle_start(o, NULL, &sd, &st);
+    return g_nle;
 }
 
-nle_ctx_t *nleweb_step(nle_ctx_t *nle, nle_obs *o, int action)
+nle_ctx_t *nleweb_step(nle_obs *o, int action)
 {
     o->action = action;
-    return nle_step(nle, o);
+    g_nle = nle_step(g_nle, o);
+    return g_nle;
 }
 
-/* curriculum: jump to (dnum,dlevel); the engine processes the deferred jump on
- * the next step, so the caller should step once (e.g. with a wait) afterwards. */
-int nleweb_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
+nle_ctx_t *nleweb_ctx(void) { return g_nle; } /* plain accessor, no unwind */
+
+/* curriculum: schedule a jump to (dnum,dlevel); processed on the next step. */
+int nleweb_goto_abs(int dnum, int dlevel) { return nle_goto_abs(g_nle, dnum, dlevel); }
+int nleweb_hero_on_stair(void) { return nle_hero_on_stair(g_nle); }
+int nleweb_num_dungeons(void) { return nle_num_dungeons(g_nle); }
+int nleweb_dungeon_info(int idx, char *name, int cap, int *depth_start, int *num)
 {
-    return nle_goto_abs(nle, dnum, dlevel);
-}
-int nleweb_hero_on_stair(nle_ctx_t *nle) { return nle_hero_on_stair(nle); }
-int nleweb_num_dungeons(nle_ctx_t *nle) { return nle_num_dungeons(nle); }
-int nleweb_dungeon_info(nle_ctx_t *nle, int idx, char *name, int cap,
-                        int *depth_start, int *num)
-{
-    return nle_dungeon_info(nle, idx, name, cap, depth_start, num);
+    return nle_dungeon_info(g_nle, idx, name, cap, depth_start, num);
 }
