@@ -1661,6 +1661,152 @@ nle_hero_on_stair(nle_ctx_t *nle)
     return 0;
 }
 
+/* Grant the pre-primed invocation kit straight into the hero's pack so the
+ * curriculum agent can actually perform the invocation ritual (the only way
+ * down from the Invocation level to Moloch's Sanctum — that level has no
+ * down-staircase by design). Modeled on the "gold" branch of nle_set_state:
+ * build objects with mksobj, then addinv() (which also sets u.uhave.menorah/
+ * bell/book via addinv_core1, so the ritual's carry-checks pass).
+ *
+ * The kit is pre-primed so the agent does NOT have to hunt candles or light
+ * anything: the Candelabrum arrives with all 7 candles (spe=7) and lit, the
+ * Bell is charged, and all three are uncursed. Note deadbook()'s gate reads
+ * only the plain obj fields spe/lamplit (not attached candle objects), and
+ * those persist across the synthetic DoD3->Gehennom goto_abs jump regardless
+ * of whether the burn timer/light-source survive it; age=5000 keeps the burn
+ * timer from expiring during navigation. The Bell is intentionally NOT
+ * pre-rung — the honest flow has the agent ring it live (use_bell sets
+ * obj->age=moves, satisfying the "rung within 5 turns" check). */
+int
+nle_grant_invocation_kit(nle_ctx_t *nle)
+{
+    struct obj *cand, *bell, *book;
+
+    current_nle_ctx = nle;
+
+    /* The three artifacts are granted pre-IDENTIFIED (makeknown on the type +
+     * per-object known/dknown/bknown) so they render by their real names
+     * ("the Candelabrum of Invocation", "the Bell of Opening", "the Book of the
+     * Dead") rather than random unidentified appearances ("silver bell",
+     * "papyrus spellbook"). The agent references them by name (apply('bell'),
+     * read('Book of the Dead')), and the ritual-ready obs hint keys off them. */
+
+    /* Candelabrum of Invocation: 7 candles attached, uncursed, lit w/ deep fuel. */
+    cand = mksobj(CANDELABRUM_OF_INVOCATION, TRUE, FALSE);
+    if (cand) {
+        cand->spe = 7;        /* all 7 candles (deadbook checks spe==7) */
+        cand->cursed = 0;
+        cand->blessed = 0;
+        cand->age = 5000L;    /* turns of fuel; outlasts any navigation */
+        cand->quan = 1L;
+        cand->known = cand->dknown = cand->bknown = cand->rknown = 1;
+        cand->owt = weight(cand);
+        makeknown(CANDELABRUM_OF_INVOCATION);
+        cand = addinv(cand);      /* sets u.uhave.menorah; returns live ptr */
+        if (cand)
+            begin_burn(cand, FALSE);  /* lamplit=1 + burn timer + light source */
+    }
+
+    /* Bell of Opening: charged, uncursed, NOT pre-rung (agent rings it live). */
+    bell = mksobj(BELL_OF_OPENING, TRUE, FALSE);
+    if (bell) {
+        bell->spe = 3;
+        bell->cursed = 0;
+        bell->blessed = 0;
+        bell->known = bell->dknown = bell->bknown = bell->rknown = 1;
+        bell->owt = weight(bell);
+        makeknown(BELL_OF_OPENING);
+        (void) addinv(bell);      /* sets u.uhave.bell */
+    }
+
+    /* Book of the Dead: uncursed. */
+    book = mksobj(SPE_BOOK_OF_THE_DEAD, TRUE, FALSE);
+    if (book) {
+        book->cursed = 0;
+        book->blessed = 0;
+        book->known = book->dknown = book->bknown = book->rknown = 1;
+        book->owt = weight(book);
+        makeknown(SPE_BOOK_OF_THE_DEAD);
+        (void) addinv(book);      /* sets u.uhave.book */
+    }
+
+    context.botl = TRUE;
+    return 0;
+}
+
+/* Report the vibrating-square (invocation) position. Writes inv_pos into
+ * *x,*y and returns 0 on the Invocation level; otherwise writes (0,0) and
+ * returns nonzero (inv_pos is only meaningful on that level). Lets the
+ * curriculum reveal the square so the agent can navigate onto it — the trap
+ * itself is created hidden, but the tile is walkable maze floor. */
+int
+nle_invocation_pos(nle_ctx_t *nle, int *x, int *y)
+{
+    current_nle_ctx = nle;
+    if (x)
+        *x = 0;
+    if (y)
+        *y = 0;
+    if (!Invocation_lev(&u.uz))
+        return 1;
+    if (x)
+        *x = (int) inv_pos.x;
+    if (y)
+        *y = (int) inv_pos.y;
+    return 0;
+}
+
+/* Stage the hero at the vibrating (invocation) square. Mirrors
+ * nle_seat_on_stair. With adjacent==0 the hero lands ON the square; with
+ * adjacent!=0 the hero lands on an accessible, unoccupied tile orthogonally/
+ * diagonally next to it (so the agent takes one honest step onto the square
+ * before ringing the Bell / reading the Book). Returns 0 on the Invocation
+ * level (hero relocated), nonzero otherwise.
+ *
+ * Why staging is needed: the deep Gehennom mazes generated on-demand by the
+ * curriculum's goto_abs jump are monster/trap-choked and effectively
+ * unnavigable to the single hidden square, so the curriculum stages the hero at
+ * the ritual site — the RITUAL itself (step on, ring Bell, read Book) is still
+ * performed by the agent. */
+int
+nle_seat_on_invocation_square(nle_ctx_t *nle, int adjacent)
+{
+    int dx, dy, nx, ny;
+    static const int ord8[8][2] = {
+        { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 },
+        { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 }
+    };
+    int i;
+
+    current_nle_ctx = nle;
+    if (!Invocation_lev(&u.uz) || inv_pos.x <= 0)
+        return 1;
+
+    if (!adjacent) {
+        u_on_newpos(inv_pos.x, inv_pos.y);
+        context.botl = TRUE;
+        return 0;
+    }
+
+    /* Find an accessible, monster-free tile next to the square. */
+    for (i = 0; i < 8; i++) {
+        dx = ord8[i][0];
+        dy = ord8[i][1];
+        nx = inv_pos.x + dx;
+        ny = inv_pos.y + dy;
+        if (isok(nx, ny) && ACCESSIBLE(levl[nx][ny].typ)
+            && !m_at(nx, ny) && !(nx == inv_pos.x && ny == inv_pos.y)) {
+            u_on_newpos(nx, ny);
+            context.botl = TRUE;
+            return 0;
+        }
+    }
+    /* No free neighbor (fully walled/occupied) — fall back to the square. */
+    u_on_newpos(inv_pos.x, inv_pos.y);
+    context.botl = TRUE;
+    return 0;
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/
