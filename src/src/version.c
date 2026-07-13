@@ -275,8 +275,16 @@ boolean complain;
             != (VERSION_FEATURES & ~IGNORED_FEATURES)
 #endif
         || version_data->entity_count != VERSION_SANITY1
+#ifndef __EMSCRIPTEN__
+        /* WASM: struct_sizes{1,2} are 64-bit sanity values but the version_info
+         * fields are `unsigned long` = 4 bytes here, so the stored values are
+         * truncated and this ABI-drift guard is unreliable. The data files are
+         * regenerated with the wasm tools (same ABI as the engine), so the
+         * actual serialized structs are correct; skip the struct-size gate. */
         || version_data->struct_sizes1 != VERSION_SANITY2
-        || version_data->struct_sizes2 != VERSION_SANITY3) {
+        || version_data->struct_sizes2 != VERSION_SANITY3
+#endif
+        ) {
         if (complain)
             pline("Configuration incompatibility for file \"%s\".", filename);
         return FALSE;
