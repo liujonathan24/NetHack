@@ -55,7 +55,7 @@ emcc -O1 -sASYNCIFY -sASYNCIFY_STACK_SIZE=131072 \
   -sMODULARIZE=1 -sEXPORT_NAME=NetHackModule \
   -sEXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","UTF8ToString","HEAPU8","HEAP8","FS"]' \
   -sEXPORTED_FUNCTIONS='["_nle_start","_nle_step","_nle_end","_nle_set_seed","_nle_get_tune","_nle_tune_count","_nle_tune_name","_nle_set_state","_nle_goto_depth","_nle_goto_abs","_nle_hero_on_stair","_nle_num_dungeons","_nle_dungeon_info","_nle_seat_on_stair","_nle_level_up","_malloc","_free"]' \
-  --preload-file build/dat@/nethackdir \
+  --preload-file build-wasm/dat@/nethackdir \
   "$OBJ"/*.o -o build-wasm/nethack.js 2>build-wasm/link.err
 LINKRC=$?
 echo "link exit: $LINKRC"

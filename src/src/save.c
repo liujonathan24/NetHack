@@ -848,7 +848,7 @@ STATIC_OVL void
 def_bufon(fd)
 int fd;
 {
-#ifdef UNIX
+#if defined(UNIX) && !defined(__EMSCRIPTEN__)
     if (bw_fd != fd) {
         if (bw_fd >= 0)
             panic("double buffering unexpected");
@@ -856,8 +856,16 @@ int fd;
         if ((bw_FILE = fdopen(fd, "w")) == 0)
             panic("buffering of file %d failed", fd);
     }
-#endif
     buffering = TRUE;
+#else
+    /* Under Emscripten, fdopen()+fwrite() to a MEMFS-backed fd flushes via a
+       writev that returns 0 bytes without error; musl's __stdio_write then
+       retries that 0-byte write forever (savelev spins on the first level
+       transition). Keep the raw fd unbuffered so def_bwrite() uses the direct
+       write(2) path, which writes MEMFS cleanly in one syscall. */
+    (void) fd;
+    buffering = FALSE;
+#endif
 }
 
 STATIC_OVL void

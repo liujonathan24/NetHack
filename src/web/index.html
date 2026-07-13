@@ -35,12 +35,25 @@
   <div id="screen" tabindex="0" role="application" aria-label="NetHack screen">loading…</div>
   <aside>
     <p id="status">—</p>
+    <p id="curr">&nbsp;</p>
     <p id="msg">&nbsp;</p>
     <div class="row"><label for="seed">seed</label><input id="seed" type="number" value="19"><button id="newgame">New game</button></div>
+    <div class="row"><label for="floor">curriculum floor</label>
+      <select id="floor">
+        <option value="1">1 — DoD 1</option>
+        <option value="2">2 — DoD 2</option>
+        <option value="3">3 — DoD 3</option>
+        <option value="4">4 — Gehennom 48</option>
+        <option value="5">5 — Gehennom 49</option>
+        <option value="6">6 — Gehennom 50</option>
+      </select>
+      <button id="gotofloor">Start here</button></div>
     <p class="note">Click the screen, then play with <kbd>h j k l</kbd> (+<kbd>y u b n</kbd> diagonals),
       <kbd>&gt;</kbd>/<kbd>&lt;</kbd> stairs, <kbd>s</kbd> search, <kbd>,</kbd> pick up, <kbd>i</kbd> inventory,
       <kbd>Space</kbd>/<kbd>Enter</kbd> dismiss prompts. Female neutral human Valkyrie.</p>
-    <p class="note">Curriculum "start at floor N" (cross-branch jump) is in progress — the basic game is fully playable here.</p>
+    <p class="note"><b>Curriculum:</b> "Start here" places the hero directly on any of the 6 curriculum
+      floors (DoD 1-3 / Gehennom 48-50) via a cross-branch jump — the reverse-curriculum
+      research setup, running entirely client-side.</p>
   </aside>
 </main>
 
@@ -58,7 +71,20 @@ function render(s) {
   document.getElementById('status').textContent =
     `HP ${b.hp}/${b.maxhp}   AC ${b.ac}   Dlvl ${b.depth}   $${b.gold}   XP-lvl ${b.xp}` +
     (s.done ? '   [GAME OVER]' : '');
+  document.getElementById('curr').textContent =
+    s.curriculumFloor ? `curriculum floor ${s.curriculumFloor} (${s.curriculumName})` : 'off curriculum path';
   document.getElementById('msg').textContent = s.message || ' ';
+}
+
+async function gotoFloor() {
+  if (!game) return;
+  busy = true;
+  const seed = (parseInt(document.getElementById('seed').value, 10) || 19) >>> 0;
+  const floor = parseInt(document.getElementById('floor').value, 10) || 1;
+  await game.reset(seed);              // fresh game on the requested seed...
+  render(await game.gotoFloor(floor)); // ...then jump straight to the curriculum floor
+  busy = false;
+  document.getElementById('screen').focus();
 }
 
 async function newGame() {
@@ -84,6 +110,7 @@ NetHackModule().then(async (M) => {
   game = new NetHackGame(M);
   document.getElementById('screen').addEventListener('keydown', onKey);
   document.getElementById('newgame').addEventListener('click', newGame);
+  document.getElementById('gotofloor').addEventListener('click', gotoFloor);
   document.getElementById('seed').addEventListener('keydown', e => { if (e.key === 'Enter') newGame(); });
   await newGame();
 });
