@@ -879,7 +879,11 @@ int fd;
      * def_bclose's `nhclose(fd)` (which closes the raw fd without flushing
      * the FILE*). This pairs with the exp_037 smoking gun: a level file
      * exactly the writer's claimed size but missing the last record. */
-    if (fd != bw_fd) {
+    /* bw_fd < 0 means buffering is intentionally off (the Emscripten path keeps
+     * the save fd unbuffered), so every fd "mismatches" the sentinel -1 — that's
+     * expected, not the truncation bug this instrumentation hunts. Only warn when
+     * a real buffered fd is active. */
+    if (bw_fd >= 0 && fd != bw_fd) {
         fprintf(stderr,
                 "DEF_BUFOFF_MISMATCH pid=%d hackdir=%s fd=%d bw_fd=%d "
                 "buffering=%d errno=%d (%s)\n",

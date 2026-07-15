@@ -15,6 +15,11 @@ extern int nle_num_dungeons(nle_ctx_t *);
 extern int nle_dungeon_info(nle_ctx_t *, int, char *, int, int *, int *);
 extern int nle_tune_count(void);
 extern const char *nle_tune_name(int);
+extern void *nle_get_tune(nle_ctx_t *);          /* -> flat double[] by catalog idx */
+extern int nle_set_state(nle_ctx_t *, const char *, long);
+extern int nle_goto_depth(nle_ctx_t *, int);
+extern int nle_seat_on_stair(nle_ctx_t *, int);
+extern int nle_level_up(nle_ctx_t *, int);
 
 /* Pending difficulty-knob overrides, applied at the next nleweb_start(). The
  * engine consumes these from nle_settings (tune_n/tune_idx/tune_val) before the
@@ -81,6 +86,10 @@ long *nleweb_blstats(nle_obs *o) { return o->blstats; }
 unsigned char *nleweb_message(nle_obs *o) { return o->message; }
 int nleweb_done(nle_obs *o) { return o->done; }
 int nleweb_in_game(nle_obs *o) { return (int)o->in_normal_game; }
+/* misc[0]=in_yn_function, misc[1]=in_getlin, misc[2]=waiting_for_space — the web
+ * console uses these to auto-dismiss --More-- prompts without answering a real
+ * yn/getlin question (mirrors play_server._settle). */
+int *nleweb_misc(nle_obs *o) { return o->misc; }
 
 /* dims for the JS side */
 int nleweb_rows(void) { return ROWNO; }
@@ -97,6 +106,11 @@ static nle_ctx_t *g_nle;
 
 nle_ctx_t *nleweb_start(nle_obs *o, unsigned long seed, const char *opts)
 {
+    /* Tear down any previous game first: each nle_start allocates a fresh ctx +
+     * per-env arena, so restarting without ending the prior one leaks the whole
+     * game's memory every reset (with growth off that exhausts the heap after a
+     * few resets/replays). */
+    if (g_nle) { nle_end(g_nle); g_nle = 0; }
     static nle_settings st;
     memset(&st, 0, sizeof st);
     strcpy(st.hackdir, "/nethackdir");
@@ -135,3 +149,16 @@ int nleweb_dungeon_info(int idx, char *name, int cap, int *depth_start, int *num
 {
     return nle_dungeon_info(g_nle, idx, name, cap, depth_start, num);
 }
+
+/* live difficulty knobs on the running game (read/write the flat double[] the
+ * engine indexes by catalog position; live knobs take effect on the next step). */
+double nleweb_get_tune(int idx) { return ((double *) nle_get_tune(g_nle))[idx]; }
+void nleweb_live_tune(int idx, double val) { ((double *) nle_get_tune(g_nle))[idx] = val; }
+
+/* state-modify panel: whitelisted field pokes + deferred level jumps. Each
+ * schedules/applies against the running ctx; the JS driver issues a ctrl-R (or a
+ * seat) step afterwards to process the deferral and refill the observation. */
+int nleweb_set_state(const char *field, long value) { return nle_set_state(g_nle, field, value); }
+int nleweb_goto_depth(int n) { return nle_goto_depth(g_nle, n); }
+int nleweb_seat_on_stair(int down) { return nle_seat_on_stair(g_nle, down); }
+int nleweb_level_up(int n) { return nle_level_up(g_nle, n); }

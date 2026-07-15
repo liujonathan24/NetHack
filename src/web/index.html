@@ -1,178 +1,154 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NetHack in your browser (WebAssembly)</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin:0; background:#15161c; color:#d7d8e0; font-family:system-ui,sans-serif; }
-  header { padding:12px 16px; border-bottom:1px solid #2c2e3a; }
-  header h1 { margin:0; font-size:18px; }
-  header p { margin:4px 0 0; color:#9a9cad; font-size:13px; }
-  main { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
-  #screen { background:#0e0f14; border:1px solid #2c2e3a; border-radius:8px; padding:10px 12px;
-            font-family:"DejaVu Sans Mono",Menlo,Consolas,monospace; font-size:14px; line-height:1.15;
-            white-space:pre; outline:none; cursor:text; }
-  #screen:focus { box-shadow:0 0 0 2px #ffe08a55; }
-  aside { min-width:220px; }
-  #status { color:#9fe8ff; margin:0 0 8px; font-variant-numeric:tabular-nums; }
-  #msg { color:#d7d8e0; min-height:1.2em; margin:0 0 10px; }
-  .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
-  input[type=number]{ width:90px; background:#13141b; color:#d7d8e0; border:1px solid #646780; border-radius:6px; padding:5px 8px; font:inherit; }
-  button { background:#1e1f28; color:#d7d8e0; border:1px solid #646780; border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
-  button:hover { background:#2a2c38; }
-  .note { color:#83859a; font-size:12px; margin-top:14px; }
-  kbd { background:#23242f; border:1px solid #3a3c4a; border-radius:4px; padding:1px 5px; font-size:12px; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#15161c">
+  <title>NetHack Map Viewer — runs in your browser (WebAssembly)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20fill='%2315161c'/%3E%3Ctext%20x='8'%20y='12'%20font-family='monospace'%20font-size='12'%20text-anchor='middle'%20fill='%23ffe08a'%3E@%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="console.css">
+  <style>
+    /* Six-level curriculum toggle box (reuses the .sw switch style from console.css). */
+    #curriculum-box{border:1px solid #2c2e3a;border-radius:8px;padding:10px 12px;margin:0 0 12px;background:#14151c}
+    #curriculum-box .crow{display:flex;align-items:center;gap:10px}
+    #curriculum-box .crow .clabel{font-weight:600}
+    #curr-controls{display:none;flex-wrap:wrap;gap:6px;margin-top:8px}
+    #curr-controls.show{display:flex}
+    #curr-controls button{background:#1e1f28;color:#d7d8e0;border:1px solid #646780;border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer}
+    #curr-controls button:hover{background:#2a2c38}
+    #curr-controls button.active{background:#2d4a5a;border-color:#9fe8ff;color:#eafcff}
+    #curr-indicator{margin-top:8px;color:#9fe8ff;font-size:12px}
+    /* Trace recording writes files server-side; not available in the static build. */
+    #recbtn,#recstat{display:none}
+  </style>
+  <!-- Order matters: nethack.js defines NetHackModule; console_backend.js installs
+       the fetch() shim (the client-side "server") over the WASM engine; console.js
+       (the unchanged local-app client) then drives the page through that shim. -->
+  <script src="nethack.js"></script>
+  <script src="console_backend.js"></script>
+  <script src="console.js"></script>
 </head>
 <body>
-<header>
-  <h1>NetHack — running entirely in your browser 🎮</h1>
-  <p>The NetHack Learning Environment engine compiled to WebAssembly (fiber-coroutine over Asyncify). No server — the game runs locally in this tab.</p>
-</header>
-<main>
-  <div id="screen" tabindex="0" role="application" aria-label="NetHack screen">loading…</div>
-  <aside>
-    <p id="status">—</p>
-    <p id="curr">&nbsp;</p>
-    <p id="msg">&nbsp;</p>
-    <div class="row"><label for="seed">seed</label><input id="seed" type="number" value="19"><button id="newgame">New game</button></div>
-    <div class="row"><label for="floor">curriculum floor</label>
-      <select id="floor">
-        <option value="1">1 — DoD 1</option>
-        <option value="2">2 — DoD 2</option>
-        <option value="3">3 — DoD 3</option>
-        <option value="4">4 — Gehennom 48</option>
-        <option value="5">5 — Gehennom 49</option>
-        <option value="6">6 — Gehennom 50</option>
-      </select>
-      <button id="gotofloor">Start here</button></div>
-    <div class="row"><button id="undo" title="Step back one move (deterministic replay)">↶ Undo</button>
-      <button id="save" title="Copy a shareable game-state string">Save state</button>
-      <button id="load" title="Restore a game-state string">Load state</button></div>
-    <details style="margin:10px 0">
-      <summary style="cursor:pointer;color:#9fe8ff">Difficulty knobs <span class="note">(applied on New game / Start here)</span></summary>
-      <div class="row"><label for="k_hp">player HP ×</label><input id="k_hp" type="number" step="0.5" value="1" min="0.1"></div>
-      <div class="row"><label for="k_dmg">dmg to you ×</label><input id="k_dmg" type="number" step="0.25" value="1" min="0"></div>
-      <div class="row"><label for="k_mon">monster difficulty ×</label><input id="k_mon" type="number" step="0.25" value="1" min="0"></div>
-      <div class="row"><label for="k_reveal">reveal map</label><input id="k_reveal" type="checkbox"></div>
-    </details>
-    <p class="note">Click the screen, then play with <kbd>h j k l</kbd> (+<kbd>y u b n</kbd> diagonals),
-      <kbd>&gt;</kbd>/<kbd>&lt;</kbd> stairs, <kbd>s</kbd> search, <kbd>,</kbd> pick up, <kbd>i</kbd> inventory,
-      <kbd>Space</kbd>/<kbd>Enter</kbd> dismiss prompts. Female neutral human Valkyrie.</p>
-    <p class="note"><b>Curriculum:</b> "Start here" places the hero directly on any of the 6 curriculum
-      floors (DoD 1-3 / Gehennom 48-50) via a cross-branch jump — the reverse-curriculum
-      research setup, running entirely client-side.</p>
-  </aside>
-</main>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <noscript>
+    <p style="margin:0;padding:10px 14px;background:#7c2626;color:#fff;text-align:center">
+      This console needs JavaScript — the map, knobs, and engine all run client-side.
+    </p>
+  </noscript>
+  <nav id="nav" aria-label="Primary">
+    <a class="brand" href="#main-content"><span class="glyph" aria-hidden="true">@</span>NetHack Console</a>
+    <span class="link active" aria-current="page">Map Viewer</span>
+    <span class="spacer"></span>
+    <span style="color:#83859a;font-size:12px">running locally in your browser — WebAssembly, no server</span>
+  </nav>
 
-<script src="nethack.js"></script>
-<script src="nethack_web.js"></script>
-<script>
-const KEYMAP = { "ArrowLeft":"h","ArrowRight":"l","ArrowUp":"k","ArrowDown":"j",
-  "Enter":"\r","Escape":"\x1b"," ":" " };
-let game = null, busy = false;
+  <div class="page">
+    <main id="main-content" class="maincol" tabindex="-1">
+      <h1 class="sr-only">NetHack Map Viewer</h1>
+      <div class="console">
+        <div id="message" role="status" aria-live="polite" aria-atomic="true">&nbsp;</div>
+        <div id="screen" class="screen" tabindex="0" role="application"
+             aria-label="NetHack game screen — focus this, then type movement and command keys"
+             aria-describedby="hint"></div>
+        <div id="status" aria-live="polite" aria-atomic="true">loading engine…</div>
+        <div id="hint">Click the screen, then type NetHack commands (h j k l y u b n move,
+          &gt; &lt; stairs, s search, i inventory). Arrows = movement. Enter / Esc supported.
+          <b>Backspace = undo</b> the last step.</div>
+      </div>
+    </main>
+    <aside id="side" aria-label="Controls">
+      <div id="curriculum-box">
+        <div class="crow">
+          <label class="sw"><input type="checkbox" id="sixlevels"><span></span></label>
+          <span class="clabel">Six-level curriculum</span>
+        </div>
+        <div id="curr-controls" role="group" aria-label="curriculum floor">
+          <button type="button" data-floor="1">DoD 1</button>
+          <button type="button" data-floor="2">DoD 2</button>
+          <button type="button" data-floor="3">DoD 3</button>
+          <button type="button" data-floor="4">Gehennom 48</button>
+          <button type="button" data-floor="5">Gehennom 49</button>
+          <button type="button" data-floor="6">Gehennom 50</button>
+        </div>
+        <div id="curr-indicator">Mode: full 50-floor game (start at level 1)</div>
+      </div>
+      <div id="groups"></div>
+      <div id="modify">
+        <h2>Modify state</h2>
+        <div class="mrow">
+          <span class="mname" id="lbl-goto">Go to level</span>
+          <input type="number" id="m_goto" class="mnum" min="1" max="60" value="1" aria-labelledby="lbl-goto">
+          <button type="button" class="mbtn" onclick="goLevel()" aria-label="Go to the entered dungeon level">Go</button>
+        </div>
+        <div class="mrow">
+          <span class="mname">Experience</span>
+          <button type="button" class="mbtn wide" onclick="plusLevel()">+ Level</button>
+        </div>
+        <div class="mrow"><span class="mname" id="lbl-hp">hp</span>
+          <input type="number" id="m_hp" class="mnum" aria-labelledby="lbl-hp"><button type="button" class="mbtn" onclick="setField('hp')" aria-label="Set hp">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-maxhp">max_hp</span>
+          <input type="number" id="m_max_hp" class="mnum" aria-labelledby="lbl-maxhp"><button type="button" class="mbtn" onclick="setField('max_hp')" aria-label="Set max_hp">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-gold">gold</span>
+          <input type="number" id="m_gold" class="mnum" aria-labelledby="lbl-gold"><button type="button" class="mbtn" onclick="setField('gold')" aria-label="Set gold">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-xp">xp_level</span>
+          <input type="number" id="m_xp_level" class="mnum" aria-labelledby="lbl-xp"><button type="button" class="mbtn" onclick="setField('xp_level')" aria-label="Set xp_level">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-hunger">hunger</span>
+          <input type="number" id="m_hunger" class="mnum" aria-labelledby="lbl-hunger"><button type="button" class="mbtn" onclick="setField('hunger')" aria-label="Set hunger">Set</button></div>
+        <div id="modstat" role="status" aria-live="polite"></div>
+      </div>
+      <button type="button" id="undobtn" class="act-btn" onclick="doUndo()" disabled
+        aria-keyshortcuts="Backspace"><span aria-hidden="true">&#8634;</span> Undo step
+        <span id="undocount" aria-hidden="true"></span></button>
+      <div id="undostat" role="status" aria-live="polite" class="sr-only"></div>
+      <div id="markrow">
+        <button type="button" id="markbtn" class="act-btn" onclick="doMark()"><span
+          aria-hidden="true">&#9873;</span> Checkpoint</button>
+        <button type="button" id="restorebtn" class="act-btn" onclick="doRestore()" disabled><span
+          aria-hidden="true">&#8617;</span> Restore</button>
+      </div>
+      <div id="markstat" role="status" aria-live="polite"></div>
+      <div id="seedrow"><label for="seed">seed</label> <input id="seed" value="42" inputmode="numeric"></div>
+      <button type="button" id="reset" class="act-btn" onclick="doReset()">Reset / Regenerate floor<span
+        id="dirtyflag" class="dirtyflag" hidden> — changes pending</span></button>
+      <button type="button" id="recbtn" class="act-btn" onclick="toggleRec()" aria-pressed="false"><span aria-hidden="true">&#9679;</span> <span id="reclabel">Record trace</span></button>
+      <div id="recstat" role="status" aria-live="polite"></div>
+    </aside>
+  </div>
 
-function render(s) {
-  const scr = document.getElementById('screen');
-  scr.textContent = s.tty.join('\n');
-  const b = s.bl;
-  document.getElementById('status').textContent =
-    `HP ${b.hp}/${b.maxhp}   AC ${b.ac}   Dlvl ${b.depth}   $${b.gold}   XP-lvl ${b.xp}` +
-    (s.done ? '   [GAME OVER]' : '');
-  document.getElementById('curr').textContent =
-    s.curriculumFloor ? `curriculum floor ${s.curriculumFloor} (${s.curriculumName})` : 'off curriculum path';
-  document.getElementById('msg').textContent = s.message || ' ';
-}
-
-function applyKnobs() {
-  const num = id => parseFloat(document.getElementById(id).value);
-  game.clearTune();
-  game.setTune('player_hp_scale', num('k_hp') || 1);
-  game.setTune('dmg_to_player_scale', num('k_dmg'));
-  game.setTune('monster_difficulty_scale', num('k_mon'));
-  game.setTune('reveal_map', document.getElementById('k_reveal').checked ? 1 : 0);
-}
-
-async function gotoFloor() {
-  if (!game) return;
-  busy = true;
-  applyKnobs();
-  const seed = (parseInt(document.getElementById('seed').value, 10) || 19) >>> 0;
-  const floor = parseInt(document.getElementById('floor').value, 10) || 1;
-  await game.reset(seed);              // fresh game on the requested seed...
-  render(await game.gotoFloor(floor)); // ...then jump straight to the curriculum floor
-  busy = false;
-  document.getElementById('screen').focus();
-}
-
-async function undo() {
-  if (!game || busy) return;
-  busy = true;
-  try { render(await game.undo()); } finally { busy = false; }
-  document.getElementById('screen').focus();
-}
-
-async function saveState() {
-  if (!game) return;
-  const s = game.snapshot();
-  try { await navigator.clipboard.writeText(s); document.getElementById('msg').textContent = 'game state copied to clipboard'; }
-  catch (e) { window.prompt('Copy this game-state string:', s); }
-}
-
-async function loadState() {
-  if (!game || busy) return;
-  const s = window.prompt('Paste a game-state string:');
-  if (!s) return;
-  busy = true;
-  try { render(await game.restore(s.trim())); } catch (e) { document.getElementById('msg').textContent = 'invalid state string'; }
-  finally { busy = false; }
-  document.getElementById('screen').focus();
-}
-
-async function newGame() {
-  if (!game) return;
-  busy = true;
-  applyKnobs();
-  const seed = (parseInt(document.getElementById('seed').value, 10) || 19) >>> 0;
-  render(await game.reset(seed));
-  busy = false;
-  document.getElementById('screen').focus();
-}
-
-async function onKey(e) {
-  if (!game || busy) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  let ch = KEYMAP[e.key]; if (!ch && e.key.length === 1) ch = e.key;
-  if (!ch) return;
-  e.preventDefault();
-  busy = true;
-  try { render(await game.step(ch.charCodeAt(0))); } finally { busy = false; }
-}
-
-// Cross-browser: the engine uses Asyncify (no threads / SharedArrayBuffer), so it
-// runs on any current browser with WebAssembly and needs no special COOP/COEP headers.
-const screenEl = document.getElementById('screen');
-if (typeof WebAssembly !== 'object' || typeof WebAssembly.instantiate !== 'function') {
-  screenEl.textContent = 'This page runs NetHack locally via WebAssembly, which this browser does not support.\n' +
-    'Please use a current version of Chrome, Firefox, Safari, or Edge.';
-} else if (location.protocol === 'file:') {
-  screenEl.textContent = 'Please serve this page over http(s):// (e.g. `python3 -m http.server`).\n' +
-    'Browsers block loading the .wasm/.data files from a file:// URL.';
-} else {
-  NetHackModule().then(async (M) => {
-  game = new NetHackGame(M);
-  document.getElementById('screen').addEventListener('keydown', onKey);
-  document.getElementById('newgame').addEventListener('click', newGame);
-  document.getElementById('gotofloor').addEventListener('click', gotoFloor);
-  document.getElementById('undo').addEventListener('click', undo);
-  document.getElementById('save').addEventListener('click', saveState);
-  document.getElementById('load').addEventListener('click', loadState);
-  document.getElementById('seed').addEventListener('keydown', e => { if (e.key === 'Enter') newGame(); });
-  await newGame();
-  }).catch(e => { screenEl.textContent = 'Failed to load the NetHack engine:\n' + (e && e.message || e); });
-}
-</script>
+  <script>
+    /* Wire the six-level curriculum toggle to the WASM backend. ON = start each
+       game on a curriculum floor (DoD 1-3 / Gehennom 48-50); OFF = normal full
+       50-floor game from level 1. Flipping it regenerates immediately. */
+    (function () {
+      const cb = document.getElementById('sixlevels'),
+            ctrls = document.getElementById('curr-controls'),
+            ind = document.getElementById('curr-indicator'),
+            btns = Array.prototype.slice.call(ctrls.querySelectorAll('button'));
+      let floor = 1;                         // selected curriculum floor (1..6)
+      function nameFor(f) { return window.NHConsole ? window.NHConsole.curriculumName(f) : ('floor ' + f); }
+      function paint() {
+        const on = cb.checked;
+        ctrls.classList.toggle('show', on);
+        btns.forEach((b) => b.classList.toggle('active', on && +b.dataset.floor === floor));
+        ind.textContent = on
+          ? ('Mode: six-level curriculum — start on ' + nameFor(floor))
+          : 'Mode: full 50-floor game (start at level 1)';
+      }
+      function sync(regen) {
+        if (window.NHConsole) window.NHConsole.setCurriculum(cb.checked, floor);
+        paint();
+        if (regen && typeof window.doReset === 'function') window.doReset();
+      }
+      cb.addEventListener('change', () => sync(true));
+      btns.forEach((b) => b.addEventListener('click', () => {
+        floor = +b.dataset.floor;
+        if (!cb.checked) cb.checked = true;  // picking a floor implies curriculum on
+        sync(true);
+      }));
+      sync(false);
+    })();
+    initMap();
+  </script>
 </body>
 </html>
