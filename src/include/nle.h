@@ -1171,7 +1171,6 @@ void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
  * monster grid with fmon-membership/data-validity) to `path` (NULL => stderr).
  * Diagnostic for arena-reuse / dangling-pointer investigations. */
 void nle_dbg_memmap(nle_ctx_t *, const char *);
-void nle_dbg_terrain(nle_ctx_t *, unsigned char *); /* TEMP DEBUG */
 
 /* Single-level blob save/load.
  *

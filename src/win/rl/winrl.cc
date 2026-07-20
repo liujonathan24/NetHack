@@ -736,15 +736,22 @@ NetHackRL::fill_obs(nle_obs *obs)
                 if (poked)
                     levl[x][y].seenv = saved_seenv;
 
-                /* Full vision must also reveal SECRET corridors/doors, which
-                 * back_to_glyph() renders as plain stone (they are "hidden").
-                 * For "lights on" we want a connected, walkable map, so map a
-                 * secret corridor to a corridor and a secret door to a door.
-                 * levl[][] is untouched (we only change the emitted glyph). */
-                if (typ == SCORR)
-                    glyph = cmap_to_glyph(S_corr);
-                else if (typ == SDOOR)
-                    glyph = cmap_to_glyph(S_ndoor);
+                /* INVARIANT: never emit a walkable-looking glyph for a cell
+                 * the engine will refuse to step into.  ACCESSIBLE(typ) is
+                 * exactly the predicate test_move() uses (hack.c:749 tests
+                 * IS_ROCK == typ < POOL, and prints "It's a wall." for
+                 * IS_WALL/SDOOR, "It's solid stone." otherwise), so any
+                 * !ACCESSIBLE cell must render as wall face or stone.
+                 *
+                 * Secret doors and secret corridors used to be remapped here
+                 * to S_ndoor / S_corr so that "lights on" showed a connected
+                 * map.  But SDOOR/SCORR are NOT accessible until found, and
+                 * S_ndoor is '.' and S_corr is '#': that painted an ordinary
+                 * floor/corridor glyph over solid rock, so a cell that looked
+                 * like plain floor answered a move with "It's a wall."  The
+                 * poke above already gives SDOOR a proper wall face; SCORR
+                 * falls through to back_to_glyph()'s S_stone (blank), which
+                 * is what an unfound secret passage looks like in vanilla. */
 
                 /* Map the background glyph to char/color/special exactly the
                  * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
