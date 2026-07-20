@@ -1662,6 +1662,25 @@ nle_hero_on_stair(nle_ctx_t *nle)
     return 0;
 }
 
+/* TEMPORARY DEBUG EXPORT -- remove before commit.
+ * Dump per-cell ground truth: typ, seenv, lit, waslit, wall_info, flags. */
+void
+nle_dbg_terrain(nle_ctx_t *nle, unsigned char *out)
+{
+    int x, y;
+    current_nle_ctx = nle;
+    for (y = 0; y < ROWNO; y++)
+        for (x = 0; x < COLNO; x++) {
+            unsigned char *p = out + 6 * (y * COLNO + x);
+            p[0] = (unsigned char) levl[x][y].typ;
+            p[1] = levl[x][y].seenv;
+            p[2] = (unsigned char) levl[x][y].lit;
+            p[3] = (unsigned char) levl[x][y].waslit;
+            p[4] = levl[x][y].wall_info;
+            p[5] = levl[x][y].rmflags;
+        }
+}
+
 /* From unixtty.c */
 /* fatal error */
 /*VARARGS1*/

@@ -55,14 +55,30 @@
              aria-label="NetHack game screen — focus this, then type movement and command keys"
              aria-describedby="hint"></div>
         <div id="status" aria-live="polite" aria-atomic="true">loading engine…</div>
-        <div id="hint">Click the screen, then type NetHack commands (h j k l y u b n move,
-          &gt; &lt; stairs, s search, i inventory). Arrows = movement. Enter / Esc supported.
-          <b>Backspace = undo</b> the last step.</div>
         <div id="popup" role="status" aria-live="polite" aria-label="Game prompt" hidden></div>
         <details id="invbox" open>
           <summary>Inventory</summary>
           <div id="inv" aria-live="polite"></div>
         </details>
+        <div id="hint">
+          <b>Click the screen first</b>, then type NetHack commands.
+          <table class="keys">
+            <tr><td><kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> <kbd>y</kbd><kbd>u</kbd><kbd>b</kbd><kbd>n</kbd></td><td>move (arrows work too)</td></tr>
+            <tr><td><kbd>&gt;</kbd> <kbd>&lt;</kbd></td><td>stairs down / up</td></tr>
+            <tr><td><kbd>,</kbd></td><td>pick up what you are standing on</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd> then a direction</td><td>kick (a door, a chest, a monster)</td></tr>
+            <tr><td><kbd>o</kbd> / <kbd>c</kbd> then a direction</td><td>open / close a door</td></tr>
+            <tr><td><kbd>s</kbd></td><td>search for secret doors (repeat it)</td></tr>
+            <tr><td><kbd>w</kbd> <kbd>W</kbd> <kbd>e</kbd> <kbd>q</kbd> <kbd>r</kbd></td><td>wield, wear, eat, quaff, read</td></tr>
+            <tr><td><kbd>d</kbd> / <kbd>D</kbd></td><td>drop one / drop several</td></tr>
+            <tr><td><kbd>#</kbd></td><td>extended command (type a name, then Enter)</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>your attributes</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>cancel the current prompt or menu</td></tr>
+            <tr><td><kbd>Backspace</kbd></td><td>undo the last step</td></tr>
+          </table>
+          <span class="khint">Inventory is always shown above, so <kbd>i</kbd> is not needed.
+          Anything the game asks you appears in the prompt box.</span>
+        </div>
       </div>
     </main>
     <aside id="side" aria-label="Controls">
