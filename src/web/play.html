@@ -8,6 +8,7 @@
   <title>NetHack Map Viewer — runs in your browser (WebAssembly)</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20fill='%2315161c'/%3E%3Ctext%20x='8'%20y='12'%20font-family='monospace'%20font-size='12'%20text-anchor='middle'%20fill='%23ffe08a'%3E@%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="console.css">
+  <link rel="stylesheet" href="console.extra.css">
   <style>
     /* Six-level curriculum toggle box (reuses the .sw switch style from console.css). */
     #curriculum-box{border:1px solid #2c2e3a;border-radius:8px;padding:10px 12px;margin:0 0 12px;background:#14151c}
@@ -37,10 +38,12 @@
     </p>
   </noscript>
   <nav id="nav" aria-label="Primary">
-    <a class="brand" href="#main-content"><span class="glyph" aria-hidden="true">@</span>NetHack Console</a>
-    <span class="link active" aria-current="page">Map Viewer</span>
+    <a class="brand" href="./"><span class="glyph" aria-hidden="true">@</span>NetHack Console</a>
+    <a class="link" href="./">Intro</a>
+    <a class="link" href="replays.html">Replays</a>
+    <a class="link active" href="play.html" aria-current="page">Map Viewer</a>
     <span class="spacer"></span>
-    <span style="color:#83859a;font-size:12px">running locally in your browser — WebAssembly, no server</span>
+    <span class="navnote">running in your browser — WebAssembly, no server</span>
   </nav>
 
   <div class="page">
@@ -148,6 +151,32 @@
       }));
       sync(false);
     })();
+
+    /* Hand-off from the Replays page: `play.html?seed=19&dlvl=4` starts the game
+       on that trial's seed and floor, so a visitor can take over a level they
+       just watched an agent attempt. The seed must be in the box BEFORE
+       initMap()'s initial reset consumes it; the depth jump has to wait for that
+       reset to land, and initMap()'s boot IIFE isn't awaitable from out here, so
+       poll the status line for the first rendered frame. */
+    (function () {
+      const q = new URLSearchParams(location.search),
+            seed = q.get('seed'), dlvl = +q.get('dlvl');
+      if (seed !== null && seed.trim() !== '' && Number.isFinite(+seed)) {
+        document.getElementById('seed').value = String(Math.trunc(+seed));
+      }
+      if (!(dlvl > 1)) return;
+      document.getElementById('m_goto').value = String(Math.trunc(dlvl));
+      let waited = 0;
+      const t = setInterval(() => {
+        if (document.getElementById('status').textContent.indexOf('Dlvl') >= 0) {
+          clearInterval(t);
+          goLevel();
+        } else if ((waited += 200) > 60000) {   // engine never started; give up quietly
+          clearInterval(t);
+        }
+      }, 200);
+    })();
+
     initMap();
   </script>
 </body>
