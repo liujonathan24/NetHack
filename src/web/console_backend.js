@@ -20,6 +20,7 @@
     "pickup_types:$?!/,runmode:teleport,showexp,showscore,time,name:Agent-Val-hum-neu-fem";
 
   const ROWS = 21, COLS = 79;
+  const TTY_ROWS = 24, TTY_COLS = 80;   // the real terminal, where menus/prompts are drawn
 
   /* Knob catalog — ported verbatim from tools/play_server.py (_META/_GROUPS) so
      the controls are exactly the ones the local app shows. */
@@ -74,6 +75,12 @@
     F.blstats  = cw("nleweb_blstats", "number", ["number"]);
     F.message  = cw("nleweb_message", "number", ["number"]);
     F.misc     = cw("nleweb_misc", "number", ["number"]);
+    F.ttyChars = cw("nleweb_tty_chars", "number", ["number"]);
+    F.invStrs  = cw("nleweb_inv_strs", "number", ["number"]);
+    F.invLets  = cw("nleweb_inv_letters", "number", ["number"]);
+    F.invCls   = cw("nleweb_inv_oclasses", "number", ["number"]);
+    F.invSize  = cw("nleweb_inv_size", "number", []);
+    F.invLen   = cw("nleweb_inv_str_len", "number", []);
     F.done     = cw("nleweb_done", "number", ["number"]);
     F.tuneCount= cw("nleweb_tune_count", "number", []);
     F.tuneName = cw("nleweb_tune_name", "number", ["number"]);
@@ -96,10 +103,30 @@
   }
 
   /* ---- low-level engine ops (no journal bookkeeping) ---- */
+  /* misc = [in_yn_function, in_getlin, waiting_for_space]. */
+  function _misc() { const p = F.misc(obs) >> 2; return [M.HEAP32[p], M.HEAP32[p + 1], M.HEAP32[p + 2]]; }
+  /* One row of the 24x80 terminal as text. */
+  function _ttyRow(y) {
+    const p = F.ttyChars(obs) + y * TTY_COLS;
+    let s = "";
+    for (let x = 0; x < TTY_COLS; x++) { const c = M.HEAPU8[p + x]; s += (c >= 32 && c < 127) ? String.fromCharCode(c) : " "; }
+    return s;
+  }
+  /* True when the engine is showing something the user must answer or read:
+     a yn/getlin prompt, or a menu. NOT a bare --More--, which we flush. */
+  function _prompting() {
+    const m = _misc();
+    return !!(m[0] || m[1] || (m[2] && !_atMore()));
+  }
+  /* A genuine --More-- always writes that literal marker onto tty row 0.
+     Menus (inventory, pickup/drop selection, the # command list) ALSO set
+     waiting_for_space, so the flag alone cannot tell them apart — ESCing on the
+     flag tore every menu down before the user could answer it. */
+  function _atMore() { return _ttyRow(0).indexOf("--More--") >= 0; }
   async function _settle() {
     for (let i = 0; i < 16; i++) {
-      const mp = F.misc(obs) >> 2;
-      if (M.HEAP32[mp + 2] && !M.HEAP32[mp] && !M.HEAP32[mp + 1]) await F.step(obs, 27); // ESC flushes --More--
+      const m = _misc();
+      if (m[2] && !m[0] && !m[1] && _atMore()) await F.step(obs, 27); // ESC flushes --More--
       else break;
     }
   }
@@ -140,6 +167,10 @@
   }
   async function _currBoundary(ch) {
     if (!resetCtx.curriculum.on || (ch !== ">" && ch !== "<")) return false;
+    /* Inside a menu or prompt, '>' means "next page" and '<' "previous" — it is
+       not a stair command, so redirecting there would teleport the hero out of
+       an open menu. */
+    if (_prompting()) return false;
     const g = currGeo || _currResolve();
     const { dnum, depth } = _heroAbs();
     const st = F.onStair();                       // +1 down stair, -1 up stair, 0 none
@@ -205,7 +236,73 @@
     const mp = F.message(obs); let msg = ""; for (let i = 0; i < 256; i++) { const c = M.HEAPU8[mp + i]; if (!c) break; msg += String.fromCharCode(c); }
     const tune = {}; names.forEach((nm) => { tune[nm] = F.getTune(nameIdx[nm]); });
     const undos = journal.reduce((a, e) => a + (e.t === "step" ? 1 : 0), 0);
-    return { map, colors, message: msg, status, tune, done: !!F.done(obs), recording: null, undos, marked: markLen != null };
+    return { map, colors, message: msg, status, tune, done: !!F.done(obs), recording: null, undos,
+             marked: markLen != null, popup: _popup(), inventory: _inventory() };
+  }
+
+  /* The popup: whatever the engine is asking the user, scraped off the terminal.
+     NetHack draws menus and prompts as an overlay on the 24x80 tty, so the rows
+     that differ from blank ARE the popup. Returned only while something is
+     actually pending, so the page can hide the box the rest of the time. */
+  let quietTty = null;   // the terminal as it looked with nothing pending
+  function _ttyAll() { const r = []; for (let y = 0; y < TTY_ROWS; y++) r.push(_ttyRow(y)); return r; }
+  function _popup() {
+    const now = _ttyAll();
+    if (!_prompting()) { quietTty = now; return null; }
+    /* A menu is drawn as an overlay ON TOP of whatever the terminal already
+       held, so scraping non-blank rows also drags in the background underneath
+       (e.g. the startup splash to the left of a right-hand menu). Diff against
+       the last settled frame instead: the cells that changed ARE the popup. */
+    const prev = quietTty;
+    const diff = (y, x) => now[y][x] !== ((prev && prev[y] && prev[y][x]) || " ");
+    /* Two passes. Columns come from rows 1..23 only, because tty row 0 is
+       NetHack's message line: it changes on every command and would stretch the
+       box to full width, dragging the background back in. Rows are then taken
+       over the WHOLE screen but restricted to those columns, so a menu that
+       overlays row 0 (its first group header often does) is still included. */
+    let c0 = TTY_COLS, c1 = -1;
+    for (let y = 1; y < TTY_ROWS; y++)
+      for (let x = 0; x < TTY_COLS; x++)
+        if (diff(y, x)) { if (x < c0) c0 = x; if (x > c1) c1 = x; }
+    if (c1 < 0) {   // nothing changed below the message line — no popup to show
+      return null;
+    }
+    let r0 = TTY_ROWS, r1 = -1;
+    for (let y = 0; y < TTY_ROWS; y++)
+      for (let x = c0; x <= c1; x++)
+        if (diff(y, x)) { if (y < r0) r0 = y; if (y > r1) r1 = y; break; }
+    if (r1 < 0) return null;
+    const box = [];
+    for (let y = r0; y <= r1; y++) box.push(now[y].slice(c0, c1 + 1).replace(/\s+$/, ""));
+    while (box.length && !box[0]) box.shift();
+    while (box.length && !box[box.length - 1]) box.pop();
+    return box.length ? box : null;
+  }
+
+  /* Carried inventory, grouped by object class. The engine refreshes inv_* every
+     turn on its own (the rl port walks `invent` rather than popping a menu), so
+     this is a passive read — no keystroke, no menu, nothing to dismiss. */
+  const OCLASS_NAMES = {
+    2: "Weapons", 3: "Armor", 4: "Rings", 5: "Amulets", 6: "Tools", 7: "Food",
+    8: "Potions", 9: "Scrolls", 10: "Spellbooks", 11: "Wands", 12: "Coins",
+    13: "Gems", 14: "Rocks", 15: "Balls", 16: "Chains", 17: "Venom",
+  };
+  function _inventory() {
+    const n = F.invSize(), len = F.invLen();
+    const sp = F.invStrs(obs), lp = F.invLets(obs), cp = F.invCls(obs);
+    const groups = [], byCls = {};
+    for (let i = 0; i < n; i++) {
+      const letter = M.HEAPU8[lp + i];
+      if (!letter) break;                       // slots are packed; 0 terminates
+      let text = "";
+      for (let j = 0; j < len; j++) { const c = M.HEAPU8[sp + i * len + j]; if (!c) break; text += String.fromCharCode(c); }
+      const cls = M.HEAPU8[cp + i];
+      const name = OCLASS_NAMES[cls] || "Other";
+      if (!byCls[name]) { byCls[name] = { name: name, cls: cls, items: [] }; groups.push(byCls[name]); }
+      byCls[name].items.push({ letter: String.fromCharCode(letter), text: text });
+    }
+    groups.sort((a, b) => a.cls - b.cls);       // NetHack's own class order
+    return groups;
   }
 
   /* ---- endpoint handlers (return {status, body}) ---- */

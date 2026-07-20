@@ -58,6 +58,11 @@
         <div id="hint">Click the screen, then type NetHack commands (h j k l y u b n move,
           &gt; &lt; stairs, s search, i inventory). Arrows = movement. Enter / Esc supported.
           <b>Backspace = undo</b> the last step.</div>
+        <div id="popup" role="status" aria-live="polite" aria-label="Game prompt" hidden></div>
+        <details id="invbox" open>
+          <summary>Inventory</summary>
+          <div id="inv" aria-live="polite"></div>
+        </details>
       </div>
     </main>
     <aside id="side" aria-label="Controls">

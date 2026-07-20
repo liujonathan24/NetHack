@@ -98,6 +98,15 @@ unsigned char *nleweb_colors(nle_obs *o) { return o->colors; }
 short *nleweb_glyphs(nle_obs *o) { return o->glyphs; }
 long *nleweb_blstats(nle_obs *o) { return o->blstats; }
 unsigned char *nleweb_message(nle_obs *o) { return o->message; }
+/* Carried inventory, refreshed every turn by the rl port's
+ * update_inventory_method() — which walks `invent` directly precisely so the
+ * inventory never has to be popped up as a menu to be read. Fixed 55 slots;
+ * a slot is empty when its letter is 0. */
+unsigned char *nleweb_inv_strs(nle_obs *o) { return o->inv_strs; }
+unsigned char *nleweb_inv_letters(nle_obs *o) { return o->inv_letters; }
+unsigned char *nleweb_inv_oclasses(nle_obs *o) { return o->inv_oclasses; }
+int nleweb_inv_size(void) { return NLE_INVENTORY_SIZE; }
+int nleweb_inv_str_len(void) { return NLE_INVENTORY_STR_LENGTH; }
 int nleweb_done(nle_obs *o) { return o->done; }
 int nleweb_in_game(nle_obs *o) { return (int)o->in_normal_game; }
 /* misc[0]=in_yn_function, misc[1]=in_getlin, misc[2]=waiting_for_space — the web
