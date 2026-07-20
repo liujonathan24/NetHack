@@ -709,18 +709,24 @@ NetHackRL::fill_obs(nle_obs *obs)
                 if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
-                /* back_to_glyph() returns S_stone for any wall whose seenv
-                 * bits are all clear (display.c: idx = seenv ? wall_angle()
-                 * : S_stone), so an unseen wall would overlay as blank stone
-                 * and stay masked. For wall cells (incl. secret doors) with
-                 * seenv==0, temporarily set seenv = SVALL so wall_angle()
-                 * computes a wall face, then restore the original value
-                 * immediately. Fully reversible: levl[][] is unchanged after
-                 * this call. */
+                /* back_to_glyph() renders a wall as S_stone (blank) whenever
+                 * wall_angle() has no face to show for the hero's seen-vector:
+                 * either seenv==0 (display.c:1785 short-circuits to S_stone)
+                 * or seenv holds only angles this wall segment does not show
+                 * from -- e.g. HWALL with wall_info WM_W_RIGHT/LEFT seen only
+                 * from SV6 (display.c:2547-2560), or a corner with WM_C_OUTER /
+                 * WM_C_INNER seen only from its hidden side (set_corner,
+                 * display.c:2563-2593). Gating the poke on seenv==0 therefore
+                 * left every wall the hero HAS partly seen from its blind side
+                 * rendering as blank stone under reveal_map. So poke
+                 * seenv = SVALL for ANY wall cell (incl. secret doors) we reach
+                 * here -- we only reach here when the emitted glyph is already
+                 * blank stone -- then restore the original value immediately.
+                 * Fully reversible: levl[][] is unchanged after this call. */
                 schar typ = levl[x][y].typ;
                 uchar saved_seenv = levl[x][y].seenv;
                 boolean poked = FALSE;
-                if ((IS_WALL(typ) || typ == SDOOR) && saved_seenv == 0) {
+                if (IS_WALL(typ) || typ == SDOOR) {
                     levl[x][y].seenv = SVALL;
                     poked = TRUE;
                 }

@@ -4,6 +4,20 @@
 #include "nleobs.h"
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
+
+/* Live bytes currently held by the allocator. The browser build runs on a fixed
+ * heap (no ALLOW_MEMORY_GROWTH — a growable wasm memory is a resizable
+ * ArrayBuffer, which TextDecoder rejects), so a per-game leak is fatal rather
+ * than merely wasteful: Emscripten's default ABORTING_MALLOC turns the eventual
+ * allocation failure into abort() -> a wasm `unreachable` trap. This accessor
+ * lets a harness measure exactly what a start/end cycle fails to give back. */
+size_t
+nleweb_heap_used(void)
+{
+    struct mallinfo mi = mallinfo();
+    return (size_t) mi.uordblks;
+}
 
 typedef struct nle_ctx_t nle_ctx_t;
 extern nle_ctx_t *nle_start(nle_obs *, void *, nle_seeds_init_t *, nle_settings *);

@@ -92,6 +92,20 @@ fcontext_transfer_t ontop_fcontext(fcontext_t const to, void *vp,
     abort(); /* not used by NLE */
 }
 
+/* Give back what make_fcontext allocated. The asm backends place the context
+ * inside the caller's stack and own nothing, so the API historically had no
+ * destroy call; here each context is a heap fib_t plus a 1 MiB asyncify stack,
+ * so without this every nle_start leaks both. Never frees the main-thread
+ * context, which is a static owned by ensure_main(). */
+void destroy_fcontext(fcontext_t ctx)
+{
+    fib_t *f = (fib_t *) ctx;
+    if (!f || f == &g_main)
+        return;
+    free(f->asyncify);
+    free(f);
+}
+
 fcontext_stack_t create_fcontext_stack(size_t size)
 {
     fcontext_stack_t s;

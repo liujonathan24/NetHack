@@ -53,6 +53,10 @@
   let curTune = {};                    // live knob values (name -> value)
   let seed = 42;
   let curriculum = { on: false, floor: 1 };   // "six-level curriculum" toggle
+  /* Curriculum geometry resolved from the live (seed-dependent) dungeon table at
+     each start — mirrors CurriculumEngineEnv.reset in nethack_core/. */
+  const CURR_SHALLOW_HI = 3, CURR_DEEP = [48, 49, 50];
+  let currGeo = null;   // {dod, geh, gehStart, shallowHi, deepLo, deepHi}
   // Replay journal since the last reset + the reset context to rebuild from.
   let journal = [];                    // {t:'step',keys} | {t:'live',name,val} | {t:'modify',changes}
   let markLen = null;                  // checkpoint = a journal length to replay to
@@ -81,6 +85,7 @@
     F.gotoDepth= cw("nleweb_goto_depth", "number", ["number"]);
     F.gotoAbs  = cw("nleweb_goto_abs", "number", ["number", "number"], { async: true });
     F.seat     = cw("nleweb_seat_on_stair", "number", ["number"]);
+    F.onStair  = cw("nleweb_hero_on_stair", "number", []);
     F.levelUp  = cw("nleweb_level_up", "number", ["number"]);
     F.numDgn   = cw("nleweb_num_dungeons", "number", []);
     F.dgnInfo  = cw("nleweb_dungeon_info", "number", ["number", "number", "number", "number", "number"]);
@@ -98,18 +103,55 @@
       else break;
     }
   }
-  async function _rawStepKeys(keys) { for (const ch of keys) await F.step(obs, ch.charCodeAt(0)); await _settle(); }
+  async function _rawStepKeys(keys) {
+    for (const ch of keys) {
+      if (await _currBoundary(ch)) continue;   // curriculum stair redirect
+      await F.step(obs, ch.charCodeAt(0));
+    }
+    await _settle();
+  }
   function _rawLive(name, val) { if (name in nameIdx) F.liveTune(nameIdx[name], val); }
-  async function _rawGotoFloor(floor) {
+  function _currResolve() {
     const t = _dungeonTable();
     const dod = t.find((d) => /Dungeons of Doom/.test(d.name));
     const geh = t.find((d) => /Gehennom/.test(d.name));
-    let dnum, dlevel;
-    if (floor <= 3) { dnum = dod.dnum; dlevel = floor; }
-    else { dnum = geh.dnum; dlevel = (44 + floor) - geh.depth_start + 1; }
+    const gehMax = geh.depth_start + geh.num - 1;
+    const clamp = (d) => Math.max(geh.depth_start, Math.min(gehMax, d));
+    currGeo = {
+      dod: dod.dnum, geh: geh.dnum, gehStart: geh.depth_start,
+      shallowHi: CURR_SHALLOW_HI,
+      deepLo: clamp(CURR_DEEP[0]), deepHi: clamp(CURR_DEEP[CURR_DEEP.length - 1]),
+    };
+    return currGeo;
+  }
+  function _heroAbs() {
+    const b = F.blstats(obs) >> 2;
+    return { dnum: M.HEAP32[b + 23], depth: M.HEAP32[b + 12] };
+  }
+  async function _currJump(dnum, dlevel) {
     await F.gotoAbs(dnum, dlevel);
     await F.step(obs, 27);
     await _settle();
+  }
+  async function _rawGotoFloor(floor) {
+    const g = currGeo || _currResolve();
+    if (floor <= 3) await _currJump(g.dod, floor);
+    else await _currJump(g.geh, (g.deepLo + (floor - 4)) - g.gehStart + 1);
+  }
+  async function _currBoundary(ch) {
+    if (!resetCtx.curriculum.on || (ch !== ">" && ch !== "<")) return false;
+    const g = currGeo || _currResolve();
+    const { dnum, depth } = _heroAbs();
+    const st = F.onStair();                       // +1 down stair, -1 up stair, 0 none
+    if (ch === ">" && dnum === g.dod && depth === g.shallowHi && st === 1) {
+      await _currJump(g.geh, g.deepLo - g.gehStart + 1);
+      return true;
+    }
+    if (ch === "<" && dnum === g.geh && depth === g.deepLo && st === -1) {
+      await _currJump(g.dod, g.shallowHi);
+      return true;
+    }
+    return false;
   }
   async function _rawModify(changes) {
     const c = Object.assign({}, changes);
@@ -124,9 +166,11 @@
   async function _doStart(useSeed, useTune, useCurr) {
     F.clearTune();
     names.forEach((nm) => { const v = (nm in useTune) ? useTune[nm] : (META[nm] || DEFAULT_META).default; F.setTune(nameIdx[nm], v); });
+    currGeo = null;                                 // dungeon table is per-game
     await F.start(obs, useSeed >>> 0, OPTS);
     await F.step(obs, 46); await F.step(obs, 46);   // two '.' waits, like play_server.reset
     await _settle();
+    _currResolve();
     if (useCurr && useCurr.on) await _rawGotoFloor(useCurr.floor);
   }
   async function _replayTo(len) {

@@ -1167,6 +1167,15 @@ nle_end(nle_ctx_t *nle)
 
     tmt_close(nle->vterminal);
 
+#ifdef __EMSCRIPTEN__
+    /* The fiber backend heap-allocates a context (fib_t + asyncify stack) per
+     * make_fcontext, so it has to be released alongside the stack. The asm
+     * backends own no such memory and expose no destroy_fcontext, hence the
+     * guard. Without this the browser build leaks a coroutine per game and,
+     * on its fixed heap, aborts with OOM after ~20 starts. */
+    destroy_fcontext(nle->generatorcontext);
+    nle->generatorcontext = NULL;
+#endif
     destroy_fcontext_stack(&nle->stack);
     if (nle->s_arena_base) {
         extern void nle_arena_registry_release(char *);
