@@ -43,7 +43,7 @@ long bytes_counted;
  *   sizeof(struct monst) == 144  (matches restore.c)
  *   sizeof(struct obj)   == 96   (matches restore.c)
  * Hypothesis 1 (sizeof asymmetry) is ruled out — both TUs agree. */
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__EMSCRIPTEN__)
 _Static_assert(sizeof(struct eshk)  == 4936, "save.c: sizeof(struct eshk) drifted");
 _Static_assert(sizeof(struct monst) ==  144, "save.c: sizeof(struct monst) drifted");
 _Static_assert(sizeof(struct obj)   ==   96, "save.c: sizeof(struct obj) drifted");
@@ -848,7 +848,7 @@ STATIC_OVL void
 def_bufon(fd)
 int fd;
 {
-#ifdef UNIX
+#if defined(UNIX) && !defined(__EMSCRIPTEN__)
     if (bw_fd != fd) {
         if (bw_fd >= 0)
             panic("double buffering unexpected");
@@ -856,8 +856,16 @@ int fd;
         if ((bw_FILE = fdopen(fd, "w")) == 0)
             panic("buffering of file %d failed", fd);
     }
-#endif
     buffering = TRUE;
+#else
+    /* Under Emscripten, fdopen()+fwrite() to a MEMFS-backed fd flushes via a
+       writev that returns 0 bytes without error; musl's __stdio_write then
+       retries that 0-byte write forever (savelev spins on the first level
+       transition). Keep the raw fd unbuffered so def_bwrite() uses the direct
+       write(2) path, which writes MEMFS cleanly in one syscall. */
+    (void) fd;
+    buffering = FALSE;
+#endif
 }
 
 STATIC_OVL void
@@ -871,7 +879,11 @@ int fd;
      * def_bclose's `nhclose(fd)` (which closes the raw fd without flushing
      * the FILE*). This pairs with the exp_037 smoking gun: a level file
      * exactly the writer's claimed size but missing the last record. */
-    if (fd != bw_fd) {
+    /* bw_fd < 0 means buffering is intentionally off (the Emscripten path keeps
+     * the save fd unbuffered), so every fd "mismatches" the sentinel -1 — that's
+     * expected, not the truncation bug this instrumentation hunts. Only warn when
+     * a real buffered fd is active. */
+    if (bw_fd >= 0 && fd != bw_fd) {
         fprintf(stderr,
                 "DEF_BUFOFF_MISMATCH pid=%d hackdir=%s fd=%d bw_fd=%d "
                 "buffering=%d errno=%d (%s)\n",

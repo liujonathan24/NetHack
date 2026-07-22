@@ -45,6 +45,13 @@ extern "C" {
     fcontext_stack_t create_fcontext_stack(size_t size);
     void destroy_fcontext_stack(fcontext_stack_t* s);
 
+    /* Release a context returned by make_fcontext. The asm backends carve the
+       context out of the caller's stack and own no memory, so this is a no-op
+       there; the Emscripten/fiber backend heap-allocates a fiber plus its
+       asyncify stack per context and MUST be given them back, or every
+       coroutine created (one per nle_start) leaks. */
+    void destroy_fcontext(fcontext_t ctx);
+
 #ifdef __cplusplus
 }
 #endif

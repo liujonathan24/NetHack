@@ -3,3 +3,4 @@
 src/build/
 test_multi_env
 core.*
+src/build-wasm/

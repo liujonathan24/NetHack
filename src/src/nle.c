@@ -712,8 +712,10 @@ nle_spawn_monsters()
 /* See rng.c. */
 extern int FDECL(whichrng, (int FDECL((*fn), (int) )));
 
-/* See hacklib.c. */
-extern int FDECL(set_random, (unsigned long, int FDECL((*fn), (int) )));
+/* See hacklib.c. NB: set_random is defined `void` there; declaring it `int`
+ * here is a return-type signature mismatch that traps under WebAssembly's
+ * strict indirect-call type checking (harmless on native). */
+extern void FDECL(set_random, (unsigned long, int FDECL((*fn), (int) )));
 /* An appropriate version of this must always be provided in
    port-specific code somewhere. It returns a number suitable
    as seed for the random number generator */
@@ -1165,6 +1167,15 @@ nle_end(nle_ctx_t *nle)
 
     tmt_close(nle->vterminal);
 
+#ifdef __EMSCRIPTEN__
+    /* The fiber backend heap-allocates a context (fib_t + asyncify stack) per
+     * make_fcontext, so it has to be released alongside the stack. The asm
+     * backends own no such memory and expose no destroy_fcontext, hence the
+     * guard. Without this the browser build leaks a coroutine per game and,
+     * on its fixed heap, aborts with OOM after ~20 starts. */
+    destroy_fcontext(nle->generatorcontext);
+    nle->generatorcontext = NULL;
+#endif
     destroy_fcontext_stack(&nle->stack);
     if (nle->s_arena_base) {
         extern void nle_arena_registry_release(char *);
@@ -1438,6 +1449,23 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
                 dealloc_obj(gold);
             }
         }
+    } else if (!strcmp(field, "luck")) {
+        /* Directly set the hero's intrinsic luck (u.uluck).  Effective luck is
+         * Luck == u.uluck + u.moreluck, where moreluck is the luckstone bonus
+         * (+LUCKADD when carrying a blessed/uncursed luck stone).  Normal
+         * intrinsic luck is bounded LUCKMIN..LUCKMAX (-10..10); the maximum
+         * *effective* luck achievable in vanilla play is LUCKMAX + LUCKADD
+         * (10 + 3 == 13).  For the "better items / luck" ablation we let the
+         * modify poke reproduce that full effective range without requiring a
+         * luck stone in inventory, so we clamp the injected intrinsic value to
+         * [-13, 13].  Luck feeds to-hit, prayer outcome, theft, and drop rolls. */
+        int lk = (int) value;
+
+        if (lk < -13)
+            lk = -13;
+        if (lk > 13)
+            lk = 13;
+        u.uluck = (schar) lk;
     } else if (!strcmp(field, "str") || !strcmp(field, "dex")
                || !strcmp(field, "con") || !strcmp(field, "int")
                || !strcmp(field, "wis") || !strcmp(field, "cha")) {
@@ -1633,6 +1661,177 @@ nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
         u.uhave.amulet = 1;
 
     schedule_goto(&dest, FALSE, FALSE, 0, (char *) 0, (char *) 0);
+    return 0;
+}
+
+/* Report whether the hero is standing on a staircase: +1 on the down stair,
+ * -1 on the up stair, 0 otherwise. Lets a curriculum decide, BEFORE issuing a
+ * descend/ascend, whether the hero has genuinely navigated onto the stairs (so
+ * the cross-branch jump only fires on a real stair use, never a teleport). */
+int
+nle_hero_on_stair(nle_ctx_t *nle)
+{
+    current_nle_ctx = nle;
+    if (xdnstair > 0 && u.ux == xdnstair && u.uy == ydnstair)
+        return 1;
+    if (xupstair > 0 && u.ux == xupstair && u.uy == yupstair)
+        return -1;
+    /* Also report the BRANCH staircase (sstairs) — e.g. the Gnomish Mines
+     * entrance on Dungeons-of-Doom levels — but with a DISTINCT magnitude (2 =
+     * branch down, -2 = branch up) so callers can tell it apart from the level's
+     * own main stair (1/-1). The curriculum needs this: any downstair out of
+     * DoD3 should jump to Gehennom, but on DoD1/2 only the *branch* '>' must be
+     * redirected (the main '>' should descend normally). Callers that only test
+     * ==1/==-1 are unaffected (they treat the branch as "not on stair", as
+     * before). */
+    if (sstairs.sx > 0 && u.ux == sstairs.sx && u.uy == sstairs.sy)
+        return sstairs.up ? -2 : 2;
+    return 0;
+}
+
+/* Grant the pre-primed invocation kit straight into the hero's pack so the
+ * curriculum agent can actually perform the invocation ritual (the only way
+ * down from the Invocation level to Moloch's Sanctum — that level has no
+ * down-staircase by design). Modeled on the "gold" branch of nle_set_state:
+ * build objects with mksobj, then addinv() (which also sets u.uhave.menorah/
+ * bell/book via addinv_core1, so the ritual's carry-checks pass).
+ *
+ * The kit is pre-primed so the agent does NOT have to hunt candles or light
+ * anything: the Candelabrum arrives with all 7 candles (spe=7) and lit, the
+ * Bell is charged, and all three are uncursed. Note deadbook()'s gate reads
+ * only the plain obj fields spe/lamplit (not attached candle objects), and
+ * those persist across the synthetic DoD3->Gehennom goto_abs jump regardless
+ * of whether the burn timer/light-source survive it; age=5000 keeps the burn
+ * timer from expiring during navigation. The Bell is intentionally NOT
+ * pre-rung — the honest flow has the agent ring it live (use_bell sets
+ * obj->age=moves, satisfying the "rung within 5 turns" check). */
+int
+nle_grant_invocation_kit(nle_ctx_t *nle)
+{
+    struct obj *cand, *bell, *book;
+
+    current_nle_ctx = nle;
+
+    /* The three artifacts are granted pre-IDENTIFIED (makeknown on the type +
+     * per-object known/dknown/bknown) so they render by their real names
+     * ("the Candelabrum of Invocation", "the Bell of Opening", "the Book of the
+     * Dead") rather than random unidentified appearances ("silver bell",
+     * "papyrus spellbook"). The agent references them by name (apply('bell'),
+     * read('Book of the Dead')), and the ritual-ready obs hint keys off them. */
+
+    /* Candelabrum of Invocation: 7 candles attached, uncursed, lit w/ deep fuel. */
+    cand = mksobj(CANDELABRUM_OF_INVOCATION, TRUE, FALSE);
+    if (cand) {
+        cand->spe = 7;        /* all 7 candles (deadbook checks spe==7) */
+        cand->cursed = 0;
+        cand->blessed = 0;
+        cand->age = 5000L;    /* turns of fuel; outlasts any navigation */
+        cand->quan = 1L;
+        cand->known = cand->dknown = cand->bknown = cand->rknown = 1;
+        cand->owt = weight(cand);
+        makeknown(CANDELABRUM_OF_INVOCATION);
+        cand = addinv(cand);      /* sets u.uhave.menorah; returns live ptr */
+        if (cand)
+            begin_burn(cand, FALSE);  /* lamplit=1 + burn timer + light source */
+    }
+
+    /* Bell of Opening: charged, uncursed, NOT pre-rung (agent rings it live). */
+    bell = mksobj(BELL_OF_OPENING, TRUE, FALSE);
+    if (bell) {
+        bell->spe = 3;
+        bell->cursed = 0;
+        bell->blessed = 0;
+        bell->known = bell->dknown = bell->bknown = bell->rknown = 1;
+        bell->owt = weight(bell);
+        makeknown(BELL_OF_OPENING);
+        (void) addinv(bell);      /* sets u.uhave.bell */
+    }
+
+    /* Book of the Dead: uncursed. */
+    book = mksobj(SPE_BOOK_OF_THE_DEAD, TRUE, FALSE);
+    if (book) {
+        book->cursed = 0;
+        book->blessed = 0;
+        book->known = book->dknown = book->bknown = book->rknown = 1;
+        book->owt = weight(book);
+        makeknown(SPE_BOOK_OF_THE_DEAD);
+        (void) addinv(book);      /* sets u.uhave.book */
+    }
+
+    context.botl = TRUE;
+    return 0;
+}
+
+/* Report the vibrating-square (invocation) position. Writes inv_pos into
+ * *x,*y and returns 0 on the Invocation level; otherwise writes (0,0) and
+ * returns nonzero (inv_pos is only meaningful on that level). Lets the
+ * curriculum reveal the square so the agent can navigate onto it — the trap
+ * itself is created hidden, but the tile is walkable maze floor. */
+int
+nle_invocation_pos(nle_ctx_t *nle, int *x, int *y)
+{
+    current_nle_ctx = nle;
+    if (x)
+        *x = 0;
+    if (y)
+        *y = 0;
+    if (!Invocation_lev(&u.uz))
+        return 1;
+    if (x)
+        *x = (int) inv_pos.x;
+    if (y)
+        *y = (int) inv_pos.y;
+    return 0;
+}
+
+/* Stage the hero at the vibrating (invocation) square. Mirrors
+ * nle_seat_on_stair. With adjacent==0 the hero lands ON the square; with
+ * adjacent!=0 the hero lands on an accessible, unoccupied tile orthogonally/
+ * diagonally next to it (so the agent takes one honest step onto the square
+ * before ringing the Bell / reading the Book). Returns 0 on the Invocation
+ * level (hero relocated), nonzero otherwise.
+ *
+ * Why staging is needed: the deep Gehennom mazes generated on-demand by the
+ * curriculum's goto_abs jump are monster/trap-choked and effectively
+ * unnavigable to the single hidden square, so the curriculum stages the hero at
+ * the ritual site — the RITUAL itself (step on, ring Bell, read Book) is still
+ * performed by the agent. */
+int
+nle_seat_on_invocation_square(nle_ctx_t *nle, int adjacent)
+{
+    int dx, dy, nx, ny;
+    static const int ord8[8][2] = {
+        { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 },
+        { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 }
+    };
+    int i;
+
+    current_nle_ctx = nle;
+    if (!Invocation_lev(&u.uz) || inv_pos.x <= 0)
+        return 1;
+
+    if (!adjacent) {
+        u_on_newpos(inv_pos.x, inv_pos.y);
+        context.botl = TRUE;
+        return 0;
+    }
+
+    /* Find an accessible, monster-free tile next to the square. */
+    for (i = 0; i < 8; i++) {
+        dx = ord8[i][0];
+        dy = ord8[i][1];
+        nx = inv_pos.x + dx;
+        ny = inv_pos.y + dy;
+        if (isok(nx, ny) && ACCESSIBLE(levl[nx][ny].typ)
+            && !m_at(nx, ny) && !(nx == inv_pos.x && ny == inv_pos.y)) {
+            u_on_newpos(nx, ny);
+            context.botl = TRUE;
+            return 0;
+        }
+    }
+    /* No free neighbor (fully walled/occupied) — fall back to the square. */
+    u_on_newpos(inv_pos.x, inv_pos.y);
+    context.botl = TRUE;
     return 0;
 }
 

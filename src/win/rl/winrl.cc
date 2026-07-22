@@ -703,24 +703,50 @@ NetHackRL::fill_obs(nle_obs *obs)
                 size_t j = y % ROWNO;
                 size_t offset = j * (COLNO - 1) + i;
 
-                /* Only overlay cells the hero has not already seen. A blank
-                 * cell is the nul_glyph (stone) fill the port initializes
-                 * with and which store_glyph re-emits for unknown terrain. */
-                if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
+                /* Navigation-isolation: convert secret doors/corridors to their
+                 * real, TRAVERSABLE forms so the fully-revealed map is actually
+                 * navigable. reveal_map is a render overlay that would otherwise
+                 * only *show* terrain — but secret passages (SDOOR/SCORR) stay
+                 * impassable in levl[][] until searched, leaving some down-stairs
+                 * unreachable and forcing the search skill. Doing the same
+                 * conversion search would (cvt_sdoor_to_door / SCORR->CORR) makes
+                 * the level genuinely connected. Run for EVERY cell (even ones
+                 * already "seen" as a wall) and force a re-render of those so the
+                 * emitted obs shows the now-passable glyph. Idempotent; only on
+                 * the opt-in reveal_map>0 path, so default obs is unaffected. */
+                boolean was_secret = (levl[x][y].typ == SDOOR
+                                      || levl[x][y].typ == SCORR);
+                if (levl[x][y].typ == SDOOR) {
+                    cvt_sdoor_to_door(&levl[x][y]);
+                } else if (levl[x][y].typ == SCORR) {
+                    levl[x][y].typ = CORR;
+                    unblock_point(x, y);
+                }
+
+                /* Only overlay cells the hero has not already seen (a blank
+                 * nul_glyph cell) -- EXCEPT cells we just de-secreted, which must
+                 * be re-rendered to replace their stale wall glyph. */
+                if (!was_secret && obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
-                /* back_to_glyph() returns S_stone for any wall whose seenv
-                 * bits are all clear (display.c: idx = seenv ? wall_angle()
-                 * : S_stone), so an unseen wall would overlay as blank stone
-                 * and stay masked. For wall cells (incl. secret doors) with
-                 * seenv==0, temporarily set seenv = SVALL so wall_angle()
-                 * computes a wall face, then restore the original value
-                 * immediately. Fully reversible: levl[][] is unchanged after
-                 * this call. */
+                /* back_to_glyph() renders a wall as S_stone (blank) whenever
+                 * wall_angle() has no face to show for the hero's seen-vector:
+                 * either seenv==0 (display.c:1785 short-circuits to S_stone)
+                 * or seenv holds only angles this wall segment does not show
+                 * from -- e.g. HWALL with wall_info WM_W_RIGHT/LEFT seen only
+                 * from SV6 (display.c:2547-2560), or a corner with WM_C_OUTER /
+                 * WM_C_INNER seen only from its hidden side (set_corner,
+                 * display.c:2563-2593). Gating the poke on seenv==0 therefore
+                 * left every wall the hero HAS partly seen from its blind side
+                 * rendering as blank stone under reveal_map. So poke
+                 * seenv = SVALL for ANY wall cell (incl. secret doors) we reach
+                 * here -- we only reach here when the emitted glyph is already
+                 * blank stone -- then restore the original value immediately.
+                 * Fully reversible: levl[][] is unchanged after this call. */
                 schar typ = levl[x][y].typ;
                 uchar saved_seenv = levl[x][y].seenv;
                 boolean poked = FALSE;
-                if ((IS_WALL(typ) || typ == SDOOR) && saved_seenv == 0) {
+                if (IS_WALL(typ) || typ == SDOOR) {
                     levl[x][y].seenv = SVALL;
                     poked = TRUE;
                 }
@@ -729,6 +755,23 @@ NetHackRL::fill_obs(nle_obs *obs)
 
                 if (poked)
                     levl[x][y].seenv = saved_seenv;
+
+                /* INVARIANT: never emit a walkable-looking glyph for a cell
+                 * the engine will refuse to step into.  ACCESSIBLE(typ) is
+                 * exactly the predicate test_move() uses (hack.c:749 tests
+                 * IS_ROCK == typ < POOL, and prints "It's a wall." for
+                 * IS_WALL/SDOOR, "It's solid stone." otherwise), so any
+                 * !ACCESSIBLE cell must render as wall face or stone.
+                 *
+                 * Secret doors and secret corridors used to be remapped here
+                 * to S_ndoor / S_corr so that "lights on" showed a connected
+                 * map.  But SDOOR/SCORR are NOT accessible until found, and
+                 * S_ndoor is '.' and S_corr is '#': that painted an ordinary
+                 * floor/corridor glyph over solid rock, so a cell that looked
+                 * like plain floor answered a move with "It's a wall."  The
+                 * poke above already gives SDOOR a proper wall face; SCORR
+                 * falls through to back_to_glyph()'s S_stone (blank), which
+                 * is what an unfound secret passage looks like in vanilla. */
 
                 /* Map the background glyph to char/color/special exactly the
                  * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#15161c">
+  <title>NetHack Map Viewer — runs in your browser (WebAssembly)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20fill='%2315161c'/%3E%3Ctext%20x='8'%20y='12'%20font-family='monospace'%20font-size='12'%20text-anchor='middle'%20fill='%23ffe08a'%3E@%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="console.css">
+  <link rel="stylesheet" href="console.extra.css">
+  <style>
+    /* Six-level curriculum toggle box (reuses the .sw switch style from console.css). */
+    #curriculum-box{border:1px solid #2c2e3a;border-radius:8px;padding:10px 12px;margin:0 0 12px;background:#14151c}
+    #curriculum-box .crow{display:flex;align-items:center;gap:10px}
+    #curriculum-box .crow .clabel{font-weight:600}
+    #curr-controls{display:none;flex-wrap:wrap;gap:6px;margin-top:8px}
+    #curr-controls.show{display:flex}
+    #curr-controls button{background:#1e1f28;color:#d7d8e0;border:1px solid #646780;border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer}
+    #curr-controls button:hover{background:#2a2c38}
+    #curr-controls button.active{background:#2d4a5a;border-color:#9fe8ff;color:#eafcff}
+    #curr-indicator{margin-top:8px;color:#9fe8ff;font-size:12px}
+    /* Trace recording writes files server-side; not available in the static build. */
+    #recbtn,#recstat{display:none}
+  </style>
+  <!-- Order matters: nethack.js defines NetHackModule; console_backend.js installs
+       the fetch() shim (the client-side "server") over the WASM engine; console.js
+       (the unchanged local-app client) then drives the page through that shim. -->
+  <script src="nethack.js"></script>
+  <script src="console_backend.js"></script>
+  <script src="console.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <noscript>
+    <p style="margin:0;padding:10px 14px;background:#7c2626;color:#fff;text-align:center">
+      This console needs JavaScript — the map, knobs, and engine all run client-side.
+    </p>
+  </noscript>
+  <nav id="nav" aria-label="Primary">
+    <a class="brand" href="./"><span class="glyph" aria-hidden="true">@</span>NetHack Console</a>
+    <a class="link" href="./">Intro</a>
+    <a class="link" href="replays.html">Replays</a>
+    <a class="link active" href="play.html" aria-current="page">Map Viewer</a>
+    <span class="spacer"></span>
+    <span class="navnote">running in your browser — WebAssembly, no server</span>
+  </nav>
+
+  <div class="page">
+    <main id="main-content" class="maincol" tabindex="-1">
+      <h1 class="sr-only">NetHack Map Viewer</h1>
+      <div class="console">
+        <div id="message" role="status" aria-live="polite" aria-atomic="true">&nbsp;</div>
+        <div id="screen" class="screen" tabindex="0" role="application"
+             aria-label="NetHack game screen — focus this, then type movement and command keys"
+             aria-describedby="hint"></div>
+        <div id="status" aria-live="polite" aria-atomic="true">loading engine…</div>
+        <div id="popup" role="status" aria-live="polite" aria-label="Game prompt" hidden></div>
+        <details id="invbox" open>
+          <summary>Inventory</summary>
+          <div id="inv" aria-live="polite"></div>
+        </details>
+        <div id="hint">
+          <b>Click the screen first</b>, then type NetHack commands.
+          <table class="keys">
+            <tr><td><kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> <kbd>y</kbd><kbd>u</kbd><kbd>b</kbd><kbd>n</kbd></td><td>move (arrows work too)</td></tr>
+            <tr><td><kbd>&gt;</kbd> <kbd>&lt;</kbd></td><td>stairs down / up</td></tr>
+            <tr><td><kbd>,</kbd></td><td>pick up what you are standing on</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd> then a direction</td><td>kick (a door, a chest, a monster)</td></tr>
+            <tr><td><kbd>o</kbd> / <kbd>c</kbd> then a direction</td><td>open / close a door</td></tr>
+            <tr><td><kbd>s</kbd></td><td>search for secret doors (repeat it)</td></tr>
+            <tr><td><kbd>w</kbd> <kbd>W</kbd> <kbd>e</kbd> <kbd>q</kbd> <kbd>r</kbd></td><td>wield, wear, eat, quaff, read</td></tr>
+            <tr><td><kbd>d</kbd> / <kbd>D</kbd></td><td>drop one / drop several</td></tr>
+            <tr><td><kbd>#</kbd></td><td>extended command (type a name, then Enter)</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>your attributes</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>cancel the current prompt or menu</td></tr>
+            <tr><td><kbd>Backspace</kbd></td><td>undo the last step</td></tr>
+          </table>
+          <span class="khint">Inventory is always shown above, so <kbd>i</kbd> is not needed.
+          Anything the game asks you appears in the prompt box.</span>
+        </div>
+      </div>
+    </main>
+    <aside id="side" aria-label="Controls">
+      <div id="curriculum-box">
+        <div class="crow">
+          <label class="sw"><input type="checkbox" id="sixlevels"><span></span></label>
+          <span class="clabel">Six-level curriculum</span>
+        </div>
+        <div id="curr-controls" role="group" aria-label="curriculum floor">
+          <button type="button" data-floor="1">DoD 1</button>
+          <button type="button" data-floor="2">DoD 2</button>
+          <button type="button" data-floor="3">DoD 3</button>
+          <button type="button" data-floor="4">Gehennom 48</button>
+          <button type="button" data-floor="5">Gehennom 49</button>
+          <button type="button" data-floor="6">Gehennom 50</button>
+        </div>
+        <div id="curr-indicator">Mode: full 50-floor game (start at level 1)</div>
+      </div>
+      <div id="groups"></div>
+      <div id="modify">
+        <h2>Modify state</h2>
+        <div class="mrow">
+          <span class="mname" id="lbl-goto">Go to level</span>
+          <input type="number" id="m_goto" class="mnum" min="1" max="60" value="1" aria-labelledby="lbl-goto">
+          <button type="button" class="mbtn" onclick="goLevel()" aria-label="Go to the entered dungeon level">Go</button>
+        </div>
+        <div class="mrow">
+          <span class="mname">Experience</span>
+          <button type="button" class="mbtn wide" onclick="plusLevel()">+ Level</button>
+        </div>
+        <div class="mrow"><span class="mname" id="lbl-hp">hp</span>
+          <input type="number" id="m_hp" class="mnum" aria-labelledby="lbl-hp"><button type="button" class="mbtn" onclick="setField('hp')" aria-label="Set hp">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-maxhp">max_hp</span>
+          <input type="number" id="m_max_hp" class="mnum" aria-labelledby="lbl-maxhp"><button type="button" class="mbtn" onclick="setField('max_hp')" aria-label="Set max_hp">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-gold">gold</span>
+          <input type="number" id="m_gold" class="mnum" aria-labelledby="lbl-gold"><button type="button" class="mbtn" onclick="setField('gold')" aria-label="Set gold">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-xp">xp_level</span>
+          <input type="number" id="m_xp_level" class="mnum" aria-labelledby="lbl-xp"><button type="button" class="mbtn" onclick="setField('xp_level')" aria-label="Set xp_level">Set</button></div>
+        <div class="mrow"><span class="mname" id="lbl-hunger">hunger</span>
+          <input type="number" id="m_hunger" class="mnum" aria-labelledby="lbl-hunger"><button type="button" class="mbtn" onclick="setField('hunger')" aria-label="Set hunger">Set</button></div>
+        <div id="modstat" role="status" aria-live="polite"></div>
+      </div>
+      <button type="button" id="undobtn" class="act-btn" onclick="doUndo()" disabled
+        aria-keyshortcuts="Backspace"><span aria-hidden="true">&#8634;</span> Undo step
+        <span id="undocount" aria-hidden="true"></span></button>
+      <div id="undostat" role="status" aria-live="polite" class="sr-only"></div>
+      <div id="markrow">
+        <button type="button" id="markbtn" class="act-btn" onclick="doMark()"><span
+          aria-hidden="true">&#9873;</span> Checkpoint</button>
+        <button type="button" id="restorebtn" class="act-btn" onclick="doRestore()" disabled><span
+          aria-hidden="true">&#8617;</span> Restore</button>
+      </div>
+      <div id="markstat" role="status" aria-live="polite"></div>
+      <div id="seedrow"><label for="seed">seed</label> <input id="seed" value="42" inputmode="numeric"></div>
+      <button type="button" id="reset" class="act-btn" onclick="doReset()">Reset / Regenerate floor<span
+        id="dirtyflag" class="dirtyflag" hidden> — changes pending</span></button>
+      <button type="button" id="recbtn" class="act-btn" onclick="toggleRec()" aria-pressed="false"><span aria-hidden="true">&#9679;</span> <span id="reclabel">Record trace</span></button>
+      <div id="recstat" role="status" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script>
+    /* Wire the six-level curriculum toggle to the WASM backend. ON = start each
+       game on a curriculum floor (DoD 1-3 / Gehennom 48-50); OFF = normal full
+       50-floor game from level 1. Flipping it regenerates immediately. */
+    (function () {
+      const cb = document.getElementById('sixlevels'),
+            ctrls = document.getElementById('curr-controls'),
+            ind = document.getElementById('curr-indicator'),
+            btns = Array.prototype.slice.call(ctrls.querySelectorAll('button'));
+      let floor = 1;                         // selected curriculum floor (1..6)
+      function nameFor(f) { return window.NHConsole ? window.NHConsole.curriculumName(f) : ('floor ' + f); }
+      function paint() {
+        const on = cb.checked;
+        ctrls.classList.toggle('show', on);
+        btns.forEach((b) => b.classList.toggle('active', on && +b.dataset.floor === floor));
+        ind.textContent = on
+          ? ('Mode: six-level curriculum — start on ' + nameFor(floor))
+          : 'Mode: full 50-floor game (start at level 1)';
+      }
+      function sync(regen) {
+        if (window.NHConsole) window.NHConsole.setCurriculum(cb.checked, floor);
+        paint();
+        if (regen && typeof window.doReset === 'function') window.doReset();
+      }
+      cb.addEventListener('change', () => sync(true));
+      btns.forEach((b) => b.addEventListener('click', () => {
+        floor = +b.dataset.floor;
+        if (!cb.checked) cb.checked = true;  // picking a floor implies curriculum on
+        sync(true);
+      }));
+      sync(false);
+    })();
+
+    /* Hand-off from the Replays page: `play.html?seed=19&dlvl=4` starts the game
+       on that trial's seed and floor, so a visitor can take over a level they
+       just watched an agent attempt. The seed must be in the box BEFORE
+       initMap()'s initial reset consumes it; the depth jump has to wait for that
+       reset to land, and initMap()'s boot IIFE isn't awaitable from out here, so
+       poll the status line for the first rendered frame. */
+    (function () {
+      const q = new URLSearchParams(location.search),
+            seed = q.get('seed'), dlvl = +q.get('dlvl');
+      if (seed !== null && seed.trim() !== '' && Number.isFinite(+seed)) {
+        document.getElementById('seed').value = String(Math.trunc(+seed));
+      }
+      if (!(dlvl > 1)) return;
+      document.getElementById('m_goto').value = String(Math.trunc(dlvl));
+      let waited = 0;
+      const t = setInterval(() => {
+        if (document.getElementById('status').textContent.indexOf('Dlvl') >= 0) {
+          clearInterval(t);
+          goLevel();
+        } else if ((waited += 200) > 60000) {   // engine never started; give up quietly
+          clearInterval(t);
+        }
+      }, 200);
+    })();
+
+    initMap();
+  </script>
+</body>
+</html>

@@ -1257,6 +1257,22 @@ int nle_num_dungeons(nle_ctx_t *);
 int nle_dungeon_info(nle_ctx_t *, int idx, char *name_out, int name_cap,
                      int *depth_start_out, int *num_dunlevs_out);
 int nle_goto_abs(nle_ctx_t *, int dnum, int dlevel);
+/* nle_hero_on_stair: +1 on the down stair, -1 on the up stair, 0 otherwise. */
+int nle_hero_on_stair(nle_ctx_t *);
+
+/* nle_grant_invocation_kit: drop the pre-primed invocation artifacts (lit
+ * spe=7 Candelabrum, charged Bell of Opening, Book of the Dead — all uncursed)
+ * straight into the hero's pack so the curriculum agent can perform the
+ * invocation ritual. Returns 0. */
+int nle_grant_invocation_kit(nle_ctx_t *);
+/* nle_invocation_pos: write the vibrating-square coords into *x,*y; returns 0
+ * on the Invocation level (coords valid), nonzero otherwise (x,y set 0). */
+int nle_invocation_pos(nle_ctx_t *, int *x, int *y);
+/* nle_seat_on_invocation_square: stage the hero at the vibrating square (the
+ * ritual site) on the Invocation level. adjacent!=0 places the hero on a tile
+ * next to the square (agent steps on); adjacent==0 places it on the square.
+ * Returns 0 on success. */
+int nle_seat_on_invocation_square(nle_ctx_t *, int adjacent);
 
 /* nle_state refactor — per-instance accessors. Called from rnd.c (and
  * other subsystems as they migrate). Each returns a pointer into the
