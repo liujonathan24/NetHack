@@ -1449,6 +1449,23 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
                 dealloc_obj(gold);
             }
         }
+    } else if (!strcmp(field, "luck")) {
+        /* Directly set the hero's intrinsic luck (u.uluck).  Effective luck is
+         * Luck == u.uluck + u.moreluck, where moreluck is the luckstone bonus
+         * (+LUCKADD when carrying a blessed/uncursed luck stone).  Normal
+         * intrinsic luck is bounded LUCKMIN..LUCKMAX (-10..10); the maximum
+         * *effective* luck achievable in vanilla play is LUCKMAX + LUCKADD
+         * (10 + 3 == 13).  For the "better items / luck" ablation we let the
+         * modify poke reproduce that full effective range without requiring a
+         * luck stone in inventory, so we clamp the injected intrinsic value to
+         * [-13, 13].  Luck feeds to-hit, prayer outcome, theft, and drop rolls. */
+        int lk = (int) value;
+
+        if (lk < -13)
+            lk = -13;
+        if (lk > 13)
+            lk = 13;
+        u.uluck = (schar) lk;
     } else if (!strcmp(field, "str") || !strcmp(field, "dex")
                || !strcmp(field, "con") || !strcmp(field, "int")
                || !strcmp(field, "wis") || !strcmp(field, "cha")) {
