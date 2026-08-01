@@ -829,7 +829,18 @@ NetHackRL::fill_obs(nle_obs *obs)
             size_t j = my % ROWNO;
             size_t offset = j * (COLNO - 1) + i;
 
-            int glyph = mon_to_glyph(mtmp, rn2_on_display_rng);
+            /* Mirror display.c's pet branch (display.c:508-512). Using the
+             * bare mon_to_glyph here dropped GLYPH_PET_OFF, so every monster
+             * came out as a plain monster glyph under reveal_map -- which
+             * silently disabled BOTH the "[PET - don't attack]" label
+             * (prompt/features.py, via glyph_is_pet) and the melee guard
+             * (tools/netplay_true.py::_refuse_attack). Measured: a revealed
+             * rollout killed its own starting pet on turn 2. The tame check is
+             * display.c's own; worm tails cannot arise here because this loop
+             * walks fmon head positions only. */
+            int glyph = (mtmp->mtame && !Hallucination)
+                            ? pet_to_glyph(mtmp, rn2_on_display_rng)
+                            : mon_to_glyph(mtmp, rn2_on_display_rng);
 
             int ch;
             int color;
