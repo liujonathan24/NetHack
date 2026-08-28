@@ -686,6 +686,25 @@ nethack_exit(int status)
     nle_yield(NULL);
 }
 
+/* Unwind a panic raised while NetHack code was running from the HOST context
+ * (a blob-API call), instead of letting it fall through nh_terminate() ->
+ * nle_yield() -> jump_fcontext() into a context we are not suspended from.
+ * See the s_host_call_armed comment in nle.h. Does not return when armed. */
+void
+nle_host_call_abort(void)
+{
+    nle_ctx_t *nle = current_nle_ctx;
+
+    if (nle && nle->s_host_call_armed) {
+        nle->s_host_call_armed = 0;
+        longjmp(nle->s_host_call_jmp, 1);
+    }
+    /* Nothing armed: there is no safe unwind target, so fail loudly and
+     * attributably rather than faulting somewhere unrelated. */
+    fflush(stderr);
+    abort();
+}
+
 /* Called in really_done() in end.c to get "how". */
 void
 nle_done(int how)
@@ -1187,6 +1206,13 @@ nle_end(nle_ctx_t *nle)
     }
     extern void nle_winrl_destroy_for_ctx(nle_ctx_t *);
     nle_winrl_destroy_for_ctx(nle);
+    /* save.c's buffering state is libc-allocated (it tracks real fds, so it
+     * is deliberately outside the arena); the arena munmap above does not
+     * reclaim it. */
+    {
+        extern void nle_save_state_free(nle_ctx_t *);
+        nle_save_state_free(nle);
+    }
     free_nle_fields(nle);
     free(nle);
 }
@@ -1225,8 +1251,8 @@ nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
  * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
  * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
  * Returns the blob (and writes its length to *out_len), or NULL on error. */
-void *
-nle_save_level(nle_ctx_t *nle, long *out_len)
+static void *
+nle_save_level_inner(nle_ctx_t *nle, long *out_len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
@@ -1246,12 +1272,23 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     if (fd < 0)
         return (void *) 0;
     /* Exactly the do.c goto_level levelfile shape: no version header,
-     * just savelev() bytes. bufon/bufoff bracket the zerocomp stream. */
+     * just savelev() bytes. bufon/bclose bracket the zerocomp stream.
+     *
+     * bclose(), NOT bflush+bufoff+nhclose. Only def_bclose() resets bw_fd to
+     * -1 and clears bw_FILE; bufoff() merely turns buffering off. The old
+     * sequence therefore left bw_fd holding an fd number this function had
+     * just closed, and bw_FILE a leaked FILE* wrapping it. It survived only
+     * while the next open(2) happened to hand back the SAME number; as soon
+     * as anything else in the process took that slot, the next def_bufon()
+     * saw `bw_fd >= 0 && bw_fd != fd` and raised
+     * panic("double buffering unexpected") (save.c). Measured downstream
+     * faces of the same leak: a glibc double-free inside fclose(), and
+     * panic("cannot write N bytes to file #N") when the stale FILE* wrote to
+     * a reused descriptor. bclose() does bufoff() itself, so the bytes on
+     * disk are unchanged: fflush then fclose, same stream, same content. */
     bufon(fd);
     savelev(fd, ledger, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    nhclose(fd);
+    bclose(fd);
 
     /* Slurp the file back into a blob. */
     set_levelfile_name(lock, ledger);
@@ -1282,6 +1319,27 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     return blob;
 }
 
+/* Public entry: runs the body above under the host-call panic unwind, so a
+ * panic inside savelev()/the save codec returns NULL instead of dying inside
+ * jump_fcontext. See the s_host_call_armed comment in nle.h. */
+void *
+nle_save_level(nle_ctx_t *nle, long *out_len)
+{
+    void *blob = (void *) 0;
+
+    current_nle_ctx = nle;
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle)) {
+        if (out_len)
+            *out_len = 0;
+        return (void *) 0;
+    }
+    blob = nle_save_level_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
+    return blob;
+}
+
 /* Release a blob returned by nle_save_level. */
 void
 nle_free_blob(void *blob)
@@ -1296,8 +1354,8 @@ nle_free_blob(void *blob)
  *
  * Two-phase: this mutates state and resets vision but does NOT re-render.
  * Returns 0 on success, nonzero on error. */
-int
-nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+static int
+nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
@@ -1378,6 +1436,21 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
      * runs docrt() inside the coroutine. */
     vision_reset();
     return 0;
+}
+
+/* Public entry: host-call panic unwind (see nle.h). rc 7 == "the load
+ * panicked"; the caller gets a failed load instead of a dead process. */
+int
+nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+{
+    int rc;
+
+    current_nle_ctx = nle;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return 7;
+    rc = nle_load_level_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 /* ===================================================================

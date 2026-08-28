@@ -223,10 +223,23 @@ add_custom_command(
   COMMAND makedefs ARGS -h)
 
 # Hack: Depend on date.h to avoid race.
-add_custom_command(
-  DEPENDS $<TARGET_FILE:makedefs> ${NLE_INC_GEN}/date.h
-  OUTPUT options
-  COMMAND makedefs ARGS -v)
+# NB `makedefs -v` emits dat/options AND, as a side effect, regenerates
+# include/date.h with a fresh wall-clock stamp -- undoing the pin applied by
+# util/CMakeLists.txt. Re-apply it here so BUILD_DATE stays pinned; see the
+# long comment on the date.h rule in util/CMakeLists.txt for why.
+if(EXISTS ${nle_SOURCE_DIR}/util/date.h.pinned)
+  add_custom_command(
+    DEPENDS $<TARGET_FILE:makedefs> ${NLE_INC_GEN}/date.h
+    OUTPUT options
+    COMMAND makedefs ARGS -v
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${nle_SOURCE_DIR}/util/date.h.pinned ${NLE_INC_GEN}/date.h)
+else()
+  add_custom_command(
+    DEPENDS $<TARGET_FILE:makedefs> ${NLE_INC_GEN}/date.h
+    OUTPUT options
+    COMMAND makedefs ARGS -v)
+endif()
 
 # Hack: Depend on bogusmon to avoid race wrt. makedef's grep.tmp file. Best to
 # be defensive about the paths (matters if NetHack's make install was run).

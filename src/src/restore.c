@@ -1019,8 +1019,8 @@ register int fd;
  * Implemented here (not nle.c) because restgamestate() / restlevelstate()
  * are file-static. Returns 0 on success, nonzero on error.
  * =================================================================== */
-int
-nle_load_player(nle, blob, len)
+STATIC_OVL int
+nle_load_player_inner(nle, blob, len)
 nle_ctx_t *nle;
 const void *blob;
 long len;
@@ -1102,6 +1102,26 @@ long len;
      * coroutine to repaint. Same two-phase contract as nle_load_level. */
     vision_reset();
     return 0;
+}
+
+/* Public entry: host-call panic unwind (see nle.h). rc 7 == "the restore
+ * panicked"; the caller gets a failed resume instead of a dead process. */
+int
+nle_load_player(nle, blob, len)
+nle_ctx_t *nle;
+const void *blob;
+long len;
+{
+    int rc;
+
+    current_nle_ctx = nle;
+    if (NLE_HOST_CALL_BEGIN(nle)) {
+        current_nle_ctx->restoring = FALSE;
+        return 7;
+    }
+    rc = nle_load_player_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 void

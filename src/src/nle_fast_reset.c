@@ -402,12 +402,23 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
     NLE_ASAN_UNPOISON(stack_lo, s->stack_size);
     memcpy(stack_lo, s->saved_stack, s->stack_size);
 
+    /* Pinned across the ctx rollback, alongside the arena mapping itself:
+     * the save-file WRITE BUFFERING state. s_save_state (bw_fd / buffering)
+     * and s_bw_FILE describe THIS PROCESS's file-descriptor table right now,
+     * not the game, so a snapshot must never be able to rewind them to a
+     * descriptor number the kernel has since reissued. Restoring them was
+     * one half of panic("double buffering unexpected"); the other half (a
+     * bufoff() where a bclose() belonged) is fixed in nle.c / save.c. */
     char *arena_base = nle->s_arena_base;
     size_t arena_cap = nle->s_arena_cap;
+    void *save_state = nle->s_save_state;
+    FILE *bw_file = nle->s_bw_FILE;
     *nle = s->saved_ctx;
     nle->s_arena_base = arena_base;
     nle->s_arena_cap = arena_cap;
     nle->s_arena_used = s->arena_used;
+    nle->s_save_state = save_state;
+    nle->s_bw_FILE = bw_file;
 
     current_nle_ctx = nle;
 

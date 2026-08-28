@@ -617,6 +617,37 @@ VA_DECL(const char *, str)
     VA_START(str);
     VA_INIT(str, char *);
 
+    /* Panic raised while NetHack code was running from the HOST context (a
+     * blob-API call: nle_save_level / nle_save_player / nle_load_level /
+     * nle_load_player), not on the game coroutine. The normal tail of this
+     * function -- really_done() -> nh_terminate() -> nethack_exit() ->
+     * nle_yield() -> jump_fcontext() -- jumps to a context we are not
+     * suspended from, and the process dies of SIGSEGV inside jump_fcontext
+     * with the reason visible only in the sentinel dump (this is exactly how
+     * "double buffering unexpected" presented). Record the reason the same
+     * way, then unwind to the API entry so the caller gets a failed call
+     * instead of a dead process.
+     *
+     * Nothing here runs during normal play: s_host_call_armed is only ever
+     * set for the duration of those host-context calls. */
+    if (current_nle_ctx && current_nle_ctx->s_host_call_armed) {
+        char hbuf[BUFSZ];
+
+#if !defined(NO_VSNPRINTF)
+        (void) vsnprintf(hbuf, sizeof hbuf, str, VA_ARGS);
+#else
+        Vsprintf(hbuf, str, VA_ARGS);
+#endif
+        nle_sentinel_set_panic(current_nle_ctx->sentinel, hbuf);
+        paniclog("panic", hbuf);
+        fprintf(stderr, "NLE_HOST_CALL_PANIC: %s\n", hbuf);
+        fflush(stderr);
+        /* va_end directly, NOT VA_END(): the macro also closes the function's
+         * brace (tradstdc.h), so it may only appear at the real end. */
+        va_end(VA_ARGS);
+        nle_host_call_abort(); /* does not return */
+    }
+
     if (current_nle_ctx->program_state.panicking++)
         NH_abort(); /* avoid loops - this should never happen*/
 

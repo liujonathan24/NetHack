@@ -401,8 +401,8 @@ register int fd, mode;
  * Implemented here (not nle.c) because savegamestate() is file-static.
  * Returns the blob and writes its length to *out_len, or NULL on error.
  * =================================================================== */
-void *
-nle_save_player(nle, out_len)
+STATIC_OVL void *
+nle_save_player_inner(nle, out_len)
 nle_ctx_t *nle;
 long *out_len;
 {
@@ -444,11 +444,15 @@ long *out_len;
      * read back by nle_load_player via restgamestate(), not by dorecover(). */
     ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
     usteed_id = (u.usteed ? u.usteed->m_id : 0);
+    /* bclose(), NOT bflush+bufoff+nhclose -- see the matching comment in
+     * nle_save_level() (nle.c). bufoff() leaves bw_fd pointing at the fd we
+     * are about to close and bw_FILE dangling on it; only def_bclose() resets
+     * them. That leak is what made the second cadence auto-checkpoint of a
+     * restored E16 attempt die of panic("double buffering unexpected").
+     * bclose() calls bufoff() itself, so the emitted bytes are identical. */
     bufon(fd);
     savegamestate(fd, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    (void) nhclose(fd);
+    bclose(fd);
 
     /* Slurp the scratch file into a malloc'd blob, then unlink it. */
     fp = fopen(fq_player, "rb");
@@ -480,6 +484,29 @@ long *out_len;
     (void) unlink(fq_player);
     if (out_len)
         *out_len = sz;
+    return blob;
+}
+
+/* Public entry: runs the body above under the host-call panic unwind, so a
+ * panic inside savegamestate()/the save codec returns NULL instead of dying
+ * inside jump_fcontext. See the s_host_call_armed comment in nle.h. */
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
+{
+    void *blob = (void *) 0;
+
+    current_nle_ctx = nle;
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle)) {
+        if (out_len)
+            *out_len = 0;
+        return (void *) 0;
+    }
+    blob = nle_save_player_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
     return blob;
 }
 
@@ -824,7 +851,21 @@ int fd;
 }
 
 /* bw_FILE migrated to nle_ctx_t — macro at top of file. */
-/* Bw_fd / buffering per-env via nle_save_state. */
+/* Bw_fd / buffering per-env via nle_save_state.
+ *
+ * LIBC-allocated, deliberately NOT nle_arena_calloc'd. bw_fd is not game
+ * state: it is a live index into THIS PROCESS's file-descriptor table, and
+ * bw_FILE is a live stdio stream on it. nle_fr_snapshot copies the arena and
+ * nle_fr_restore copies it back, so while this struct lived in the arena a
+ * restore rewound bw_fd to a snapshot-era descriptor number that the kernel
+ * had long since closed and reissued to something else. The next def_bufon()
+ * then compared a real fd against a ghost and raised
+ * panic("double buffering unexpected"); def_bwrite() through the matching
+ * stale bw_FILE produced panic("cannot write N bytes to file #N") and a
+ * double-free in fclose(). Keeping it outside the arena (and pinning both it
+ * and s_bw_FILE across nle_fr_restore, see nle_fast_reset.c) means a restore
+ * can no longer disagree with the fd table. Freed in nle_end via
+ * nle_save_state_free(). */
 struct nle_save_state {
     int     _bw_fd;
     boolean _buffering;
@@ -835,7 +876,9 @@ nle_save(void)
     if (!current_nle_ctx) return NULL;
     struct nle_save_state *s = (struct nle_save_state *) current_nle_ctx->s_save_state;
     if (!s) {
-        s = (struct nle_save_state *) nle_arena_calloc(1, sizeof(struct nle_save_state));
+        s = (struct nle_save_state *) calloc(1, sizeof(struct nle_save_state));
+        if (!s)
+            panic("nle_save_state: out of memory");
         s->_bw_fd = -1;
         current_nle_ctx->s_save_state = s;
     }
@@ -843,6 +886,46 @@ nle_save(void)
 }
 #define bw_fd     (nle_save()->_bw_fd)
 #define buffering (nle_save()->_buffering)
+
+/* Release the libc-allocated save-buffering state. Called from nle_end. */
+void
+nle_save_state_free(nle_ctx_t *nle)
+{
+    if (nle && nle->s_save_state) {
+        free(nle->s_save_state);
+        nle->s_save_state = (void *) 0;
+    }
+}
+
+/* Abandon any in-flight buffered save stream and return the buffering state to
+ * idle. Used on the host-call panic-unwind path (nle_host_call_abort), where
+ * the longjmp skips the bclose() that would normally close the stream. Safe to
+ * call when nothing is open: bw_fd < 0 makes every branch a no-op. */
+void
+nle_save_io_reset(void)
+{
+    struct nle_save_state *s;
+
+    if (!current_nle_ctx)
+        return;
+    s = nle_save();
+    if (!s)
+        return;
+    if (s->_bw_fd >= 0) {
+        FILE *bf = bw_FILE;
+
+        s->_bw_fd = -1;
+        bw_FILE = 0;
+        if (bf)
+            (void) fclose(bf); /* closes the underlying descriptor too */
+    }
+    s->_buffering = FALSE;
+    /* ZEROCOMP stream cursor: drop any partial run/buffer. */
+    current_nle_ctx->s_outbufp = 0;
+    current_nle_ctx->s_outrunlength = -1;
+    current_nle_ctx->s_bwritefd = -1;
+    current_nle_ctx->s_compressing = FALSE;
+}
 
 STATIC_OVL void
 def_bufon(fd)

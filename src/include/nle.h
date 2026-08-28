@@ -3,6 +3,7 @@
 
 #define NLE_BZ2_TTYRECS
 
+#include <setjmp.h> /* jmp_buf for the host-call panic unwind (see below) */
 #include <stdio.h>
 #include <time.h>  /* time_t for stage 9' ubirthday */
 
@@ -1141,7 +1142,48 @@ typedef struct nle_globals {
     /* Parametric difficulty knobs. Embedded by value so nle_fr_snapshot
      * (which copies the ctx) captures it; read at engine decision sites. */
     nle_tune_t           s_tune;
+
+    /* ---- host-call panic unwind -------------------------------------------
+     * NetHack's panic() ends in really_done() -> nh_terminate() ->
+     * nethack_exit() -> nle_yield() -> jump_fcontext(returncontext).  That is
+     * the CLEAN exit only when we are running on the game coroutine, because
+     * `returncontext` is the host context the coroutine last suspended from.
+     *
+     * The blob APIs (nle_save_level / nle_save_player / nle_load_level /
+     * nle_load_player) run NetHack code from the HOST context instead, so a
+     * panic raised inside them jumps to a context we are not suspended from
+     * -- the exact hazard already documented at nle_load_level's getlev()
+     * pid/lev comment -- and the process dies of SIGSEGV inside
+     * jump_fcontext with the reason only visible in the sentinel dump.
+     *
+     * These fields let such a panic unwind to the API entry and return an
+     * error instead: the caller sees a failed checkpoint, not a dead process.
+     * Armed ONLY for the duration of those host-context calls, so panic()
+     * inside the coroutine (i.e. all of normal play) is untouched. */
+    int                  s_host_call_armed;        /* nle.c: unwind target live */
+    jmp_buf              s_host_call_jmp;          /* nle.c: set at API entry */
 } nle_ctx_t;
+
+/* Arm/disarm the host-call unwind.  setjmp() must run in the API function
+ * itself (its stack frame is the unwind target), hence the macro.  Returns
+ * nonzero on the unwind path, in which case the buffered-save state has
+ * already been reset and the caller must return its own failure value.
+ * Re-entrancy: an inner call sees s_host_call_armed and leaves the outer
+ * target in place. */
+#define NLE_HOST_CALL_BEGIN(nle)                                              \
+    (((nle) && !(nle)->s_host_call_armed)                                     \
+         ? (setjmp((nle)->s_host_call_jmp)                                    \
+                ? (nle_save_io_reset(), 1)                                    \
+                : ((nle)->s_host_call_armed = 1, 0))                          \
+         : 0)
+#define NLE_HOST_CALL_END(nle)                                                \
+    do {                                                                      \
+        if (nle)                                                              \
+            (nle)->s_host_call_armed = 0;                                     \
+    } while (0)
+
+extern void nle_host_call_abort(void); /* nle.c; noreturn when armed */
+extern void nle_save_io_reset(void);   /* save.c */
 
 /*
  * Refactor stage 3: declared extern here, defined once in nle.c. Was a

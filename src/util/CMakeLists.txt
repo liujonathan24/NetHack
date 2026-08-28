@@ -44,10 +44,34 @@ add_executable(recover recover.c)
 target_include_directories(recover PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
                                            ${NLE_UTIL_GEN})
 
-add_custom_command(
-  DEPENDS makedefs
-  OUTPUT ${NLE_INC_GEN}/date.h
-  COMMAND $<TARGET_FILE:makedefs> ARGS -v)
+# date.h carries BUILD_DATE / BUILD_TIME, which makedefs -v stamps from the
+# wall clock at build time. BUILD_DATE is printed on NetHack's intro screen, so
+# it lands in the observation's tty_chars/tty_colors -- meaning ANY rebuild of
+# even completely unmodified sources shows up as an observation diff against a
+# reference build for the handful of steps before the splash scrolls away.
+# That would make golden-parity comparisons unreadable (a real gameplay change
+# and a mere relink look the same).
+#
+# If util/date.h.pinned exists, it is copied over the generated header, so a
+# rebuilt engine is byte-identical in play to the build the pinned header came
+# from. This is build metadata only: on UNIX, BUILD_TIME is read solely by
+# comp_times(), which is #ifdef MICRO, so nothing else in the game reads either
+# macro. Provenance of the actual binary is its mtime and ELF BuildID, not this
+# string. Delete util/date.h.pinned to get the ordinary wall-clock behaviour.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/date.h.pinned)
+  add_custom_command(
+    DEPENDS makedefs ${CMAKE_CURRENT_SOURCE_DIR}/date.h.pinned
+    OUTPUT ${NLE_INC_GEN}/date.h
+    COMMAND $<TARGET_FILE:makedefs> ARGS -v
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_CURRENT_SOURCE_DIR}/date.h.pinned ${NLE_INC_GEN}/date.h
+    COMMENT "date.h: generated, then pinned from util/date.h.pinned")
+else()
+  add_custom_command(
+    DEPENDS makedefs
+    OUTPUT ${NLE_INC_GEN}/date.h
+    COMMAND $<TARGET_FILE:makedefs> ARGS -v)
+endif()
 
 add_custom_command(
   DEPENDS makedefs
