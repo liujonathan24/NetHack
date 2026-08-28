@@ -1291,4 +1291,30 @@ const char  *nle_tune_name(int index);
 void         nle_tune_set_defaults(nle_tune_t *t);
 nle_tune_t  *nle_get_tune(nle_ctx_t *nle);
 
+/* Fast-reset snapshot (nle_fast_reset.c). The handle is a LIVE-PROCESS
+ * construct -- a coroutine-stack image, arena bytes addressed off
+ * nle->s_arena_base, and the rl display mirror -- so it can NEVER be written
+ * to disk; a cross-process checkpoint is (nle_save_player + nle_save_level +
+ * nle_fr_levelfiles_blob) instead. */
+void *nle_fr_snapshot(nle_ctx_t *nle);
+void  nle_fr_restore(nle_ctx_t *nle, void *snap);
+void  nle_fr_destroy(void *snap);
+
+/* Level-file integrity. goto_level (do.c) kills the hero with done(TRICKED)
+ * when level_info[].linfo_flags says a level file exists and it does not, so
+ * these exist to make that divergence detectable instead of fatal:
+ *   nle_fr_last_restore_rc  0 iff the last restore rewrote the whole set
+ *   nle_fr_levelfile_count  how many files a snapshot handle bundled
+ *   nle_fr_missing_levelfiles  ledgers flagged EXISTS with no file on disk */
+int nle_fr_last_restore_rc(void);
+int nle_fr_levelfile_count(void *snap);
+int nle_fr_missing_levelfiles(nle_ctx_t *nle);
+
+/* Portable level-file set, for disk checkpoints. The blob is malloc'd; free it
+ * with nle_free_blob. nle_save_player serializes level_info[] (save_dungeon),
+ * so a resumed game believes in every level the original visited -- these files
+ * MUST travel with the checkpoint or the first stair use fakes a death. */
+void *nle_fr_levelfiles_blob(nle_ctx_t *nle, long *out_len);
+int   nle_fr_levelfiles_load(nle_ctx_t *nle, const void *blob, long len);
+
 #endif /* NLE_H */
