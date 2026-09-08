@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* spellmenu arguments; 0 thru n-1 used as spl_book[] index when swapping */
 #define SPELLMENU_CAST (-2)
@@ -333,7 +332,7 @@ book_cursed(book)
 struct obj *book;
 {
     if (occupation == learn && context.spbook.book == book
-        && book->cursed && book->bknown && current_nle_ctx->multi >= 0)
+        && book->cursed && book->bknown && multi >= 0)
         stop_occupation();
 }
 
@@ -354,7 +353,7 @@ learn(VOID_ARGS)
         context.spbook.book = 0; /* no longer studying */
         context.spbook.o_id = 0;
         nomul(context.spbook.delay); /* remaining delay is uninterrupted */
-        current_nle_ctx->multi_reason = "reading a book";
+        multi_reason = "reading a book";
         nomovemsg = 0;
         context.spbook.delay = 0;
         return 0;
@@ -557,7 +556,7 @@ register struct obj *spellbook;
             boolean gone = cursed_book(spellbook);
 
             nomul(context.spbook.delay); /* study time */
-            current_nle_ctx->multi_reason = "reading a book";
+            multi_reason = "reading a book";
             nomovemsg = 0;
             context.spbook.delay = 0;
             if (gone || !rn2(3)) {
@@ -575,7 +574,7 @@ register struct obj *spellbook;
                 spellbook->in_use = FALSE;
             }
             nomul(context.spbook.delay);
-            current_nle_ctx->multi_reason = "reading a book";
+            multi_reason = "reading a book";
             nomovemsg = 0;
             context.spbook.delay = 0;
             return 1;
@@ -1438,9 +1437,8 @@ static const char *spl_sortchoices[NUM_SPELL_SORTBY] = {
     /* a menu choice rather than a sort choice */
     "reassign casting letters to retain current order",
 };
-/* Per-env spell sort state. Were __thread. */
-#define spl_sortmode  (current_nle_ctx->s_spl_sortmode)
-#define spl_orderindx (current_nle_ctx->s_spl_orderindx)
+static int spl_sortmode = 0;   /* index into spl_sortchoices[] */
+static int *spl_orderindx = 0; /* array of spl_book[] indices */
 
 /* qsort callback routine */
 STATIC_PTR int CFDECLSPEC

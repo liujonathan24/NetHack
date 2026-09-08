@@ -9,20 +9,10 @@
 #endif
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Function-local statics migrated to nle_ctx_t */
-#define msgmv         (current_nle_ctx->s_elemental_clog_msgmv)
 #include "mfndpos.h"
 #include <ctype.h>
 
-/* Misc-2 per-env redirects (mon.c) */
-#define animal_list       (current_nle_ctx->s_animal_list)
-#define animal_list_count (current_nle_ctx->s_animal_list_count)
-
-/* Monster-death flags per-env (were STATIC_VAR boolean). */
-#define vamp_rise_msg (current_nle_ctx->s_vamp_rise_msg)
-#define disintegested (current_nle_ctx->s_disintegested)
+STATIC_VAR boolean vamp_rise_msg, disintegested;
 
 STATIC_DCL void FDECL(sanity_check_single_mon, (struct monst *, BOOLEAN_P,
                                                 const char *));
@@ -45,7 +35,7 @@ STATIC_DCL void FDECL(deal_with_overcrowding, (struct monst *));
 /* note: duplicated in dog.c */
 #define LEVEL_SPECIFIC_NOCORPSE(mdat) \
     (Is_rogue_level(&u.uz)            \
-     || (level.lflags.graveyard && is_undead(mdat) && rn2(3)))
+     || (level.flags.graveyard && is_undead(mdat) && rn2(3)))
 
 #if 0
 /* part of the original warning code which was replaced in 3.3.1 */
@@ -679,14 +669,6 @@ struct monst *mon;
     if (rn2(NORMAL_SPEED) < mmove_adj)
         mmove += NORMAL_SPEED;
 
-    /* monster_speed_scale knob: scale monster movement points (1.0 = vanilla;
-     * affects monsters only — the hero's movement does not route through here). */
-    if (nle_tuning.monster_speed_scale != 1.0) {
-        mmove = (int) ((double) mmove * nle_tuning.monster_speed_scale + 0.5);
-        if (mmove < 0)
-            mmove = 0;
-    }
-
     return mmove;
 }
 
@@ -764,7 +746,7 @@ movemon()
         if (u.utotype
 #ifdef SAFERHANGUP
             /* or if the program has lost contact with the user */
-            || current_nle_ctx->program_state.done_hup
+            || program_state.done_hup
 #endif
             ) {
             somebody_can_move = FALSE;
@@ -899,7 +881,7 @@ register struct monst *mtmp;
         return 0;
 
     /* Eats topmost metal object if it is there */
-    for (otmp = level.objs[mtmp->mx][mtmp->my]; otmp;
+    for (otmp = level.objects[mtmp->mx][mtmp->my]; otmp;
          otmp = otmp->nexthere) {
         /* Don't eat indigestible/choking/inappropriate objects */
         if ((mtmp->data == &mons[PM_RUST_MONSTER] && !is_rustprone(otmp))
@@ -995,7 +977,7 @@ struct monst *mtmp;
     /* eat organic objects, including cloth and wood, if present;
        engulf others, except huge rocks and metal attached to player
        [despite comment at top, doesn't assume that eater is a g.cube] */
-    for (otmp = level.objs[mtmp->mx][mtmp->my]; otmp; otmp = otmp2) {
+    for (otmp = level.objects[mtmp->mx][mtmp->my]; otmp; otmp = otmp2) {
         otmp2 = otmp->nexthere;
 
         /* touch sensitive items */
@@ -1147,7 +1129,7 @@ register const char *str;
     if (mtmp->isshk && inhishop(mtmp))
         return FALSE;
 
-    for (otmp = level.objs[mtmp->mx][mtmp->my]; otmp; otmp = otmp2) {
+    for (otmp = level.objects[mtmp->mx][mtmp->my]; otmp; otmp = otmp2) {
         otmp2 = otmp->nexthere;
         /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (!str ? searches_for_item(mtmp, otmp)
@@ -1489,7 +1471,7 @@ long flag;
                     }
                     /* Note: ALLOW_SANCT only prevents movement, not
                        attack, into a temple. */
-                    if (level.lflags.has_temple && *in_rooms(nx, ny, TEMPLE)
+                    if (level.flags.has_temple && *in_rooms(nx, ny, TEMPLE)
                         && !*in_rooms(x, y, TEMPLE)
                         && in_your_sanctuary((struct monst *) 0, nx, ny)) {
                         if (!(flag & ALLOW_SANCT))
@@ -1602,7 +1584,7 @@ struct monst *magr, /* monster that is currently deciding where to move */
         /* no displacing grid bugs diagonally */
         && !(magr->mx != mdef->mx && magr->my != mdef->my
              && NODIAG(monsndx(pd)))
-        /* no displacing trapped monsters or current_nle_ctx->multi-location longworms */
+        /* no displacing trapped monsters or multi-location longworms */
         && !mdef->mtrapped && (!mdef->wormno || !count_wsegs(mdef))
         /* riders can move anything; others, same size or smaller only */
         && (is_rider(pa) || pa->msize >= pd->msize))
@@ -1815,28 +1797,7 @@ struct monst *m;
         /* [no action needed for x->mcorpsenm] */
 
         free((genericptr_t) x);
-        /* Root fix (replaces the whack-a-mole has_eshk()
-         * guards at every ESHK callsite): under NLE_USE_ARENA_FREE the
-         * free()s above are no-ops — the mextra slot and its sub-structs
-         * remain mapped in the never-reclaimed arena. Nulling m->mextra
-         * here used to be correct under libc malloc (clears a dangling
-         * pointer) but with arena allocation it breaks the invariant
-         * `isshk => has_eshk(m)` (mon.c:82 panics on this) WITHOUT
-         * actually freeing anything. The downstream cost is a parade
-         * of crashes (segfault at 0x18/0x35) in shop_keeper, dopay,
-         * shkname, shkname_is_pname, done_in_by, doset, polymon — all
-         * paths that branch on mtmp->isshk and immediately deref ESHK
-         * without checking has_eshk first.
-         *
-         * Under the arena allocator, leaving m->mextra pointing at the
-         * still-live (leaked) slot preserves the invariant and stops
-         * those crashes at the root. The cost is bounded: we already
-         * leak this memory across the entire game's arena lifetime;
-         * not nulling the field doesn't change the leak amount, just
-         * keeps the pointer valid until process exit. */
-#ifndef NLE_USE_ARENA_FREE
         m->mextra = (struct mextra *) 0;
-#endif
     }
 }
 
@@ -2381,7 +2342,7 @@ int xkill_flags; /* 1: suppress message, 2: suppress corpse, 4: pacifist */
 
     mtmp->mhp = 0; /* caller will usually have already done this */
     if (!noconduct) /* KMH, conduct */
-        u.uconduct.killcount++;
+        u.uconduct.killer++;
 
     if (!nomsg) {
         boolean namedpet = has_mname(mtmp) && !Hallucination;
@@ -2425,7 +2386,7 @@ int xkill_flags; /* 1: suppress message, 2: suppress corpse, 4: pacifist */
     vamp_rise_msg = FALSE; /* might get set in mondead(); only checked below */
     disintegested = nocorpse; /* alternate vamp_rise message needed if true */
     /* dispose of monster and make cadaver */
-    if (current_nle_ctx->stoned)
+    if (stoned)
         monstone(mtmp);
     else
         mondead(mtmp);
@@ -2436,7 +2397,7 @@ int xkill_flags; /* 1: suppress message, 2: suppress corpse, 4: pacifist */
          * lifesaved_monster() since the message appears only when _you_
          * kill it (as opposed to visible lifesaving which always appears).
          */
-        current_nle_ctx->stoned = FALSE;
+        stoned = FALSE;
         if (!cansee(x, y) && !vamp_rise_msg)
             pline("Maybe not...");
         return;
@@ -2445,8 +2406,8 @@ int xkill_flags; /* 1: suppress message, 2: suppress corpse, 4: pacifist */
     mdat = mtmp->data; /* note: mondead can change mtmp->data */
     mndx = monsndx(mdat);
 
-    if (current_nle_ctx->stoned) {
-        current_nle_ctx->stoned = FALSE;
+    if (stoned) {
+        stoned = FALSE;
         goto cleanup;
     }
 
@@ -2689,7 +2650,7 @@ elemental_clog(mon)
 struct monst *mon;
 {
     int m_lev = 0;
-    /* Msgmv migrated to nle_ctx_t */
+    static long msgmv = 0L;
     struct monst *mtmp, *m1, *m2, *m3, *m4, *m5, *zm;
 
     if (In_endgame(&u.uz)) {
@@ -3184,7 +3145,7 @@ restartcham()
     }
 }
 
-/* called when current_nle_ctx->restoring a monster from a saved level; protection
+/* called when restoring a monster from a saved level; protection
    against shape-changing might be different now than it was at the
    time the level was saved. */
 void
@@ -3250,7 +3211,7 @@ struct monst *mtmp;
     } else if (mtmp->data->mlet == S_EEL) {
         undetected = (is_pool(x, y) && !Is_waterlevel(&u.uz));
     } else if (hides_under(mtmp->data) && OBJ_AT(x, y)) {
-        struct obj *otmp = level.objs[x][y];
+        struct obj *otmp = level.objects[x][y];
 
         /* most monsters won't hide under cockatrice corpse */
         if (otmp->nexthere || otmp->otyp != CORPSE
@@ -3291,28 +3252,32 @@ struct monst *mon;
     }
 }
 
-/* animal_list / animal_list_count migrated to nle_ctx_t.s_animal_list[_count].
- * The buffer is allocated lazily by mon_animal_list.
- * Macros at the top of this file rewrite both names to current_nle_ctx fields. */
+static short *animal_list = 0; /* list of PM values for animal monsters */
+static int animal_list_count;
 
 void
 mon_animal_list(construct)
 boolean construct;
 {
     if (construct) {
-        if (animal_list) return;       /* already built process-wide */
         short animal_temp[SPECIAL_PM];
         int i, n;
+
+        /* if (animal_list) impossible("animal_list already exists"); */
+
         for (n = 0, i = LOW_PM; i < SPECIAL_PM; i++)
             if (is_animal(&mons[i]))
                 animal_temp[n++] = i;
+        /* if (n == 0) animal_temp[n++] = NON_PM; */
+
         animal_list = (short *) alloc(n * sizeof *animal_list);
         (void) memcpy((genericptr_t) animal_list, (genericptr_t) animal_temp,
                       n * sizeof *animal_list);
         animal_list_count = n;
-    } else {
-        /* Per-env release intentionally a no-op: the list is shared and
-         * derived from const mons[], so it's safe to leak. */
+    } else { /* release */
+        if (animal_list)
+            free((genericptr_t) animal_list), animal_list = 0;
+        animal_list_count = 0;
     }
 }
 

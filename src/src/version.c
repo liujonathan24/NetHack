@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "dlb.h"
 #include "date.h"
 /*
@@ -275,16 +274,8 @@ boolean complain;
             != (VERSION_FEATURES & ~IGNORED_FEATURES)
 #endif
         || version_data->entity_count != VERSION_SANITY1
-#ifndef __EMSCRIPTEN__
-        /* WASM: struct_sizes{1,2} are 64-bit sanity values but the version_info
-         * fields are `unsigned long` = 4 bytes here, so the stored values are
-         * truncated and this ABI-drift guard is unreliable. The data files are
-         * regenerated with the wasm tools (same ABI as the engine), so the
-         * actual serialized structs are correct; skip the struct-size gate. */
         || version_data->struct_sizes1 != VERSION_SANITY2
-        || version_data->struct_sizes2 != VERSION_SANITY3
-#endif
-        ) {
+        || version_data->struct_sizes2 != VERSION_SANITY3) {
         if (complain)
             pline("Configuration incompatibility for file \"%s\".", filename);
         return FALSE;

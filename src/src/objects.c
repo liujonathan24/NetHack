@@ -61,11 +61,7 @@ struct monst { struct monst *dummy; };  /* lint: struct obj's union */
                cost,sdam,ldam,oc1,oc2,nut,color)  { obj }
 #define None (char *) 0 /* less visual distraction for 'no description' */
 
-#ifdef NLE_OBJECTS_GLOBAL
-struct objdescr obj_descr[] =
-#else
-const struct objdescr obj_descr_baseline[] =
-#endif
+NEARDATA struct objdescr obj_descr[] =
 #else
 /* second pass -- object definitions */
 #define BITS(nmkn,mrg,uskn,ctnr,mgc,chrg,uniq,nwsh,big,tuf,dir,sub,mtrl) \
@@ -79,11 +75,7 @@ const struct objdescr obj_descr_baseline[] =
 #define HARDGEM(n) (0)
 #endif
 
-#ifdef NLE_OBJECTS_GLOBAL
-struct objclass objects[] =
-#else
-const struct objclass objects_baseline[] =
-#endif
+NEARDATA struct objclass objects[] =
 #endif
 {
 /* dummy object[0] -- description [2nd arg] *must* be NULL */

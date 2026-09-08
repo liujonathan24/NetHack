@@ -4,12 +4,9 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "artifact.h"
 
-/* Combat tick per-env (mhitu.c statics). */
-#define mon_currwep (current_nle_ctx->s_mon_currwep)
-#define dieroll     (current_nle_ctx->s_dieroll_mhitu)
+STATIC_VAR NEARDATA struct obj *mon_currwep = (struct obj *) 0;
 
 STATIC_DCL boolean FDECL(u_slip_free, (struct monst *, struct attack *));
 STATIC_DCL int FDECL(passiveum, (struct permonst *, struct monst *,
@@ -27,8 +24,7 @@ STATIC_DCL void FDECL(hitmsg, (struct monst *, struct attack *));
 
 /* See comment in mhitm.c.  If we use this a lot it probably should be */
 /* changed to a parameter to mhitu. */
-/* (dieroll migrated to current_nle_ctx->s_dieroll_mhitu
- * via macro at top of file; original `static int dieroll;` removed.) */
+static int dieroll;
 
 STATIC_OVL void
 hitmsg(mtmp, mattk)
@@ -494,7 +490,7 @@ register struct monst *mtmp;
                  * parallelism to work, we can't rephrase it, so we
                  * zap the "laid by you" momentarily instead.
                  */
-                struct obj *obj = level.objs[u.ux][u.uy];
+                struct obj *obj = level.objects[u.ux][u.uy];
 
                 if (obj || u.umonnum == PM_TRAPPER
                     || (youmonst.data->mlet == S_EEL
@@ -517,7 +513,7 @@ register struct monst *mtmp;
                         pline(
                           "Wait, %s!  There's a %s named %s hiding under %s!",
                               m_monnam(mtmp), youmonst.data->mname, plname,
-                              doname(level.objs[u.ux][u.uy]));
+                              doname(level.objects[u.ux][u.uy]));
                     if (obj)
                         obj->spe = save_spe;
                 } else
@@ -561,7 +557,7 @@ register struct monst *mtmp;
             pline("Wait, %s!  That %s is really %s named %s!", m_monnam(mtmp),
                   mimic_obj_name(&youmonst), an(mons[u.umonnum].mname),
                   plname);
-        if (current_nle_ctx->multi < 0) { /* this should always be the case */
+        if (multi < 0) { /* this should always be the case */
             char buf[BUFSZ];
 
             Sprintf(buf, "You appear to be %s again.",
@@ -575,7 +571,7 @@ register struct monst *mtmp;
     /*  Work out the armor class differential   */
     tmp = AC_VALUE(u.uac) + 10; /* tmp ~= 0 - 20 */
     tmp += mtmp->m_lev;
-    if (current_nle_ctx->multi < 0)
+    if (multi < 0)
         tmp += 4;
     if ((Invis && !perceives(mdat)) || !mtmp->mcansee)
         tmp -= 2;
@@ -804,7 +800,7 @@ register struct monst *mtmp;
         /* give player a chance of waking up before dying -kaa */
         if (sum[i] == 1) { /* successful attack */
             if (u.usleep && u.usleep < monstermoves && !rn2(10)) {
-                current_nle_ctx->multi = -1;
+                multi = -1;
                 nomovemsg = "The combat suddenly awakens you.";
             }
         }
@@ -945,7 +941,7 @@ register struct attack *mattk;
             struct obj *obj;
             const char *what;
 
-            if ((obj = level.objs[mtmp->mx][mtmp->my]) != 0) {
+            if ((obj = level.objects[mtmp->mx][mtmp->my]) != 0) {
                 if (Blind && !obj->dknown)
                     what = something;
                 else if (is_pool(mtmp->mx, mtmp->my) && !Underwater)
@@ -1107,7 +1103,7 @@ register struct attack *mattk;
         break;
     case AD_SLEE:
         hitmsg(mtmp, mattk);
-        if (uncancelled && current_nle_ctx->multi >= 0 && !rn2(5)) {
+        if (uncancelled && multi >= 0 && !rn2(5)) {
             if (Sleep_resistance)
                 break;
             fall_asleep(-rnd(10), TRUE);
@@ -1181,7 +1177,7 @@ register struct attack *mattk;
         break;
     case AD_PLYS:
         hitmsg(mtmp, mattk);
-        if (uncancelled && current_nle_ctx->multi >= 0 && !rn2(3)) {
+        if (uncancelled && multi >= 0 && !rn2(3)) {
             if (Free_action) {
                 You("momentarily stiffen.");
             } else {
@@ -1191,7 +1187,7 @@ register struct attack *mattk;
                     You("are frozen by %s!", mon_nam(mtmp));
                 nomovemsg = You_can_move_again;
                 nomul(-rnd(10));
-                current_nle_ctx->multi_reason = "paralyzed by a monster";
+                multi_reason = "paralyzed by a monster";
                 exercise(A_DEX, FALSE);
             }
         }
@@ -2202,7 +2198,7 @@ struct attack *mattk;
             }
             if (useeit)
                 pline("%s is turned to stone!", Monnam(mtmp));
-            current_nle_ctx->stoned = TRUE;
+            stoned = TRUE;
             killed(mtmp);
 
             if (!DEADMONSTER(mtmp))
@@ -2316,7 +2312,7 @@ struct attack *mattk;
 #ifdef PM_BEHOLDER /* work in progress */
     case AD_SLEE:
         if (canseemon(mtmp) && couldsee(mtmp->mx, mtmp->my) && mtmp->mcansee
-            && current_nle_ctx->multi >= 0 && !rn2(5) && !Sleep_resistance) {
+            && multi >= 0 && !rn2(5) && !Sleep_resistance) {
             if (cancelled) {
                 react = 6;                      /* "tired" */
                 already = (mtmp->mfrozen != 0); /* can't happen... */
@@ -2364,13 +2360,6 @@ mdamageu(mtmp, n)
 struct monst *mtmp;
 int n;
 {
-    /* dmg_to_player_scale knob (1.0 = vanilla; 0.0 = player takes no monster
-     * damage). Guarded so the default path is byte-identical to vanilla. */
-    if (nle_tuning.dmg_to_player_scale != 1.0) {
-        n = (int) ((double) n * nle_tuning.dmg_to_player_scale + 0.5);
-        if (n < 0)
-            n = 0;
-    }
     context.botl = 1;
     if (Upolyd) {
         u.mh -= n;
@@ -2854,7 +2843,7 @@ struct attack *mattk;
                 return 1;
             }
             pline("%s turns to stone!", Monnam(mtmp));
-            current_nle_ctx->stoned = 1;
+            stoned = 1;
             xkilled(mtmp, XKILL_NOMSG);
             if (!DEADMONSTER(mtmp))
                 return 1;

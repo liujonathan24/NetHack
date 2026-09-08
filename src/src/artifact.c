@@ -4,46 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
-
-/* Per-env return buffer */
-#define resbuf (current_nle_ctx->s_artifact_resbuf)
 #include "artifact.h"
 #include "artilist.h"
-
-/* Per-env artifact table — macro to ctx field; init_nle calls
- * nle_artilist_init() to allocate + seed it from artilist_baseline. */
-#define artilist (current_nle_ctx->s_artilist_p)
-
-/* Per-env artifact-existence + touch-blast flag.
- * artiexist[] was the biggest cross-env leak source: env A creating
- * Excalibur set artiexist[ART_EXCALIBUR] for every env in the process,
- * so env B's universe could never generate Excalibur (or could re-
- * generate it after env A's slot was reused). Now per-env. */
-#define artiexist     (current_nle_ctx->s_artiexist)
-#define touch_blasted (current_nle_ctx->s_touch_blasted)
-/* Artidisco[] per-env via nle_ctx_t — was STATIC_OVL xchar
- * artidisco[NROFARTIFACTS] in this file; init_artifacts() memset()s on
- * every reset (racing with discover_artifact() on concurrent envs). */
-#define artidisco     (current_nle_ctx->s_artidisco)
-
-/* Catch drift in the generated NROFARTIFACTS — nle.h sizes
- * s_artiexist[35] as 1 + NROFARTIFACTS + 1 with NROFARTIFACTS == 33. */
-_Static_assert(NROFARTIFACTS == 33,
-               "s_artiexist[35] assumes NROFARTIFACTS == 33; "
-               "update vendor/nle/src/include/nle.h if onames.h changed.");
-
-/* Called once per env, from init_nle. */
-void
-nle_artilist_init(struct artifact **target)
-{
-    size_t n = sizeof(artilist_baseline) / sizeof(artilist_baseline[0]);
-    struct artifact *p = (struct artifact *) alloc(n * sizeof(struct artifact));
-    if (p) {
-        memcpy(p, artilist_baseline, n * sizeof(struct artifact));
-    }
-    *target = p;
-}
 
 /*
  * Note:  both artilist[] and artiexist[] have a dummy element #0,
@@ -52,8 +14,7 @@ nle_artilist_init(struct artifact **target)
  *        the contents, just the total size.
  */
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+extern boolean notonhead; /* for long worms */
 
 #define get_artifact(o) \
     (((o) && (o)->oartifact) ? &artilist[(int) (o)->oartifact] : 0)
@@ -81,10 +42,12 @@ STATIC_DCL int FDECL(count_surround_traps, (int, int));
 #define FATAL_DAMAGE_MODIFIER 200
 
 /* coordinate effects from spec_dbon() with messages in artifact_hit() */
-#define spec_dbon_applies (current_nle_ctx->s_spec_dbon_applies)
+STATIC_OVL int spec_dbon_applies = 0;
 
-/* artiexist[] migrated to nle_ctx_t — see macros above. */
-/* artidisco[] migrated to nle_ctx_t — see macros above. */
+/* flags including which artifacts have already been created */
+static boolean artiexist[1 + NROFARTIFACTS + 1];
+/* and a discovery list for them (no dummy first entry here) */
+STATIC_OVL xchar artidisco[NROFARTIFACTS];
 
 STATIC_DCL void NDECL(hack_artifacts);
 STATIC_DCL boolean FDECL(attacks, (int, struct obj *));
@@ -573,11 +536,11 @@ long wp_mask;
     if (spfx & SPFX_HALRES) {
         /* make_hallucinated must (re)set the mask itself to get
          * the display right */
-        /* current_nle_ctx->restoring needed because this is the only artifact intrinsic
+        /* restoring needed because this is the only artifact intrinsic
          * that can print a message--need to guard against being printed
-         * when current_nle_ctx->restoring a game
+         * when restoring a game
          */
-        (void) make_hallucinated((long) !on, current_nle_ctx->restoring ? FALSE : TRUE,
+        (void) make_hallucinated((long) !on, restoring ? FALSE : TRUE,
                                  wp_mask);
     }
     if (spfx & SPFX_ESP) {
@@ -672,7 +635,7 @@ long wp_mask;
 /* touch_artifact()'s return value isn't sufficient to tell whether it
    dished out damage, and tracking changes to u.uhp, u.mh, Lifesaved
    when trying to avoid second wounding is too cumbersome */
-/* touch_blasted migrated to nle_ctx_t — macro above. */
+STATIC_VAR boolean touch_blasted; /* for retouch_object() */
 
 /*
  * creature (usually hero) tries to touch (pick up or wield) an artifact obj.
@@ -1101,7 +1064,7 @@ char *hittee;              /* target's name: "you" or mon_nam(mdef) */
                 resisted = TRUE;
             } else {
                 nomul(-3);
-                current_nle_ctx->multi_reason = "being scared stiff";
+                multi_reason = "being scared stiff";
                 nomovemsg = "";
                 if (magr && magr == u.ustuck && sticks(youmonst.data)) {
                     u.ustuck = (struct monst *) 0;
@@ -1432,8 +1395,8 @@ int dieroll; /* needed for Magicbane and vorpal blades */
     return FALSE;
 }
 
-static const char recharge_type[] = { ALLOW_COUNT, ALL_CLASSES, 0 };
-static const char invoke_types[] = { ALL_CLASSES, 0 };
+static NEARDATA const char recharge_type[] = { ALLOW_COUNT, ALL_CLASSES, 0 };
+static NEARDATA const char invoke_types[] = { ALL_CLASSES, 0 };
 /* #invoke: an "ugly check" filters out most objects */
 
 /* the #invoke command */
@@ -1556,7 +1519,7 @@ struct obj *obj;
         case CREATE_PORTAL: {
             int i, num_ok_dungeons, last_ok_dungeon = 0;
             d_level newlev;
-            #define n_dgns (current_nle_ctx->s_n_dgns) /* was extern from dungeon.c */
+            extern int n_dgns; /* from dungeon.c */
             winid tmpwin = create_nhwindow(NHW_MENU);
             anything any;
 
@@ -1805,31 +1768,27 @@ STATIC_OVL unsigned long
 abil_to_spfx(abil)
 long *abil;
 {
-    /* Refactor stage 4: was 'long *abil' which required static
-     * initialization with &Eprop addresses. Since 'u' is now per-instance
-     * heap-alloc, those aren't compile-time constants. Store the property
-     * index instead; compute the extrinsic pointer at comparison time. */
     static const struct abil2spfx_tag {
-        int prop_idx;
+        long *abil;
         unsigned long spfx;
     } abil2spfx[] = {
-        { SEARCHING, SPFX_SEARCH },
-        { HALLUC_RES, SPFX_HALRES },
-        { TELEPAT, SPFX_ESP },
-        { STEALTH, SPFX_STLTH },
-        { REGENERATION, SPFX_REGEN },
-        { TELEPORT_CONTROL, SPFX_TCTRL },
-        { WARN_OF_MON, SPFX_WARN },
-        { WARNING, SPFX_WARN },
-        { ENERGY_REGENERATION, SPFX_EREGEN },
-        { HALF_SPDAM, SPFX_HSPDAM },
-        { HALF_PHDAM, SPFX_HPHDAM },
-        { REFLECTING, SPFX_REFLECT },
+        { &ESearching, SPFX_SEARCH },
+        { &EHalluc_resistance, SPFX_HALRES },
+        { &ETelepat, SPFX_ESP },
+        { &EStealth, SPFX_STLTH },
+        { &ERegeneration, SPFX_REGEN },
+        { &ETeleport_control, SPFX_TCTRL },
+        { &EWarn_of_mon, SPFX_WARN },
+        { &EWarning, SPFX_WARN },
+        { &EEnergy_regeneration, SPFX_EREGEN },
+        { &EHalf_spell_damage, SPFX_HSPDAM },
+        { &EHalf_physical_damage, SPFX_HPHDAM },
+        { &EReflecting, SPFX_REFLECT },
     };
     int k;
 
     for (k = 0; k < SIZE(abil2spfx); k++) {
-        if (&u.uprops[abil2spfx[k].prop_idx].extrinsic == abil)
+        if (abil2spfx[k].abil == abil)
             return abil2spfx[k].spfx;
     }
     return 0L;
@@ -1917,7 +1876,7 @@ glow_verb(count, ingsfx)
 int count; /* 0 means blind rather than no applicable creatures */
 boolean ingsfx;
 {
-    /* Resbuf migrated to nle_ctx_t */
+    static char resbuf[20];
 
     Strcpy(resbuf, glow_verbs[glow_strength(count)]);
     /* ing_suffix() will double the last consonant for all the words
@@ -1930,20 +1889,20 @@ boolean ingsfx;
 /* use for warning "glow" for Sting, Orcrist, and Grimtooth */
 void
 Sting_effects(orc_count)
-int orc_count; /* new count (current_nle_ctx->warn_obj_cnt is old count); -1 is a flag value */
+int orc_count; /* new count (warn_obj_cnt is old count); -1 is a flag value */
 {
     if (uwep
         && (uwep->oartifact == ART_STING
             || uwep->oartifact == ART_ORCRIST
             || uwep->oartifact == ART_GRIMTOOTH)) {
-        int oldstr = glow_strength(current_nle_ctx->warn_obj_cnt),
+        int oldstr = glow_strength(warn_obj_cnt),
             newstr = glow_strength(orc_count);
 
-        if (orc_count == -1 && current_nle_ctx->warn_obj_cnt > 0) {
+        if (orc_count == -1 && warn_obj_cnt > 0) {
             /* -1 means that blindness has just been toggled; give a
                'continue' message that eventual 'stop' message will match */
             pline("%s is %s.", bare_artifactname(uwep),
-                  glow_verb(Blind ? 0 : current_nle_ctx->warn_obj_cnt, TRUE));
+                  glow_verb(Blind ? 0 : warn_obj_cnt, TRUE));
         } else if (newstr > 0 && newstr != oldstr) {
             /* 'start' message */
             if (!Blind)
@@ -1954,10 +1913,10 @@ int orc_count; /* new count (current_nle_ctx->warn_obj_cnt is old count); -1 is 
             else if (oldstr == 0) /* quivers */
                 pline("%s %s slightly.", bare_artifactname(uwep),
                       otense(uwep, glow_verb(0, FALSE)));
-        } else if (orc_count == 0 && current_nle_ctx->warn_obj_cnt > 0) {
+        } else if (orc_count == 0 && warn_obj_cnt > 0) {
             /* 'stop' message */
             pline("%s stops %s.", bare_artifactname(uwep),
-                  glow_verb(Blind ? 0 : current_nle_ctx->warn_obj_cnt, TRUE));
+                  glow_verb(Blind ? 0 : warn_obj_cnt, TRUE));
         }
     }
 }
@@ -2078,8 +2037,7 @@ void
 retouch_equipment(dropflag)
 int dropflag; /* 0==don't drop, 1==drop all, 2==drop weapon */
 {
-    /* Per-env recursion guard. */
-    #define nesting (current_nle_ctx->s_artifact_nesting)
+    static int nesting = 0; /* recursion control */
     struct obj *obj;
     boolean dropit, had_gloves = (uarmg != 0);
     int had_rings = (!!uleft + !!uright);
@@ -2143,8 +2101,7 @@ int dropflag; /* 0==don't drop, 1==drop all, 2==drop weapon */
         clear_bypasses(); /* reset upon final exit */
 }
 
-/* Per-env (was __thread). Trap warning counter. */
-#define mkot_trap_warn_count (current_nle_ctx->s_mkot_trap_warn_count)
+static int mkot_trap_warn_count = 0;
 
 STATIC_OVL int
 count_surround_traps(x, y)
@@ -2176,7 +2133,7 @@ int x, y;
                 ++ret;
                 continue;
             }
-            for (otmp = level.objs[dx][dy]; otmp; otmp = otmp->nexthere)
+            for (otmp = level.objects[dx][dy]; otmp; otmp = otmp->nexthere)
                 if (Is_container(otmp) && otmp->otrapped) {
                     ++ret; /* we're counting locations, so just */
                     break; /* count the first one in a pile     */

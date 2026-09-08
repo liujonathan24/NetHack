@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 STATIC_DCL boolean FDECL(clear_fcorr, (struct monst *, BOOLEAN_P));
 STATIC_DCL void FDECL(blackout, (int, int));
@@ -51,7 +50,7 @@ boolean forceshow;
     register int fcx, fcy, fcbeg;
     struct monst *mtmp;
     boolean sawcorridor = FALSE,
-            silently = current_nle_ctx->program_state.stopprint ? TRUE : FALSE;
+            silently = program_state.stopprint ? TRUE : FALSE;
     struct egd *egrd = EGD(grd);
     struct trap *trap;
     struct rm *lev;
@@ -425,7 +424,7 @@ invault()
             mongone(guard);
             return;
         }
-        if (Strangled || is_silent(youmonst.data) || current_nle_ctx->multi < 0) {
+        if (Strangled || is_silent(youmonst.data) || multi < 0) {
             /* [we ought to record whether this this message has already
                been given in order to vary it upon repeat visits, but
                discarding the monster and its egd data renders that hard] */
@@ -438,7 +437,7 @@ invault()
         }
 
         stop_occupation(); /* if occupied, stop it *now* */
-        if (current_nle_ctx->multi > 0) {
+        if (multi > 0) {
             nomul(0);
             unmul((char *) 0);
         }
@@ -820,7 +819,7 @@ register struct monst *grd;
                 return -1;
             }
             /* not fair to get mad when (s)he's fainted or paralyzed */
-            if (!is_fainted() && current_nle_ctx->multi >= 0)
+            if (!is_fainted() && multi >= 0)
                 egrd->warncnt++;
             return 0;
         }

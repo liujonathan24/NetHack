@@ -4,18 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
-#include <stdatomic.h>
-
-/* PufferLib vecenv has many pthreads, and each new env calls
- * choose_windows() during its nle_start. The body of choose_windows()
- * rewrites the global `windowprocs` struct. Other pthreads that are
- * mid-c_step can read torn function pointers and indirect-call to
- * garbage. Per-env copies aren't needed (every env uses the same window
- * port `rl`), so we make the init idempotent with an atomic CAS:
- * the first caller wins and performs the assignment; subsequent
- * callers spin briefly until state==2 (ready) then return. */
-static atomic_int windowprocs_init_state = 0;  /* 0=uninit, 1=initializing, 2=ready */
 #ifdef TTY_GRAPHICS
 #include "wintty.h"
 #endif
@@ -58,7 +46,7 @@ extern struct window_procs Gnome_procs;
 extern struct window_procs mswin_procs;
 #endif
 #ifdef RL_GRAPHICS
-extern const struct window_procs rl_procs;
+extern struct window_procs rl_procs;
 #endif
 #ifdef WINCHAIN
 extern struct window_procs chainin_procs;
@@ -90,38 +78,10 @@ STATIC_DCL int FDECL(dump_select_menu, (winid, int, MENU_ITEM_P **));
 STATIC_DCL void FDECL(dump_putstr, (winid, int, const char *));
 #endif /* DUMPLOG */
 
-/* Per-env windows.c state. Replaces file-scope statics. */
-struct nle_windows_state {
-    struct window_procs _dumplog_windowprocs_backup;
-    FILE *_dumplog_file;
-    time_t _dumplog_now;
-    void (*_previnterface_exit_nhwindows)(const char *);
-};
-static struct nle_windows_state *
-nle_windows(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_windows_state *s = (struct nle_windows_state *) current_nle_ctx->s_windows_state;
-    if (!s) {
-        s = (struct nle_windows_state *) nle_arena_calloc(1, sizeof(struct nle_windows_state));
-        current_nle_ctx->s_windows_state = s;
-    }
-    return s;
-}
-#define dumplog_windowprocs_backup (nle_windows()->_dumplog_windowprocs_backup)
-#define dumplog_file               (nle_windows()->_dumplog_file)
-#define dumplog_now                (nle_windows()->_dumplog_now)
-#define previnterface_exit_nhwindows (nle_windows()->_previnterface_exit_nhwindows)
-
-/* windowprocs is a table of function pointers set ONCE at init time
- * (windows.c:263 — `windowprocs = *winchoices[i].procs;`) and read
- * thereafter. Dropping NEARDATA makes it a single process-shared
- * symbol. Init runs inside `omp critical(nle_init)` so the one-time
- * write isn't racy. */
 #ifdef HANGUPHANDLING
 volatile
 #endif
-    struct window_procs windowprocs;
+    NEARDATA struct window_procs windowprocs;
 
 #ifdef WINCHAIN
 #define CHAINR(x) , x
@@ -232,12 +192,7 @@ wl_addtail(struct winlink *wl)
 }
 #endif /* WINCHAIN */
 
-/* Per-env. Was __thread; OMP coroutine-resume hazard
- * during window-system init on worker threads. */
-#define last_winchoice \
-    ((struct win_choices *) current_nle_ctx->s_last_winchoice)
-#define set_last_winchoice(v) \
-    (current_nle_ctx->s_last_winchoice = (void *)(v))
+static struct win_choices *last_winchoice = 0;
 
 boolean
 genl_can_suspend_no(VOID_ARGS)
@@ -298,23 +253,6 @@ const char *s;
     int i;
     char *tmps = 0;
 
-    /* Idempotent init -- only the first caller assigns
-     * windowprocs; later callers (other vecenv envs in other pthreads)
-     * spin until ready and return without touching the global. */
-    {
-        int expected = 0;
-        if (!atomic_compare_exchange_strong(&windowprocs_init_state,
-                                            &expected, 1)) {
-            /* Another env is initializing or has already finished. Spin
-             * briefly until it publishes state==2 (ready). Init is fast
-             * (just a struct copy + small ini_routine call). */
-            while (atomic_load(&windowprocs_init_state) != 2) {
-                /* busy-wait */
-            }
-            return;
-        }
-    }
-
     for (i = 0; winchoices[i].procs; i++) {
         if ('+' == winchoices[i].procs->name[0])
             continue;
@@ -327,10 +265,7 @@ const char *s;
                 (*last_winchoice->ini_routine)(WININIT_UNDO);
             if (winchoices[i].ini_routine)
                 (*winchoices[i].ini_routine)(WININIT);
-            set_last_winchoice(&winchoices[i]);
-            /* Signal other pthreads that windowprocs is now
-             * fully initialized so their spin-wait can complete. */
-            atomic_store(&windowprocs_init_state, 2);
+            last_winchoice = &winchoices[i];
             return;
         }
     }
@@ -385,10 +320,6 @@ const char *s;
     if (windowprocs.win_raw_print == def_raw_print
             || WINDOWPORT("safe-startup"))
         nh_terminate(EXIT_SUCCESS);
-
-    /* Fallback exit path -- still mark ready so other
-     * spinning pthreads can proceed. */
-    atomic_store(&windowprocs_init_state, 2);
 }
 
 #ifdef WINCHAIN
@@ -666,7 +597,7 @@ static struct window_procs hup_procs = {
     genl_can_suspend_no,
 };
 
-/* previnterface_exit_nhwindows — migrated to nle_windows_state */
+static void FDECL((*previnterface_exit_nhwindows), (const char *)) = 0;
 
 /* hangup has occurred; switch to no-op user interface */
 void
@@ -950,19 +881,10 @@ const char *string UNUSED;
 /* genl backward compat stuff                                               */
 /****************************************************************************/
 
-/* These four arrays are touched on every status update and on every
- * env-death tty walk. They were process-global, which races between
- * threads stepping different envs concurrently. status_vals also
- * holds malloc'd pointers per env, so two envs would overwrite each
- * other's allocations. TLS each, per-thread isolation matches the
- * NEARDATA pattern used elsewhere in the refactor. */
-/* Per-env status-line state migrated to nle_ctx_t. Macros are defined
- * here (file-local) since these symbols are also extern'd from
- * wintty.c. */
-#define status_fieldnm       (current_nle_ctx->s_status_fieldnm)
-#define status_fieldfmt      (current_nle_ctx->s_status_fieldfmt)
-#define status_vals          (current_nle_ctx->s_status_vals)
-#define status_activefields  (current_nle_ctx->s_status_activefields)
+const char *status_fieldnm[MAXBLSTATS];
+const char *status_fieldfmt[MAXBLSTATS];
+char *status_vals[MAXBLSTATS];
+boolean status_activefields[MAXBLSTATS];
 
 void
 genl_status_init()
@@ -1187,10 +1109,11 @@ unsigned long *colormasks UNUSED;
     putmixed(WIN_STATUS, 0, newbot2); /* putmixed() due to GOLD glyph */
 }
 
-/* dumplog_windowprocs_backup, dumplog_file — migrated to nle_windows_state */
+STATIC_VAR struct window_procs dumplog_windowprocs_backup;
+STATIC_VAR FILE *dumplog_file;
 
 #ifdef DUMPLOG
-/* dumplog_now — migrated to nle_windows_state */
+STATIC_VAR time_t dumplog_now;
 
 char *
 dump_fmtstr(fmt, buf, fullsubs)

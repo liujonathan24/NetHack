@@ -64,15 +64,7 @@ struct permonst {
 #endif
 };
 
-/* mons[] is the master monster table, const after process init.
- * The role_init quest-leader/guardian/nemesis writes have been removed
- * (see role.c) — inspection showed the source data in monst.c already
- * contains the right MS_LEADER/MS_NEMESIS, M2_PEACEFUL, etc. flags.
- * The only genuine per-game change was `maligntyp = alignmnt * 3` and
- * that was equivalent to the source value for PufferLib's default
- * (Monk-Neutral). Being const lands mons[] in .data.rel.ro, mprotected
- * shared-safe across envs in a single libnethack instance (vecenv). */
-extern const struct permonst mons[];
+extern NEARDATA struct permonst mons[]; /* the master list of monster types */
 
 #define VERY_SLOW 3
 #define SLOW_SPEED 9

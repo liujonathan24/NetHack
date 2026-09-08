@@ -9,11 +9,9 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 #include "artifact.h"
 
-/* Scr_known per-env (was `extern boolean known; from read.c`). */
-#define scr_known (current_nle_ctx->s_read_known)
+extern boolean known; /* from read.c */
 
 STATIC_DCL boolean NDECL(unconstrain_map);
 STATIC_DCL void NDECL(reconstrain_map);
@@ -239,13 +237,13 @@ unsigned material;
     if (glyph_is_object(glyph)) {
         /* there's some object shown here */
         if (oclass == ALL_CLASSES) {
-            return (boolean) !(level.objs[x][y] /* stale if nothing here */
+            return (boolean) !(level.objects[x][y] /* stale if nothing here */
                                || ((mtmp = m_at(x, y)) != 0 && mtmp->minvent));
         } else {
             if (material
                 && objects[glyph_to_obj(glyph)].oc_material == material) {
                 /* object shown here is of interest because material matches */
-                for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere)
+                for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
                     if (o_material(otmp, GOLD))
                         return FALSE;
                 /* didn't find it; perhaps a monster is carrying it */
@@ -259,7 +257,7 @@ unsigned material;
             }
             if (oclass && objects[glyph_to_obj(glyph)].oc_class == oclass) {
                 /* obj shown here is of interest because its class matches */
-                for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere)
+                for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
                     if (o_in(otmp, oclass))
                         return FALSE;
                 /* didn't find it; perhaps a monster is carrying it */
@@ -311,7 +309,7 @@ register struct obj *sobj;
     boolean stale, ugold = FALSE, steedgold = FALSE;
     int ter_typ = TER_DETECT | TER_OBJ;
 
-    scr_known = stale = clear_stale_map(COIN_CLASS,
+    known = stale = clear_stale_map(COIN_CLASS,
                                     (unsigned) (sobj->blessed ? GOLD : 0));
 
     /* look for gold carried by monsters (might be in a container) */
@@ -322,7 +320,7 @@ register struct obj *sobj;
             if (mtmp == u.usteed) {
                 steedgold = TRUE;
             } else {
-                scr_known = TRUE;
+                known = TRUE;
                 goto outgoldmap; /* skip further searching */
             }
         } else {
@@ -332,7 +330,7 @@ register struct obj *sobj;
                     if (mtmp == u.usteed) {
                         steedgold = TRUE;
                     } else {
-                        scr_known = TRUE;
+                        known = TRUE;
                         goto outgoldmap; /* skip further searching */
                     }
                 }
@@ -342,17 +340,17 @@ register struct obj *sobj;
     /* look for gold objects */
     for (obj = fobj; obj; obj = obj->nobj) {
         if (sobj->blessed && o_material(obj, GOLD)) {
-            scr_known = TRUE;
+            known = TRUE;
             if (obj->ox != u.ux || obj->oy != u.uy)
                 goto outgoldmap;
         } else if (o_in(obj, COIN_CLASS)) {
-            scr_known = TRUE;
+            known = TRUE;
             if (obj->ox != u.ux || obj->oy != u.uy)
                 goto outgoldmap;
         }
     }
 
-    if (!scr_known) {
+    if (!known) {
         /* no gold found on floor or monster's inventory.
            adjust message if you have gold in your inventory */
         if (sobj) {
@@ -488,7 +486,7 @@ register struct obj *sobj;
     }
 
     if (!ct && !ctu) {
-        scr_known = stale && !confused;
+        known = stale && !confused;
         if (stale) {
             docrt();
             You("sense a lack of %s nearby.", what);
@@ -516,7 +514,7 @@ register struct obj *sobj;
         }
         return !stale;
     } else if (!ct) {
-        scr_known = TRUE;
+        known = TRUE;
         You("%s %s nearby.", sobj ? "smell" : "sense", what);
         if (sobj && sobj->blessed) {
             if (!u.uedibility)
@@ -527,7 +525,7 @@ register struct obj *sobj;
         struct obj *temp;
         int ter_typ = TER_DETECT | TER_OBJ;
 
-        scr_known = TRUE;
+        known = TRUE;
         cls();
         (void) unconstrain_map();
         for (obj = fobj; obj; obj = obj->nobj)
@@ -703,7 +701,7 @@ int class;            /* an object class, 0 for all */
      */
     for (x = 1; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
-            for (obj = level.objs[x][y]; obj; obj = obj->nexthere)
+            for (obj = level.objects[x][y]; obj; obj = obj->nexthere)
                 if ((!class && !boulder) || (otmp = o_in(obj, class)) != 0
                     || (otmp = o_in(obj, boulder)) != 0) {
                     if (class || boulder) {
@@ -1083,33 +1081,15 @@ d_level *where;
         return "near you";
 }
 
-/* Stage 6': &oracle_level etc. are no longer compile-time constants
- * (dungeon_topology lives in nle_ctx_t per-env). Switched to an index
- * resolved at runtime via level_detects_where(). */
-enum level_detect_idx {
-    LD_ORACLE, LD_MEDUSA, LD_STRONGHOLD, LD_WIZ1,
-    LD_COUNT
-};
 static const struct {
     const char *what;
-    int where_idx;
+    d_level *where;
 } level_detects[] = {
-    { "Delphi", LD_ORACLE },
-    { "Medusa's lair", LD_MEDUSA },
-    { "a castle", LD_STRONGHOLD },
-    { "the Wizard of Yendor's tower", LD_WIZ1 },
+    { "Delphi", &oracle_level },
+    { "Medusa's lair", &medusa_level },
+    { "a castle", &stronghold_level },
+    { "the Wizard of Yendor's tower", &wiz1_level },
 };
-static d_level *
-level_detects_where(int idx)
-{
-    switch (idx) {
-    case LD_ORACLE:     return &oracle_level;
-    case LD_MEDUSA:     return &medusa_level;
-    case LD_STRONGHOLD: return &stronghold_level;
-    case LD_WIZ1:       return &wiz1_level;
-    }
-    return (d_level *) 0;
-}
 
 void
 use_crystal_ball(optr)
@@ -1207,7 +1187,7 @@ struct obj **optr;
     }
     You("peer into %s...", the(xname(obj)));
     nomul(-rnd(10));
-    current_nle_ctx->multi_reason = "gazing into a crystal ball";
+    multi_reason = "gazing into a crystal ball";
     nomovemsg = "";
     if (obj->spe <= 0) {
         pline_The("vision is unclear.");
@@ -1239,7 +1219,7 @@ struct obj **optr;
             default:
                 i = rn2(SIZE(level_detects));
                 You_see("%s, %s.", level_detects[i].what,
-                        level_distance(level_detects_where(level_detects[i].where_idx)));
+                        level_distance(level_detects[i].where));
                 ret = 0;
                 break;
             }
@@ -1282,7 +1262,7 @@ register int x, y;
      * opposite to how normal vision behaves.
      */
     oldglyph = glyph_at(x, y);
-    if (level.lflags.hero_memory) {
+    if (level.flags.hero_memory) {
         magic_map_background(x, y, 0);
         newsym(x, y); /* show it, if not blocked */
     } else {
@@ -1293,7 +1273,7 @@ register int x, y;
             map_trap(t, 1);
         } else if (glyph_is_trap(oldglyph) || glyph_is_object(oldglyph)) {
             show_glyph(x, y, oldglyph);
-            if (level.lflags.hero_memory)
+            if (level.flags.hero_memory)
                 lev->glyph = oldglyph;
         }
     }
@@ -1310,7 +1290,7 @@ do_mapping()
         for (zy = 0; zy < ROWNO; zy++)
             show_map_spot(zx, zy);
 
-    if (!level.lflags.hero_memory || unconstrained) {
+    if (!level.flags.hero_memory || unconstrained) {
         flush_screen(1);                 /* flush temp screen */
         /* browse_map() instead of display_nhwindow(WIN_MAP, TRUE) */
         browse_map(TER_DETECT | TER_MAP | TER_TRP | TER_OBJ,
@@ -1383,7 +1363,7 @@ struct obj *sobj; /* scroll--actually fake spellbook--object */
             if (OBJ_AT(zx, zy)) {
                 /* not vobj_at(); this is not vision-based access;
                    unlike object detection, we don't notice buried items */
-                otmp = level.objs[zx][zy];
+                otmp = level.objects[zx][zy];
                 if (extended)
                     otmp->dknown = 1;
                 map_object(otmp, TRUE);
@@ -1400,7 +1380,7 @@ struct obj *sobj; /* scroll--actually fake spellbook--object */
                    the map and we're not doing extended/blessed clairvoyance
                    (hence must be swallowed or underwater), show "unseen
                    creature" unless map already displayed a monster here */
-                if ((unconstrained || !level.lflags.hero_memory)
+                if ((unconstrained || !level.flags.hero_memory)
                     && !extended && (zx != u.ux || zy != u.uy)
                     && !glyph_is_monster(oldglyph))
                     map_invisible(zx, zy);
@@ -1413,7 +1393,7 @@ struct obj *sobj; /* scroll--actually fake spellbook--object */
             }
         }
 
-    if (!level.lflags.hero_memory || unconstrained || mdetected || odetected) {
+    if (!level.flags.hero_memory || unconstrained || mdetected || odetected) {
         flush_screen(1);                 /* flush temp screen */
         /* the getpos() prompt from browse_map() is only shown when
            flags.verbose is set, but make this unconditional so that
@@ -1537,7 +1517,7 @@ genericptr_t num;
     int *num_p = (int *) num;
 
     if (OBJ_AT(zx, zy)) {
-        for (otmp = level.objs[zx][zy]; otmp; otmp = otmp->nexthere) {
+        for (otmp = level.objects[zx][zy]; otmp; otmp = otmp->nexthere) {
             if (Is_box(otmp) && otmp->olocked) {
                 otmp->olocked = 0;
                 (*num_p)++;
@@ -1867,14 +1847,14 @@ int default_glyph, which_subset;
     /* for 'full', show the actual terrain for the entire level,
        otherwise what the hero remembers for seen locations with
        monsters, objects, and/or traps removed as caller dictates */
-    seenv = (full || level.lflags.hero_memory)
+    seenv = (full || level.flags.hero_memory)
               ? levl[x][y].seenv : cansee(x, y) ? SVALL : 0;
     if (full) {
         levl[x][y].seenv = SVALL;
         glyph = back_to_glyph(x, y);
         levl[x][y].seenv = seenv;
     } else {
-        levl_glyph = level.lflags.hero_memory
+        levl_glyph = level.flags.hero_memory
               ? levl[x][y].glyph
               : seenv ? back_to_glyph(x, y): default_glyph;
         /* glyph_at() returns the displayed glyph, which might
@@ -2005,7 +1985,7 @@ int which_subset; /* when not full, whether to suppress objs and/or traps */
 
         if (unconstrain_map())
             docrt();
-        default_glyph = cmap_to_glyph(level.lflags.arboreal ? S_tree : S_stone);
+        default_glyph = cmap_to_glyph(level.flags.arboreal ? S_tree : S_stone);
 
         for (x = 1; x < COLNO; x++)
             for (y = 0; y < ROWNO; y++) {
@@ -2020,7 +2000,7 @@ int which_subset; /* when not full, whether to suppress objs and/or traps */
         if (full) {
             Strcpy(buf, "underlying terrain");
         } else {
-            Strcpy(buf, "scr_known terrain");
+            Strcpy(buf, "known terrain");
             if (keep_traps)
                 Sprintf(eos(buf), "%s traps",
                         (keep_objs || keep_mons) ? "," : " and");
@@ -2040,7 +2020,7 @@ int which_subset; /* when not full, whether to suppress objs and/or traps */
         browse_map(which_subset, "anything of interest");
 
         reconstrain_map();
-        docrt(); /* redraw the screen, current_nle_ctx->restoring regular map */
+        docrt(); /* redraw the screen, restoring regular map */
         if (Underwater)
             under_water(2);
         if (u.uburied)

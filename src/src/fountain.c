@@ -5,7 +5,6 @@
 /* Code for drinking from fountains. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL void NDECL(dowatersnakes);
 STATIC_DCL void NDECL(dowaterdemon);
@@ -138,10 +137,10 @@ genericptr_t poolcnt;
         pline("Water gushes forth from the overflowing fountain!");
 
     /* Put a pool at x, y */
-    levl[x][y].typ = POOL, levl[x][y].rmflags = 0;
+    levl[x][y].typ = POOL, levl[x][y].flags = 0;
     /* No kelp! */
     del_engr_at(x, y);
-    water_damage_chain(level.objs[x][y], TRUE);
+    water_damage_chain(level.objects[x][y], TRUE);
 
     if ((mtmp = m_at(x, y)) != 0)
         (void) minliquid(mtmp);
@@ -206,14 +205,14 @@ boolean isyou;
                 return;
         }
         /* replace the fountain with ordinary floor */
-        levl[x][y].typ = ROOM, levl[x][y].rmflags = 0;
+        levl[x][y].typ = ROOM, levl[x][y].flags = 0;
         levl[x][y].blessedftn = 0;
         if (cansee(x, y))
             pline_The("fountain dries up!");
         /* The location is seen if the hero/monster is invisible
            or felt if the hero is blind. */
         newsym(x, y);
-        level.lflags.nfountains--;
+        level.flags.nfountains--;
         if (isyou && in_town(x, y))
             (void) angry_guards(FALSE);
     }
@@ -397,9 +396,9 @@ register struct obj *obj;
             exercise(A_WIS, TRUE);
         }
         update_inventory();
-        levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].rmflags = 0;
+        levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].flags = 0;
         newsym(u.ux, u.uy);
-        level.lflags.nfountains--;
+        level.flags.nfountains--;
         if (in_town(u.ux, u.uy))
             (void) angry_guards(FALSE);
         return;
@@ -509,11 +508,11 @@ int x, y;
 {
     if (cansee(x, y) || (x == u.ux && y == u.uy))
         pline_The("pipes break!  Water spurts out!");
-    level.lflags.nsinks--;
+    level.flags.nsinks--;
     levl[x][y].typ = FOUNTAIN, levl[x][y].looted = 0;
     levl[x][y].blessedftn = 0;
     SET_FOUNTAIN_LOOTED(x, y);
-    level.lflags.nfountains++;
+    level.flags.nfountains++;
     newsym(x, y);
 }
 

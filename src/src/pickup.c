@@ -8,23 +8,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Pickup.c per-env state. Four file-scope statics. */
-#define current_container   (current_nle_ctx->s_current_container)
-#define abort_looting       (current_nle_ctx->s_abort_looting)
-#define val_for_n_or_more   (current_nle_ctx->s_val_for_n_or_more)
-#define valid_menu_classes  (current_nle_ctx->s_valid_menu_classes)
-/* Function-local statics migrated to nle_ctx_t */
-#define costly        (current_nle_ctx->s_autopick_costly)
-#define oldcap        (current_nle_ctx->s_encumber_msg_oldcap)
-/* Add_valid_menu_class vmc_count accumulator -> per-env. */
-#define vmc_count     (current_nle_ctx->s_vmc_count)
-/* Per-action filter flags (set/cleared on each query_objlist
- * pass). Per-env via nle_ctx_t to avoid cross-env races under OMP. */
-#define class_filter  (current_nle_ctx->s_class_filter)
-#define bucx_filter   (current_nle_ctx->s_bucx_filter)
-#define shop_filter   (current_nle_ctx->s_shop_filter)
 
 #define CONTAINED_SYM '>' /* from invent.c */
 
@@ -74,8 +57,8 @@ STATIC_DCL void FDECL(tipcontainer, (struct obj *));
 /* A variable set in use_container(), to be used by the callback routines
    in_container() and out_container() from askchain() and use_container().
    Also used by menu_loot() and container_gone(). */
-/* current_container / abort_looting migrated to nle_ctx_t->
- * s_current_container / s_abort_looting. */
+static NEARDATA struct obj *current_container;
+static NEARDATA boolean abort_looting;
 #define Icebox (current_container->otyp == ICE_BOX)
 
 static const char
@@ -316,7 +299,7 @@ boolean picked_some;
     register int ct = 0;
 
     /* count the objects here */
-    for (obj = level.objs[u.ux][u.uy]; obj; obj = obj->nexthere) {
+    for (obj = level.objects[u.ux][u.uy]; obj; obj = obj->nexthere) {
         if (obj != uchain)
             ct++;
     }
@@ -333,7 +316,7 @@ boolean picked_some;
 }
 
 /* Value set by query_objlist() for n_or_more(). */
-/* val_for_n_or_more migrated to nle_ctx_t->s_val_for_n_or_more. */
+static long val_for_n_or_more;
 
 /* query_objlist callback: return TRUE if obj's count is >= reference value */
 STATIC_OVL boolean
@@ -347,14 +330,8 @@ struct obj *obj;
 
 /* list of valid menu classes for query_objlist() and allow_category callback
    (with room for all object classes, 'u'npaid, BUCX, and terminator) */
-/* valid_menu_classes migrated to nle_ctx_t->s_valid_menu_classes.
- * The size literal in nle.h (24) matches
- * MAXOCLASSES(18) + 1 + 4 + 1; the _Static_assert catches future
- * MAXOCLASSES drift. */
-_Static_assert(MAXOCLASSES + 1 + 4 + 1 == 24,
-               "MAXOCLASSES changed; update s_valid_menu_classes size in nle.h");
-/* Class_filter/bucx_filter/shop_filter migrated to nle_ctx_t
- * via macros above. */
+static char valid_menu_classes[MAXOCLASSES + 1 + 4 + 1];
+static boolean class_filter, bucx_filter, shop_filter;
 
 /* check valid_menu_classes[] for an entry; also used by askchain() */
 boolean
@@ -368,7 +345,7 @@ void
 add_valid_menu_class(c)
 int c;
 {
-    /* Vmc_count migrated to current_nle_ctx->s_vmc_count. */
+    static int vmc_count = 0;
 
     if (c == 0) { /* reset */
         vmc_count = 0;
@@ -522,7 +499,7 @@ int what; /* should be a long */
        and read_engr_at in addition to bypassing autopickup itself
        [probably ought to check whether hero is using a cockatrice
        corpse for a pillow here... (also at initial faint/sleep)] */
-    if (autopickup && current_nle_ctx->multi < 0 && unconscious())
+    if (autopickup && multi < 0 && unconscious())
         return 0;
 
     if (what < 0) /* pick N of something */
@@ -542,17 +519,17 @@ int what; /* should be a long */
         }
         /* no pickup if levitating & not on air or water level */
         if (!can_reach_floor(TRUE)) {
-            if ((current_nle_ctx->multi && !context.run) || (autopickup && !flags.pickup)
+            if ((multi && !context.run) || (autopickup && !flags.pickup)
                 || ((ttmp = t_at(u.ux, u.uy)) != 0
                     && (uteetering_at_seen_pit(ttmp) || uescaped_shaft(ttmp))))
                 read_engr_at(u.ux, u.uy);
             return 0;
         }
-        /* current_nle_ctx->multi && !context.run means they are in the middle of some other
+        /* multi && !context.run means they are in the middle of some other
          * action, or possibly paralyzed, sleeping, etc.... and they just
          * teleported onto the object.  They shouldn't pick it up.
          */
-        if ((current_nle_ctx->multi && !context.run) || (autopickup && !flags.pickup)) {
+        if ((multi && !context.run) || (autopickup && !flags.pickup)) {
             check_here(FALSE);
             return 0;
         }
@@ -572,7 +549,7 @@ int what; /* should be a long */
 
     add_valid_menu_class(0); /* reset */
     if (!u.uswallow) {
-        objchain_p = &level.objs[u.ux][u.uy];
+        objchain_p = &level.objects[u.ux][u.uy];
         traverse_how = BY_NEXTHERE;
     } else {
         objchain_p = &u.ustuck->minvent;
@@ -695,9 +672,9 @@ int what; /* should be a long */
                     }
                     break;
                 case '#': /* count was entered */
-                    if (!current_nle_ctx->yn_number)
+                    if (!yn_number)
                         continue; /* 0 count => No */
-                    lcount = (long) current_nle_ctx->yn_number;
+                    lcount = (long) yn_number;
                     if (lcount > obj->quan)
                         lcount = obj->quan;
                     /*FALLTHRU*/
@@ -758,7 +735,7 @@ struct obj *otmp;
 boolean calc_costly;
 {
     struct autopickup_exception *ape;
-    /* Costly migrated to nle_ctx_t */
+    static boolean costly = FALSE;
     const char *otypes = flags.pickup_types;
     boolean pickit;
 
@@ -1566,11 +1543,11 @@ boolean telekinesis; /* not picking it up directly by hand */
     obj = pick_obj(obj);
 
     if (uwep && uwep == obj)
-        current_nle_ctx->mrg_to_wielded = TRUE;
+        mrg_to_wielded = TRUE;
     nearload = near_capacity();
     prinv(nearload == SLT_ENCUMBER ? moderateloadmsg : (char *) 0, obj,
           count);
-    current_nle_ctx->mrg_to_wielded = FALSE;
+    mrg_to_wielded = FALSE;
     return 1;
 }
 
@@ -1630,7 +1607,7 @@ struct obj *otmp;
 int
 encumber_msg()
 {
-    /* Oldcap migrated to nle_ctx_t (UNENCUMBERED == 0, zero-init OK) */
+    static int oldcap = UNENCUMBERED;
     int newcap = near_capacity();
 
     if (oldcap < newcap) {
@@ -1683,7 +1660,7 @@ boolean countem;
     struct obj *cobj, *nobj;
     int container_count = 0;
 
-    for (cobj = level.objs[x][y]; cobj; cobj = nobj) {
+    for (cobj = level.objects[x][y]; cobj; cobj = nobj) {
         nobj = cobj->nexthere;
         if (Is_container(cobj)) {
             container_count++;
@@ -1851,7 +1828,7 @@ doloot()
             win = create_nhwindow(NHW_MENU);
             start_menu(win);
 
-            for (cobj = level.objs[cc.x][cc.y]; cobj;
+            for (cobj = level.objects[cc.x][cc.y]; cobj;
                  cobj = cobj->nexthere)
                 if (Is_container(cobj)) {
                     any.a_obj = cobj;
@@ -1877,7 +1854,7 @@ doloot()
             if (n != 0)
                 c = 'y';
         } else {
-            for (cobj = level.objs[cc.x][cc.y]; cobj; cobj = nobj) {
+            for (cobj = level.objects[cc.x][cc.y]; cobj; cobj = nobj) {
                 nobj = cobj->nexthere;
 
                 if (Is_container(cobj)) {
@@ -2413,7 +2390,7 @@ observe_quantum_cat(box, makecat, givemsg)
 struct obj *box;
 boolean makecat, givemsg;
 {
-    static const char sc[] = "Schroedinger's Cat";
+    static NEARDATA const char sc[] = "Schroedinger's Cat";
     struct obj *deadcat;
     struct monst *livecat = 0;
     xchar ox, oy;
@@ -2564,9 +2541,9 @@ boolean more_containers; /* True iff #loot multiple and this isn't last one */
             You("open %s...", the(xname(obj)));
         (void) chest_trap(obj, HAND, FALSE);
         /* even if the trap fails, you've used up this turn */
-        if (current_nle_ctx->multi >= 0) { /* in case we didn't become paralyzed */
+        if (multi >= 0) { /* in case we didn't become paralyzed */
             nomul(-1);
-            current_nle_ctx->multi_reason = "opening a container";
+            multi_reason = "opening a container";
             nomovemsg = "";
         }
         abort_looting = TRUE;
@@ -3018,7 +2995,7 @@ dotip()
                 win = create_nhwindow(NHW_MENU);
                 start_menu(win);
 
-                for (cobj = level.objs[cc.x][cc.y], i = 0; cobj;
+                for (cobj = level.objects[cc.x][cc.y], i = 0; cobj;
                      cobj = cobj->nexthere)
                     if (Is_container(cobj)) {
                         ++i;
@@ -3060,7 +3037,7 @@ dotip()
                     return 0;
                 /* else pick-from-invent below */
             } else {
-                for (cobj = level.objs[cc.x][cc.y]; cobj; cobj = nobj) {
+                for (cobj = level.objects[cc.x][cc.y]; cobj; cobj = nobj) {
                     nobj = cobj->nexthere;
                     if (!Is_container(cobj))
                         continue;
@@ -3174,9 +3151,9 @@ struct obj *box; /* or bag */
         /* we're not reaching inside but we're still handling it... */
         (void) chest_trap(box, HAND, FALSE);
         /* even if the trap fails, you've used up this turn */
-        if (current_nle_ctx->multi >= 0) { /* in case we didn't become paralyzed */
+        if (multi >= 0) { /* in case we didn't become paralyzed */
             nomul(-1);
-            current_nle_ctx->multi_reason = "tipping a container";
+            multi_reason = "tipping a container";
             nomovemsg = "";
         }
     } else if (box->otyp == BAG_OF_TRICKS || box->otyp == HORN_OF_PLENTY) {

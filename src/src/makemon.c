@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 #include <ctype.h>
 
@@ -1486,22 +1485,15 @@ STATIC_OVL int
 align_shift(ptr)
 register struct permonst *ptr;
 {
-    /* Was `static NEARDATA long oldmoves = 0L` and
-     * `static NEARDATA s_level *lev`. Two OMP threads in makemon() could
-     * race on the update (one updates oldmoves/lev while the other reads),
-     * corrupting the stale lev pointer and causing SIGSEGV.
-     * Now per-env via nle_ctx_t. Initial value 0L matches the old initializer;
-     * calloc zero-init is correct for oldmoves. lev is a void* cast. */
-#define oldmoves    (current_nle_ctx->s_align_shift_oldmoves)
-#define lev_cached  ((s_level *) current_nle_ctx->s_align_shift_lev)
-#define set_lev_cached(v) (current_nle_ctx->s_align_shift_lev = (void *)(v))
+    static NEARDATA long oldmoves = 0L; /* != 1, starting value of moves */
+    static NEARDATA s_level *lev;
     register int alshift;
 
     if (oldmoves != moves) {
-        set_lev_cached(Is_special(&u.uz));
+        lev = Is_special(&u.uz);
         oldmoves = moves;
     }
-    switch ((lev_cached) ? lev_cached->dflags.align : dungeons[u.uz.dnum].dflags.align) {
+    switch ((lev) ? lev->flags.align : dungeons[u.uz.dnum].flags.align) {
     default: /* just in case */
     case AM_NONE:
         alshift = 0;
@@ -1518,27 +1510,11 @@ register struct permonst *ptr;
     }
     return alshift;
 }
-/* Undefine local macros after align_shift to avoid leaking
- * them into subsequent functions in this translation unit. */
-#undef oldmoves
-#undef lev_cached
-#undef set_lev_cached
 
-/* rndmonst_state — per-env random-monster choice cache. Migrated to
- * nle_ctx_t. Initial value (choice_count = -1) re-applied in init_nle. */
-struct nle_rndmonst_state {
+static NEARDATA struct {
     int choice_count;
     char mchoices[SPECIAL_PM]; /* value range is 0..127 */
-};
-#define rndmonst_state (*current_nle_ctx->s_rndmonst_state_p)
-/* Allocator used by init_nle (nle.c doesn't include this file). */
-struct nle_rndmonst_state *
-rndmonst_state_alloc(void)
-{
-    struct nle_rndmonst_state *p = nle_arena_calloc(1, sizeof(*p));
-    if (p) p->choice_count = -1;
-    return p;
-}
+} rndmonst_state = { -1, { 0 } };
 
 /* select a random monster type */
 struct permonst *
@@ -2178,7 +2154,7 @@ register struct monst *mtmp;
 
     if (OBJ_AT(mx, my)) {
         ap_type = M_AP_OBJECT;
-        appear = level.objs[mx][my]->otyp;
+        appear = level.objects[mx][my]->otyp;
     } else if (IS_DOOR(typ) || IS_WALL(typ) || typ == SDOOR || typ == SCORR) {
         ap_type = M_AP_FURNITURE;
         /*
@@ -2198,7 +2174,7 @@ register struct monst *mtmp;
             appear = Is_rogue_level(&u.uz) ? S_hwall : S_hcdoor;
         else
             appear = Is_rogue_level(&u.uz) ? S_vwall : S_vcdoor;
-    } else if (level.lflags.is_maze_lev && !In_sokoban(&u.uz) && rn2(2)) {
+    } else if (level.flags.is_maze_lev && !In_sokoban(&u.uz) && rn2(2)) {
         ap_type = M_AP_OBJECT;
         appear = STATUE;
     } else if (roomno < 0 && !t_at(mx, my)) {

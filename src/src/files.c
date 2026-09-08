@@ -6,14 +6,7 @@
 #define NEED_VARARGS
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "dlb.h"
-
-/* Misc-2 per-env redirects (files.c) */
-#define wizkit                 (current_nle_ctx->s_wizkit)
-#define lockptr                (current_nle_ctx->s_lockptr)
-#define config_section_chosen  (current_nle_ctx->s_config_section_chosen)
-#define config_section_current (current_nle_ctx->s_config_section_current)
 
 #ifdef TTY_GRAPHICS
 #include "wintty.h" /* more() */
@@ -64,8 +57,6 @@ const
 #else
 #include <sys/stat.h>
 #endif
-#else
-#include <sys/stat.h> /* exp_039 agent_d: fstat in open_levelfile */
 #endif
 #ifndef O_BINARY /* used for micros, no-op for others */
 #define O_BINARY 0
@@ -73,24 +64,25 @@ const
 
 #ifdef PREFIXES_IN_USE
 #define FQN_NUMBUF 4
-/* fqn_filename_buffer — per-env scratch buffer for file-path formatting.
- * Migrated to nle_ctx_t (heap). */
-#define fqn_filename_buffer ((char (*)[FQN_MAX_FILENAME]) current_nle_ctx->s_fqn_fname_p)
+static char fqn_filename_buffer[FQN_NUMBUF][FQN_MAX_FILENAME];
 #endif
 
-/* `bones` and `lock` migrated to nle_ctx_t (s_bones,
- * s_lock). `lock` is exposed via decl.h's NLE_PER_ENV_FILES macro;
- * `bones` is not in decl.h so a local file-level macro is used here
- * (and a matching one in bones.c). nle.c initializes both fields on
- * each new env: s_lock = "1lock" (historical default), s_bones =
- * "bonesnn.xxx" (template that set_bonesfile_name() then overwrites
- * with the per-level filename). Only the UNIX/__BEOS__ sizing applies
- * to the library build; non-UNIX ports would need their own per-env
- * sizing if ever reintroduced. */
 #if !defined(MFLOPPY) && !defined(VMS) && !defined(WIN32)
-#define bones (current_nle_ctx->s_bones)
+char bones[] = "bonesnn.xxx";
+char lock[PL_NSIZ + 14] = "1lock"; /* long enough for uid+name+.99 */
 #else
-#error "Per-env lock/bones migration only implemented for UNIX/__BEOS__ ports."
+#if defined(MFLOPPY)
+char bones[FILENAME]; /* pathname of bones files */
+char lock[FILENAME];  /* pathname of level files */
+#endif
+#if defined(VMS)
+char bones[] = "bonesnn.xxx;1";
+char lock[PL_NSIZ + 17] = "1lock"; /* long enough for _uid+name+.99;1 */
+#endif
+#if defined(WIN32)
+char bones[] = "bonesnn.xxx";
+char lock[PL_NSIZ + 25]; /* long enough for username+-+name+.99 */
+#endif
 #endif
 
 #if defined(UNIX) || defined(__BEOS__)
@@ -116,12 +108,7 @@ const
 #endif
 #endif
 
-/* SAVEF migrated to current_nle_ctx->s_SAVEF. Sized
- * 45 bytes there (matches SAVESIZE = PL_NSIZ + 13 on UNIX/__BEOS__).
- * Verified at compile time below. */
-#if SAVESIZE > 45
-#error "SAVESIZE exceeds s_SAVEF[45] in nle.h; widen the field."
-#endif
+char SAVEF[SAVESIZE]; /* holds relative path of save file from playground */
 #ifdef MICRO
 char SAVEP[SAVESIZE]; /* holds path of directory for save file */
 #endif
@@ -139,14 +126,14 @@ struct level_ftrack {
 #endif /*HOLD_LOCKFILE_OPEN*/
 
 #define WIZKIT_MAX 128
-/* wizkit[WIZKIT_MAX] migrated to nle_ctx_t.s_wizkit */
+static char wizkit[WIZKIT_MAX];
 STATIC_DCL FILE *NDECL(fopen_wizkit_file);
 STATIC_DCL void FDECL(wizkit_addinv, (struct obj *));
 
 #ifdef AMIGA
 extern char PATH[]; /* see sys/amiga/amidos.c */
 extern char bbs_id[];
-/* lockptr migrated to nle_ctx_t.s_lockptr */
+static int lockptr;
 #ifdef __SASC_60
 #include <proto/dos.h>
 #endif
@@ -156,7 +143,7 @@ extern void FDECL(amii_set_text_font, (char *, int));
 #endif
 
 #if defined(WIN32) || defined(MSDOS)
-/* lockptr migrated to nle_ctx_t.s_lockptr */
+static int lockptr;
 #ifdef MSDOS
 #define Delay(a) msleep(a)
 #endif
@@ -184,7 +171,7 @@ extern char *FDECL(translate_path_variables, (const char *, char *));
 extern char *sounddir;
 #endif
 
-#define n_dgns (current_nle_ctx->s_n_dgns) /* was extern from dungeon.c */
+extern int n_dgns; /* from dungeon.c */
 
 #if defined(UNIX) && defined(QT_GRAPHICS)
 #define SELECTSAVED
@@ -234,8 +221,8 @@ STATIC_DCL int FDECL(open_levelfile_exclusively, (const char *, int, int));
 #endif
 
 
-/* config_section_chosen / config_section_current migrated to nle_ctx_t.
- * calloc zero-init handles the (char *) 0 default. */
+static char *config_section_chosen = (char *) 0;
+static char *config_section_current = (char *) 0;
 
 /*
  * fname_encode()
@@ -545,7 +532,7 @@ char errbuf[];
 #endif /* MICRO || WIN32 */
 
     if (fd >= 0)
-        level_info[lev].linfo_flags |= LFILE_EXISTS;
+        level_info[lev].flags |= LFILE_EXISTS;
     else if (errbuf) /* failure explanation */
         Sprintf(errbuf, "Cannot create file \"%s\" for level %d (errno %d).",
                 lock, lev, errno);
@@ -599,14 +586,14 @@ int lev;
      * Level 0 might be created by port specific code that doesn't
      * call create_levfile(), so always assume that it exists.
      */
-    if (lev == 0 || (level_info[lev].linfo_flags & LFILE_EXISTS)) {
+    if (lev == 0 || (level_info[lev].flags & LFILE_EXISTS)) {
         set_levelfile_name(lock, lev);
 #ifdef HOLD_LOCKFILE_OPEN
         if (lev == 0)
             really_close();
 #endif
         (void) unlink(fqname(lock, LEVELPREFIX, 0));
-        level_info[lev].linfo_flags &= ~LFILE_EXISTS;
+        level_info[lev].flags &= ~LFILE_EXISTS;
     }
 }
 
@@ -614,7 +601,7 @@ void
 clearlocks()
 {
 #ifdef HANGUPHANDLING
-    if (current_nle_ctx->program_state.preserve_locks)
+    if (program_state.preserve_locks)
         return;
 #endif
 #if !defined(PC_LOCKING) && defined(MFLOPPY) && !defined(AMIGA)
@@ -1669,37 +1656,16 @@ boolean uncomp;
 
 /* ----------  BEGIN FILE LOCKING HANDLING ----------- */
 
-/* Per-env files.c state. nesting / lockfd / config_error_data /
- * symset_count / symset_which_set bundled into one struct. */
-struct _config_error_frame; /* forward */
-struct nle_files_state {
-    int   _nesting;
-    int   _lockfd;
-    struct _config_error_frame *_config_error_data;
-    int   _symset_count;
-    int   _symset_which_set;
-};
-static struct nle_files_state *
-nle_files(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_files_state *s = (struct nle_files_state *) current_nle_ctx->s_files_state;
-    if (!s) {
-        s = (struct nle_files_state *) nle_arena_calloc(1, sizeof(struct nle_files_state));
-        s->_lockfd = -1;  /* non-zero default */
-        current_nle_ctx->s_files_state = s;
-    }
-    return s;
-}
-#define nesting           (nle_files()->_nesting)
+static int nesting = 0;
+
 #if defined(NO_FILE_LINKS) || defined(USE_FCNTL) /* implies UNIX */
-#define lockfd            (nle_files()->_lockfd)
+static int lockfd = -1; /* for lock_file() to pass to unlock_file() */
 #endif
 #ifdef USE_FCNTL
 struct flock sflock; /* for unlocking, same as above */
 #endif
 
-#define HUP if (!current_nle_ctx->program_state.done_hup)
+#define HUP if (!program_state.done_hup)
 
 #ifndef USE_FCNTL
 STATIC_OVL char *
@@ -2847,9 +2813,7 @@ struct _config_error_frame {
     struct _config_error_frame *next;
 };
 
-/* Per-env (struct definition is just above; macro forwards
- * into nle_files_state which holds the pointer as a generic forward). */
-#define config_error_data (nle_files()->_config_error_data)
+static struct _config_error_frame *config_error_data = 0;
 
 void
 config_error_init(from_file, sourcename, secure)
@@ -3107,14 +3071,14 @@ read_wizkit()
     if (!wizard || !(fp = nle_fopen_wizkit_file()))
         return;
 
-    current_nle_ctx->program_state.wizkit_wishing = 1;
+    program_state.wizkit_wishing = 1;
     config_error_init(TRUE, "WIZKIT", FALSE);
 
     parse_conf_file(fp, proc_wizkit_line);
     (void) fclose(fp);
 
     config_error_done();
-    current_nle_ctx->program_state.wizkit_wishing = 0;
+    program_state.wizkit_wishing = 0;
 
     return;
 }
@@ -3265,10 +3229,9 @@ boolean FDECL((*proc), (char *));
 extern struct symsetentry *symset_list;  /* options.c */
 extern const char *known_handling[];     /* drawing.c */
 extern const char *known_restrictions[]; /* drawing.c */
-/* Per-env via nle_files_state (above). */
-#define symset_count      (nle_files()->_symset_count)
-#define symset_which_set  (nle_files()->_symset_which_set)
+static int symset_count = 0;             /* for pick-list building only */
 static boolean chosen_symset_start = FALSE, chosen_symset_end = FALSE;
+static int symset_which_set = 0;
 
 STATIC_OVL
 FILE *
@@ -3683,12 +3646,30 @@ const char *type;   /* panic, impossible, trickery */
 const char *reason; /* explanation */
 {
 #ifdef PANICLOG
-    /* NLE: file I/O suppressed. Under OMP training the upstream
-     * fopen+fwrite+fclose serializes through glibc + the underlying
-     * filesystem and destroys scaling. RL training never reads
-     * paniclog, so drop the writes. */
-    (void) type;
-    (void) reason;
+    FILE *lfile;
+    char buf[BUFSZ];
+
+    if (!program_state.in_paniclog) {
+        program_state.in_paniclog = 1;
+        lfile = fopen_datafile(PANICLOG, "a", TROUBLEPREFIX);
+        if (lfile) {
+#ifdef PANICLOG_FMT2
+            (void) fprintf(lfile, "%ld %s: %s %s\n",
+                           ubirthday, (plname ? plname : "(none)"),
+                           type, reason);
+#else
+            time_t now = getnow();
+            int uid = getuid();
+            char playmode = wizard ? 'D' : discover ? 'X' : '-';
+
+            (void) fprintf(lfile, "%s %08ld %06ld %d %c: %s %s\n",
+                           version_string(buf), yyyymmdd(now), hhmmss(now),
+                           uid, playmode, type, reason);
+#endif /* !PANICLOG_FMT2 */
+            (void) fclose(lfile);
+        }
+        program_state.in_paniclog = 0;
+    }
 #endif /* PANICLOG */
     return;
 }
@@ -4436,7 +4417,7 @@ unsigned oid; /* book identifier */
         default:
             if (foundpassage) {
                 if (!nowin_buf) {
-                    /* outputting current_nle_ctx->multi-line passage to text window */
+                    /* outputting multi-line passage to text window */
                     putstr(tribwin, 0, line);
                     if (*line)
                         Strcpy(lastline, line);
@@ -4456,7 +4437,7 @@ unsigned oid; /* book identifier */
         grasped = *nowin_buf ? TRUE : FALSE;
     } else {
         if (tribwin != WIN_ERR) { /* implies 'foundpassage' */
-            /* current_nle_ctx->multi-line window, normal case;
+            /* multi-line window, normal case;
                if lastline is empty, there were no non-empty lines between
                "%passage n" and "%e passage" so we leave 'grasped' False */
             if (*lastline) {
@@ -4473,7 +4454,7 @@ unsigned oid; /* book identifier */
             destroy_nhwindow(tribwin);
         }
         if (!grasped)
-            /* current_nle_ctx->multi-line window, problem */
+            /* multi-line window, problem */
             pline("It seems to be %s of \"%s\"!", badtranslation, tribtitle);
     }
     return grasped;

@@ -2,7 +2,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL int FDECL(cost, (struct obj *));
 STATIC_DCL boolean FDECL(label_known, (int, struct obj *));
@@ -88,7 +87,7 @@ struct obj *objlist;
     return FALSE;
 }
 
-static const char write_on[] = { SCROLL_CLASS, SPBOOK_CLASS, 0 };
+static NEARDATA const char write_on[] = { SCROLL_CLASS, SPBOOK_CLASS, 0 };
 
 /* write -- applying a magic marker */
 int

@@ -10,7 +10,6 @@
 
 #ifdef __DJGPP__
 #include <string.h>
-#include <unistd.h>
 #endif
 
 #define DATAPREFIX 4
@@ -145,26 +144,8 @@ library *lp; /* library pointer to fill in */
     if (lp->rev > DLB_MAX_VERS || lp->rev < DLB_MIN_VERS)
         return FALSE;
 
-    /* Dlb_libs[] is process-global, but the alloc() macro under
-     * NLE_USE_ARENA_FREE places allocations into the *current env's* per-env
-     * mmap'd arena (see alloc.c). When that first env later runs nle_end,
-     * its arena is munmapped — and dlb_libs[i].dir / .sspace become dangling
-     * pointers into freed VA. Subsequent envs hitting find_file() during
-     * init_dungeons -> dlb_fopen("dungeon") then crash in __strcmp_avx2 on
-     * lp->dir[j].fname. Allocate via libc malloc directly so these survive
-     * any env's teardown for the full process lifetime. close_library is
-     * already a no-op under NLE_USE_ARENA_FREE, so no free path needs to
-     * change. */
-#ifdef NLE_USE_ARENA_FREE
-    extern void *__libc_malloc(size_t);
-    lp->dir = (libdir *) __libc_malloc((size_t) lp->nentries * sizeof(libdir));
-    lp->sspace = (char *) __libc_malloc((size_t) lp->strsize);
-    if (!lp->dir || !lp->sspace)
-        return FALSE;
-#else
     lp->dir = (libdir *) alloc(lp->nentries * sizeof(libdir));
     lp->sspace = (char *) alloc(lp->strsize);
-#endif
 
     /* read in each directory entry */
     for (i = 0, sp = lp->sspace; i < lp->nentries; i++) {
@@ -250,20 +231,11 @@ void
 close_library(lp)
 library *lp;
 {
-#ifdef NLE_USE_ARENA_FREE
-    /* When the arena allocator is active, leak the DLB resources rather
-     * than closing the FILE* and freeing arena pointers. This keeps the
-     * FILE* valid across snapshot/restore cycles: NetHack's death
-     * sequence calls dlb_cleanup, but with fast-reset we want the
-     * library to remain usable after restore. */
-    (void) lp;
-#else
     (void) fclose(lp->fdata);
     free((genericptr_t) lp->dir);
     free((genericptr_t) lp->sspace);
 
     (void) memset((char *) lp, 0, sizeof(library));
-#endif
 }
 
 /*
@@ -327,8 +299,6 @@ const char *mode UNUSED;
         dp->start = start;
         dp->size = size;
         dp->mark = 0;
-        /* pread() in lib_dlb_fread handles thread-safe I/O
-         * without needing a separate file descriptor. */
         return TRUE;
     }
 
@@ -338,9 +308,9 @@ const char *mode UNUSED;
 /*ARGUSED*/
 STATIC_OVL int
 lib_dlb_fclose(dp)
-dlb *dp;
+dlb *dp UNUSED;
 {
-    /* pread() approach: no per-handle fd to close. */
+    /* nothing needs to be done */
     return 0;
 }
 
@@ -359,13 +329,15 @@ dlb *dp;
         return 0;
 
     pos = dp->start + dp->mark;
-    /* Use pread() for thread safety — reads at offset without modifying
-     * the shared file position. dup() shares the file offset, so
-     * fseek+fread on dup'd fds still races. */
-    nbytes = pread(fileno(dp->lib->fdata), buf, (size_t)size * quan, pos);
-    if (nbytes < 0) nbytes = 0;
-    nread = nbytes / size;
+    if (dp->lib->fmark != pos) {
+        fseek(dp->lib->fdata, pos, SEEK_SET); /* check for error??? */
+        dp->lib->fmark = pos;
+    }
+
+    nread = fread(buf, size, quan, dp->lib->fdata);
+    nbytes = nread * size;
     dp->mark += nbytes;
+    dp->lib->fmark += nbytes;
 
     return nread;
 }
@@ -481,20 +453,12 @@ const dlb_procs_t rsrc_dlb_procs = { rsrc_dlb_init,  rsrc_dlb_cleanup,
 #define do_dlb_ftell (*dlb_procs->dlb_ftell_proc)
 
 static const dlb_procs_t *dlb_procs;
-/* Dlb_initialized was `static boolean`. dlb_libs[]
- * (above) is process-global; with __thread the init ran once per thread
- * and each re-ran lib_dlb_init which memsets dlb_libs[0]=0, racing with
- * other threads holding the old FILE*. Now process-global with a guard
- * so init runs exactly once across all threads. */
-#include <stdatomic.h>
-static atomic_int dlb_init_state = 0;  /* 0=unstarted, 1=in-progress, 2=done */
 static boolean dlb_initialized = FALSE;
 
 boolean
 dlb_init()
 {
-    int expected = 0;
-    if (atomic_compare_exchange_strong(&dlb_init_state, &expected, 1)) {
+    if (!dlb_initialized) {
 #ifdef DLBLIB
         dlb_procs = &lib_dlb_procs;
 #endif
@@ -504,32 +468,18 @@ dlb_init()
 
         if (dlb_procs)
             dlb_initialized = do_dlb_init();
-        atomic_store(&dlb_init_state, 2);
-    } else {
-        /* Another thread is initializing or already finished — wait. */
-        while (atomic_load(&dlb_init_state) != 2) { /* spin briefly */ }
     }
+
     return dlb_initialized;
 }
 
 void
 dlb_cleanup()
 {
-    /* In a PufferLib vecenv, many envs share the process
-     * and the DLB file is open for the lifetime of the process. The
-     * previous code called do_dlb_cleanup() on every
-     * nle_end and reset dlb_initialized=FALSE so the next nle_start
-     * could re-run lib_dlb_init — which memset()s dlb_libs[0] and
-     * re-opens the file. Another pthread mid-dlb_fopen on
-     * dlb_libs[0].fdata would see torn state and indirect-call into
-     * garbage (root cause of the N=256 B=8 "ip 0x0e error 14" crash).
-     *
-     * Per-env copies are not the right answer — the DLB file is
-     * identical across envs by design. Instead make cleanup a no-op
-     * so dlb_libs[] stays valid and dlb_initialized stays TRUE for
-     * the rest of the process lifetime. The OS reclaims the FILE* on
-     * process exit. */
-    return;
+    if (dlb_initialized) {
+        do_dlb_cleanup();
+        dlb_initialized = FALSE;
+    }
 }
 
 dlb *

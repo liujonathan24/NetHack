@@ -7,27 +7,7 @@
 /* a few other help related facilities */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "dlb.h"
-
-/* Per-env pager.c state. Replaces function-local statics. */
-struct nle_pager_state {
-    char _look_buf[BUFSZ];
-    boolean _once;
-};
-static struct nle_pager_state *
-nle_pager(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_pager_state *s = (struct nle_pager_state *) current_nle_ctx->s_pager_state;
-    if (!s) {
-        s = (struct nle_pager_state *) nle_arena_calloc(1, sizeof(struct nle_pager_state));
-        current_nle_ctx->s_pager_state = s;
-    }
-    return s;
-}
-#define look_buf  (nle_pager()->_look_buf)
-#define once      (nle_pager()->_once)
 
 STATIC_DCL boolean FDECL(is_swallow_sym, (int));
 STATIC_DCL int FDECL(append_str, (char *, const char *));
@@ -125,7 +105,7 @@ char *outbuf;
     struct obj *otmp;
     boolean fakeobj, isyou = (mon == &youmonst);
     int x = isyou ? u.ux : mon->mx, y = isyou ? u.uy : mon->my,
-        glyph = (level.lflags.hero_memory && !isyou) ? levl[x][y].glyph
+        glyph = (level.flags.hero_memory && !isyou) ? levl[x][y].glyph
                                                     : glyph_at(x, y);
 
     *outbuf = '\0';
@@ -838,6 +818,7 @@ struct permonst **for_supplement;
 {
     static const char mon_interior[] = "the interior of a monster",
                       unreconnoitered[] = "unreconnoitered";
+    static char look_buf[BUFSZ];
     char prefix[BUFSZ];
     int i, alt_i, j, glyph = NO_GLYPH,
         skipped_venom = 0, found = 0; /* count of matching syms found */
@@ -1885,6 +1866,7 @@ char *cbuf;
 int
 dowhatdoes()
 {
+    static boolean once = FALSE;
     char bufr[BUFSZ];
     char q, *reslt;
 

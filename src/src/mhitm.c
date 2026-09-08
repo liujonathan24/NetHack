@@ -4,20 +4,13 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "artifact.h"
 
-/* Combat tick per-env (mhitm.c statics). */
-#define noisetime (current_nle_ctx->s_noisetime)
-#define otmp      (current_nle_ctx->s_mhitm_otmp)
-#define dieroll   (current_nle_ctx->s_dieroll_mhitm)
+extern boolean notonhead;
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
-
-/* M-vs-m vis/far_noise per-env (was static NEARDATA boolean). */
-#define vis        (current_nle_ctx->s_vis)
-#define far_noise  (current_nle_ctx->s_far_noise)
+static NEARDATA boolean vis, far_noise;
+static NEARDATA long noisetime;
+static NEARDATA struct obj *otmp;
 
 static const char brief_feeling[] =
     "have a %s feeling for a moment, then it passes.";
@@ -43,9 +36,8 @@ STATIC_DCL int FDECL(passivemm, (struct monst *, struct monst *,
 /* Needed for the special case of monsters wielding vorpal blades (rare).
  * If we use this a lot it should probably be a parameter to mdamagem()
  * instead of a global variable.
- * (dieroll migrated to current_nle_ctx->s_dieroll_mhitm
- * via macro above; original `static int dieroll;` removed.)
  */
+static int dieroll;
 
 STATIC_OVL void
 noises(magr, mattk)

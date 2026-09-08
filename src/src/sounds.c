@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 STATIC_DCL boolean FDECL(mon_is_gecko, (struct monst *));
 STATIC_DCL int FDECL(domonnoise, (struct monst *));
@@ -37,20 +36,20 @@ dosounds()
 
     hallu = Hallucination ? 1 : 0;
 
-    if (level.lflags.nfountains && !rn2(400)) {
+    if (level.flags.nfountains && !rn2(400)) {
         static const char *const fountain_msg[4] = {
             "bubbling water.", "water falling on coins.",
             "the splashing of a naiad.", "a soda fountain!",
         };
         You_hear1(fountain_msg[rn2(3) + hallu]);
     }
-    if (level.lflags.nsinks && !rn2(300)) {
+    if (level.flags.nsinks && !rn2(300)) {
         static const char *const sink_msg[3] = {
             "a slow drip.", "a gurgling noise.", "dishes being washed!",
         };
         You_hear1(sink_msg[rn2(2) + hallu]);
     }
-    if (level.lflags.has_court && !rn2(200)) {
+    if (level.flags.has_court && !rn2(200)) {
         static const char *const throne_msg[4] = {
             "the tones of courtly conversation.",
             "a sceptre pounded in judgment.",
@@ -73,7 +72,7 @@ dosounds()
             }
         }
     }
-    if (level.lflags.has_swamp && !rn2(200)) {
+    if (level.flags.has_swamp && !rn2(200)) {
         static const char *const swamp_msg[3] = {
             "hear mosquitoes!", "smell marsh gas!", /* so it's a smell...*/
             "hear Donald Duck!",
@@ -81,10 +80,10 @@ dosounds()
         You1(swamp_msg[rn2(2) + hallu]);
         return;
     }
-    if (level.lflags.has_vault && !rn2(200)) {
+    if (level.flags.has_vault && !rn2(200)) {
         if (!(sroom = search_special(VAULT))) {
             /* strange ... */
-            level.lflags.has_vault = 0;
+            level.flags.has_vault = 0;
             return;
         }
         if (gd_sound())
@@ -125,7 +124,7 @@ dosounds()
             }
         return;
     }
-    if (level.lflags.has_beehive && !rn2(200)) {
+    if (level.flags.has_beehive && !rn2(200)) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
                 continue;
@@ -147,7 +146,7 @@ dosounds()
             }
         }
     }
-    if (level.lflags.has_morgue && !rn2(200)) {
+    if (level.flags.has_morgue && !rn2(200)) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
                 continue;
@@ -172,7 +171,7 @@ dosounds()
             }
         }
     }
-    if (level.lflags.has_barracks && !rn2(200)) {
+    if (level.flags.has_barracks && !rn2(200)) {
         static const char *const barracks_msg[4] = {
             "blades being honed.", "loud snoring.", "dice being thrown.",
             "General MacArthur!",
@@ -195,7 +194,7 @@ dosounds()
             }
         }
     }
-    if (level.lflags.has_zoo && !rn2(200)) {
+    if (level.flags.has_zoo && !rn2(200)) {
         static const char *const zoo_msg[3] = {
             "a sound reminiscent of an elephant stepping on a peanut.",
             "a sound reminiscent of a seal barking.", "Doctor Dolittle!",
@@ -210,10 +209,10 @@ dosounds()
             }
         }
     }
-    if (level.lflags.has_shop && !rn2(200)) {
+    if (level.flags.has_shop && !rn2(200)) {
         if (!(sroom = search_special(ANY_SHOP))) {
             /* strange... */
-            level.lflags.has_shop = 0;
+            level.flags.has_shop = 0;
             return;
         }
         if (tended_shop(sroom)
@@ -226,7 +225,7 @@ dosounds()
         }
         return;
     }
-    if (level.lflags.has_temple && !rn2(200)
+    if (level.flags.has_temple && !rn2(200)
         && !(Is_astralevel(&u.uz) || Is_sanctum(&u.uz))) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
@@ -722,7 +721,7 @@ register struct monst *mtmp;
         pline("%s rattles noisily.", Monnam(mtmp));
         You("freeze for a moment.");
         nomul(-2);
-        current_nle_ctx->multi_reason = "scared by rattling";
+        multi_reason = "scared by rattling";
         nomovemsg = 0;
         break;
     case MS_LAUGH: {
@@ -1111,18 +1110,7 @@ typedef struct audio_mapping_rec {
     struct audio_mapping_rec *next;
 } audio_mapping;
 
-/* Per-env. Was static __thread. */
-struct nle_sounds_state { audio_mapping *_soundmap; };
-static struct nle_sounds_state *nle_sounds(void) {
-    if (!current_nle_ctx) return NULL;
-    struct nle_sounds_state *s = (struct nle_sounds_state *) current_nle_ctx->s_sounds_state;
-    if (!s) {
-        s = (struct nle_sounds_state *) nle_arena_calloc(1, sizeof(struct nle_sounds_state));
-        current_nle_ctx->s_sounds_state = s;
-    }
-    return s;
-}
-#define soundmap (nle_sounds()->_soundmap)
+static audio_mapping *soundmap = 0;
 
 char *sounddir = ".";
 

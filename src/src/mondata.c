@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 /*
  *      These routines provide basic data for any type of monster.
  */
@@ -823,12 +822,12 @@ int *mndx_p;
        such partial matches must start at beginning of a word.  Some
        class descriptions include "foo or bar" and "foo or other foo"
        so we don't want to accept "or", "other", "or other" there. */
-    static const char *const falsematch[] = {
+    static NEARDATA const char *const falsematch[] = {
         /* multiple-letter input which matches any of these gets rejected */
         "an", "the", "or", "other", "or other", 0
     };
     /* positive pm_val => specific monster; negative => class */
-    static const struct alt_spl truematch[] = {
+    static NEARDATA const struct alt_spl truematch[] = {
         /* "long worm" won't match "worm" class but would accidentally match
            "long worm tail" class before the comparison with monster types */
         { "long worm", PM_LONG_WORM },

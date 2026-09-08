@@ -15,7 +15,6 @@ NEARDATA struct instance_flags iflags; /* provide linkage */
 #define static
 #else
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 #include "tcap.h"
 #include <ctype.h>
 #endif
@@ -43,32 +42,7 @@ enum window_option_types {
 
 #define PILE_LIMIT_DFLT 5
 
-/* Per-env options.c state. empty_optstr / need_redraw / mapped_menu_op /
- * initial / from_file bundled into one struct, lazily allocated via
- * nle_options(). */
-struct nle_options_state {
-    char    _empty_optstr[1];
-    boolean _need_redraw;
-    char    _mapped_menu_op[32 + 1]; /* MAX_MENU_MAPPED_CMDS + 1 */
-    boolean _initial;
-    boolean _from_file;
-};
-static struct nle_options_state *
-nle_options(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_options_state *s = (struct nle_options_state *) current_nle_ctx->s_options_state;
-    if (!s) {
-        s = (struct nle_options_state *) nle_arena_calloc(1, sizeof(struct nle_options_state));
-        current_nle_ctx->s_options_state = s;
-    }
-    return s;
-}
-#define empty_optstr    (nle_options()->_empty_optstr)
-#define need_redraw     (nle_options()->_need_redraw)
-#define mapped_menu_op  (nle_options()->_mapped_menu_op)
-#define initial         (nle_options()->_initial)
-#define from_file       (nle_options()->_from_file)
+static char empty_optstr[] = { '\0' };
 
 /*
  *  NOTE:  If you add (or delete) an option, please update the short
@@ -80,23 +54,17 @@ nle_options(void)
  *  option (e.g. time and timed_delay) the shorter one must come first.
  */
 
-struct Bool_Opt {
+static struct Bool_Opt {
     const char *name;
     boolean *addr, initvalue;
     int optflags;
-};
-/* Per-env boolean-options table. The `addr` field points into the
- * per-env `nle_ctx_t.flags_ptr` / `u`, so each env needs its own
- * writable copy. A shared const baseline is captured here and copied
- * into the per-env slot at init time. The macro `boolopt` points at
- * the per-env copy. */
-static const struct Bool_Opt boolopt_baseline[] = {
-    { "acoustics", (boolean *) 0, TRUE, SET_IN_GAME },
+} boolopt[] = {
+    { "acoustics", &flags.acoustics, TRUE, SET_IN_GAME },
 #if defined(SYSFLAGS) && defined(AMIGA)
     /* Amiga altmeta causes Alt+key to be converted into Meta+key by
        low level nethack code; on by default, can be toggled off if
        Alt+key is needed for some ASCII chars on non-ASCII keyboard */
-    { "altmeta", (boolean *) 0, TRUE, DISP_IN_GAME },
+    { "altmeta", &sysflags.altmeta, TRUE, DISP_IN_GAME },
 #else
 #ifdef ALTMETA
     /* non-Amiga altmeta causes nethack's top level command loop to treat
@@ -105,131 +73,127 @@ static const struct Bool_Opt boolopt_baseline[] = {
        this can potentially make trouble if user types ESC when nethack
        is honoring this conversion request (primarily after starting a
        count prefix prior to a command and then deciding to cancel it) */
-    { "altmeta", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "altmeta", &iflags.altmeta, FALSE, SET_IN_GAME },
 #else
     { "altmeta", (boolean *) 0, TRUE, DISP_IN_GAME },
 #endif
 #endif
-    { "ascii_map", (boolean *) 0, !PREFER_TILED, SET_IN_GAME }, /*WC*/
+    { "ascii_map", &iflags.wc_ascii_map, !PREFER_TILED, SET_IN_GAME }, /*WC*/
 #if defined(SYSFLAGS) && defined(MFLOPPY)
-    { "asksavedisk", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "asksavedisk", &sysflags.asksavedisk, FALSE, SET_IN_GAME },
 #else
     { "asksavedisk", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "autodescribe", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "autodig", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "autoopen", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "autopickup", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "autoquiver", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "autodescribe", &iflags.autodescribe, TRUE, SET_IN_GAME },
+    { "autodig", &flags.autodig, FALSE, SET_IN_GAME },
+    { "autoopen", &flags.autoopen, TRUE, SET_IN_GAME },
+    { "autopickup", &flags.pickup, TRUE, SET_IN_GAME },
+    { "autoquiver", &flags.autoquiver, FALSE, SET_IN_GAME },
 #if defined(MICRO) && !defined(AMIGA)
-    { "BIOS", (boolean *) 0, FALSE, SET_IN_FILE },
+    { "BIOS", &iflags.BIOS, FALSE, SET_IN_FILE },
 #else
     { "BIOS", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    /* Refactor stage 4: &u.X is no longer a compile-time constant since
-     * `u` is per-instance heap-allocated. Set NULL here and patch the
-     * address at runtime in initoptions_init (below). */
-    { "blind", (boolean *) 0 /* &u.uroleplay.blind */, FALSE, DISP_IN_GAME },
-    { "bones", (boolean *) 0, TRUE, SET_IN_FILE },
+    { "blind", &u.uroleplay.blind, FALSE, DISP_IN_GAME },
+    { "bones", &flags.bones, TRUE, SET_IN_FILE },
 #ifdef INSURANCE
-    { "checkpoint", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "checkpoint", &flags.ins_chkpt, TRUE, SET_IN_GAME },
 #else
     { "checkpoint", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
 #ifdef MFLOPPY
-    { "checkspace", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "checkspace", &iflags.checkspace, TRUE, SET_IN_GAME },
 #else
     { "checkspace", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "clicklook", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "cmdassist", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "clicklook", &iflags.clicklook, FALSE, SET_IN_GAME },
+    { "cmdassist", &iflags.cmdassist, TRUE, SET_IN_GAME },
 #if defined(MICRO) || defined(WIN32) || defined(CURSES_GRAPHICS)
-    { "color", (boolean *) 0, TRUE, SET_IN_GAME }, /* on/off: use WC or not */
+    { "color", &iflags.wc_color, TRUE, SET_IN_GAME }, /* on/off: use WC or not */
 #else /* systems that support multiple terminals, many monochrome */
-    { "color", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "color", &iflags.wc_color, FALSE, SET_IN_GAME },
 #endif
-    { "confirm", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "dark_room", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "eight_bit_tty", (boolean *) 0, FALSE, SET_IN_GAME }, /*WC*/
+    { "confirm", &flags.confirm, TRUE, SET_IN_GAME },
+    { "dark_room", &flags.dark_room, TRUE, SET_IN_GAME },
+    { "eight_bit_tty", &iflags.wc_eight_bit_input, FALSE, SET_IN_GAME }, /*WC*/
 #if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS) || defined(X11_GRAPHICS)
-    { "extmenu", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "extmenu", &iflags.extmenu, FALSE, SET_IN_GAME },
 #else
     { "extmenu", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
 #ifdef OPT_DISPMAP
-    { "fast_map", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "fast_map", &flags.fast_map, TRUE, SET_IN_GAME },
 #else
     { "fast_map", (boolean *) 0, TRUE, SET_IN_FILE },
 #endif
-    { "female", (boolean *) 0, FALSE, DISP_IN_GAME },
-    { "fixinv", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "female", &flags.female, FALSE, DISP_IN_GAME },
+    { "fixinv", &flags.invlet_constant, TRUE, SET_IN_GAME },
 #if defined(SYSFLAGS) && defined(AMIFLUSH)
-    { "flush", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "flush", &sysflags.amiflush, FALSE, SET_IN_GAME },
 #else
     { "flush", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "force_invmenu", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "fullscreen", (boolean *) 0, FALSE, SET_IN_FILE }, /*WC2*/
-    { "goldX", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "guicolor", (boolean *) 0, TRUE, SET_IN_GAME}, /*WC2*/
-    { "help", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "herecmd_menu", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "hilite_pet", (boolean *) 0, FALSE, SET_IN_GAME }, /*WC*/
-    { "hilite_pile", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "hitpointbar", (boolean *) 0, FALSE, SET_IN_GAME }, /*WC2*/
+    { "force_invmenu", &iflags.force_invmenu, FALSE, SET_IN_GAME },
+    { "fullscreen", &iflags.wc2_fullscreen, FALSE, SET_IN_FILE }, /*WC2*/
+    { "goldX", &iflags.goldX, FALSE, SET_IN_GAME },
+    { "guicolor", &iflags.wc2_guicolor, TRUE, SET_IN_GAME}, /*WC2*/
+    { "help", &flags.help, TRUE, SET_IN_GAME },
+    { "herecmd_menu", &iflags.herecmd_menu, FALSE, SET_IN_GAME },
+    { "hilite_pet", &iflags.wc_hilite_pet, FALSE, SET_IN_GAME }, /*WC*/
+    { "hilite_pile", &iflags.hilite_pile, FALSE, SET_IN_GAME },
+    { "hitpointbar", &iflags.wc2_hitpointbar, FALSE, SET_IN_GAME }, /*WC2*/
 #ifndef MAC
-    { "ignintr", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "ignintr", &flags.ignintr, FALSE, SET_IN_GAME },
 #else
     { "ignintr", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "implicit_uncursed", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "large_font", (boolean *) 0, FALSE, SET_IN_FILE }, /* OBSOLETE */
-    { "legacy", (boolean *) 0, TRUE, DISP_IN_GAME },
-    { "lit_corridor", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "lootabc", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "implicit_uncursed", &iflags.implicit_uncursed, TRUE, SET_IN_GAME },
+    { "large_font", &iflags.obsolete, FALSE, SET_IN_FILE }, /* OBSOLETE */
+    { "legacy", &flags.legacy, TRUE, DISP_IN_GAME },
+    { "lit_corridor", &flags.lit_corridor, FALSE, SET_IN_GAME },
+    { "lootabc", &flags.lootabc, FALSE, SET_IN_GAME },
 #ifdef MAIL
-    { "mail", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "mail", &flags.biff, TRUE, SET_IN_GAME },
 #else
     { "mail", (boolean *) 0, TRUE, SET_IN_FILE },
 #endif
-    { "mention_walls", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "menucolors", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "mention_walls", &iflags.mention_walls, FALSE, SET_IN_GAME },
+    { "menucolors", &iflags.use_menu_color, FALSE, SET_IN_GAME },
     /* for menu debugging only*/
-    { "menu_tab_sep", (boolean *) 0, FALSE, SET_IN_WIZGAME },
-    { "menu_objsyms", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "menu_tab_sep", &iflags.menu_tab_sep, FALSE, SET_IN_WIZGAME },
+    { "menu_objsyms", &iflags.menu_head_objsym, FALSE, SET_IN_GAME },
 #ifdef TTY_GRAPHICS
-    { "menu_overlay", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "menu_overlay", &iflags.menu_overlay, TRUE, SET_IN_GAME },
 #else
     { "menu_overlay", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "monpolycontrol", (boolean *) 0, FALSE, SET_IN_WIZGAME },
+    { "monpolycontrol", &iflags.mon_polycontrol, FALSE, SET_IN_WIZGAME },
 #ifdef NEWS
-    { "news", (boolean *) 0, TRUE, DISP_IN_GAME },
+    { "news", &iflags.news, TRUE, DISP_IN_GAME },
 #else
     { "news", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    /* Refactor stage 4: see "blind" above. */
-    { "nudist", (boolean *) 0 /* &u.uroleplay.nudist */, FALSE, DISP_IN_GAME },
-    { "null", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "nudist", &u.uroleplay.nudist, FALSE, DISP_IN_GAME },
+    { "null", &flags.null, TRUE, SET_IN_GAME },
 #if defined(SYSFLAGS) && defined(MAC)
-    { "page_wait", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "page_wait", &sysflags.page_wait, TRUE, SET_IN_GAME },
 #else
     { "page_wait", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
     /* moved perm_invent from flags to iflags and out of save file in 3.6.2 */
-    { "perm_invent", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "pickup_thrown", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "popup_dialog", (boolean *) 0, FALSE, SET_IN_GAME },   /*WC*/
-    { "preload_tiles", (boolean *) 0, TRUE, DISP_IN_GAME }, /*WC*/
-    { "pushweapon", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "perm_invent", &iflags.perm_invent, FALSE, SET_IN_GAME },
+    { "pickup_thrown", &flags.pickup_thrown, TRUE, SET_IN_GAME },
+    { "popup_dialog", &iflags.wc_popup_dialog, FALSE, SET_IN_GAME },   /*WC*/
+    { "preload_tiles", &iflags.wc_preload_tiles, TRUE, DISP_IN_GAME }, /*WC*/
+    { "pushweapon", &flags.pushweapon, FALSE, SET_IN_GAME },
 #if defined(MICRO) && !defined(AMIGA)
-    { "rawio", (boolean *) 0, FALSE, DISP_IN_GAME },
+    { "rawio", &iflags.rawio, FALSE, DISP_IN_GAME },
 #else
     { "rawio", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "rest_on_space", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "rest_on_space", &flags.rest_on_space, FALSE, SET_IN_GAME },
 #ifdef RLECOMP
-    { "rlecomp", (boolean *) 0,
+    { "rlecomp", &iflags.rlecomp,
 #if defined(COMPRESS) || defined(ZLIB_COMP)
       FALSE,
 #else
@@ -237,54 +201,54 @@ static const struct Bool_Opt boolopt_baseline[] = {
 #endif
       DISP_IN_GAME },
 #endif
-    { "safe_pet", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "sanity_check", (boolean *) 0, FALSE, SET_IN_WIZGAME },
-    { "selectsaved", (boolean *) 0, TRUE, DISP_IN_GAME }, /*WC*/
-    { "showexp", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "showrace", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "safe_pet", &flags.safe_dog, TRUE, SET_IN_GAME },
+    { "sanity_check", &iflags.sanity_check, FALSE, SET_IN_WIZGAME },
+    { "selectsaved", &iflags.wc2_selectsaved, TRUE, DISP_IN_GAME }, /*WC*/
+    { "showexp", &flags.showexp, FALSE, SET_IN_GAME },
+    { "showrace", &flags.showrace, FALSE, SET_IN_GAME },
 #ifdef SCORE_ON_BOTL
-    { "showscore", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "showscore", &flags.showscore, FALSE, SET_IN_GAME },
 #else
     { "showscore", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "silent", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "softkeyboard", (boolean *) 0, FALSE, SET_IN_FILE }, /*WC2*/
-    { "sortpack", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "sparkle", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "splash_screen", (boolean *) 0, TRUE, DISP_IN_GAME }, /*WC*/
-    { "standout", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "status_updates", (boolean *) 0, TRUE, DISP_IN_GAME },
-    { "tiled_map", (boolean *) 0, PREFER_TILED, DISP_IN_GAME }, /*WC*/
-    { "time", (boolean *) 0, FALSE, SET_IN_GAME },
+    { "silent", &flags.silent, TRUE, SET_IN_GAME },
+    { "softkeyboard", &iflags.wc2_softkeyboard, FALSE, SET_IN_FILE }, /*WC2*/
+    { "sortpack", &flags.sortpack, TRUE, SET_IN_GAME },
+    { "sparkle", &flags.sparkle, TRUE, SET_IN_GAME },
+    { "splash_screen", &iflags.wc_splash_screen, TRUE, DISP_IN_GAME }, /*WC*/
+    { "standout", &flags.standout, FALSE, SET_IN_GAME },
+    { "status_updates", &iflags.status_updates, TRUE, DISP_IN_GAME },
+    { "tiled_map", &iflags.wc_tiled_map, PREFER_TILED, DISP_IN_GAME }, /*WC*/
+    { "time", &flags.time, FALSE, SET_IN_GAME },
 #ifdef TIMED_DELAY
-    { "timed_delay", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "timed_delay", &flags.nap, TRUE, SET_IN_GAME },
 #else
     { "timed_delay", (boolean *) 0, FALSE, SET_IN_GAME },
 #endif
-    { "tombstone", (boolean *) 0, TRUE, SET_IN_GAME },
-    { "toptenwin", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "travel", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "tombstone", &flags.tombstone, TRUE, SET_IN_GAME },
+    { "toptenwin", &iflags.toptenwin, FALSE, SET_IN_GAME },
+    { "travel", &flags.travelcmd, TRUE, SET_IN_GAME },
 #ifdef DEBUG
-    { "travel_debug", (boolean *) 0, FALSE, SET_IN_WIZGAME }, /*hack.c*/
+    { "travel_debug", &iflags.trav_debug, FALSE, SET_IN_WIZGAME }, /*hack.c*/
 #endif
-    { "use_darkgray", (boolean *) 0, TRUE, SET_IN_FILE }, /*WC2*/
+    { "use_darkgray", &iflags.wc2_darkgray, TRUE, SET_IN_FILE }, /*WC2*/
 #ifdef WIN32
-    { "use_inverse", (boolean *) 0, TRUE, SET_IN_GAME }, /*WC*/
+    { "use_inverse", &iflags.wc_inverse, TRUE, SET_IN_GAME }, /*WC*/
 #else
-    { "use_inverse", (boolean *) 0, FALSE, SET_IN_GAME }, /*WC*/
+    { "use_inverse", &iflags.wc_inverse, FALSE, SET_IN_GAME }, /*WC*/
 #endif
-    { "verbose", (boolean *) 0, TRUE, SET_IN_GAME },
+    { "verbose", &flags.verbose, TRUE, SET_IN_GAME },
 #ifdef TTY_TILES_ESCCODES
-    { "vt_tiledata", (boolean *) 0, FALSE, SET_IN_FILE },
+    { "vt_tiledata", &iflags.vt_tiledata, FALSE, SET_IN_FILE },
 #else
     { "vt_tiledata", (boolean *) 0, FALSE, SET_IN_FILE },
 #endif
-    { "whatis_menu", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "whatis_moveskip", (boolean *) 0, FALSE, SET_IN_GAME },
-    { "wizweight", (boolean *) 0, FALSE, SET_IN_WIZGAME },
-    { "wraptext", (boolean *) 0, FALSE, SET_IN_GAME }, /*WC2*/
+    { "whatis_menu", &iflags.getloc_usemenu, FALSE, SET_IN_GAME },
+    { "whatis_moveskip", &iflags.getloc_moveskip, FALSE, SET_IN_GAME },
+    { "wizweight", &iflags.wizweight, FALSE, SET_IN_WIZGAME },
+    { "wraptext", &iflags.wc2_wraptext, FALSE, SET_IN_GAME }, /*WC2*/
 #ifdef ZEROCOMP
-    { "zerocomp", (boolean *) 0,
+    { "zerocomp", &iflags.zerocomp,
 #if defined(COMPRESS) || defined(ZLIB_COMP)
       FALSE,
 #else
@@ -294,17 +258,10 @@ static const struct Bool_Opt boolopt_baseline[] = {
 #endif
     { (char *) 0, (boolean *) 0, FALSE, 0 }
 };
-/* Number of entries (including the terminator). */
-#define BOOLOPT_COUNT (sizeof(boolopt_baseline) / sizeof(boolopt_baseline[0]))
-
-/* Per-env boolopt — macro to per-env heap. The init code at
- * options.c:initoptions_init copies boolopt_baseline into this slot
- * and then patches the addr fields with per-env pointers. */
-#define boolopt ((struct Bool_Opt *) current_nle_ctx->s_boolopt_p)
 
 /* compound options, for option_help() and external programs like Amiga
  * frontend */
-struct Comp_Opt {
+static struct Comp_Opt {
     const char *name, *descr;
     int size; /* for frontends and such allocating space --
                * usually allowed size of data in game, but
@@ -312,11 +269,7 @@ struct Comp_Opt {
                * typing when game maintains information in
                * a different format */
     int optflags;
-};
-/* Per-env compound-options table. compopt[k].optflags gets toggled
- * per game (see line ~6842, options.c). Baseline lives in .rodata;
- * options.c init copies it into the per-env heap slot. */
-static const struct Comp_Opt compopt_baseline[] = {
+} compopt[] = {
     { "align", "your starting alignment (lawful, neutral, or chaotic)", 8,
       DISP_IN_GAME },
     { "align_message", "message window alignment", 20, DISP_IN_GAME }, /*WC*/
@@ -504,10 +457,6 @@ static const struct Comp_Opt compopt_baseline[] = {
 #endif
     { (char *) 0, (char *) 0, 0, 0 }
 };
-#define COMPOPT_COUNT (sizeof(compopt_baseline) / sizeof(compopt_baseline[0]))
-
-/* Per-env compopt — macro to the heap slot; see init below. */
-#define compopt ((struct Comp_Opt *) current_nle_ctx->s_compopt_p)
 
 #ifdef OPTION_LISTS_ONLY
 #undef static
@@ -516,8 +465,8 @@ static const struct Comp_Opt compopt_baseline[] = {
 
 extern char configfile[]; /* for messages */
 
-extern const struct symparse loadsyms[];
-/* need_redraw migrated to nle_options() */
+extern struct symparse loadsyms[];
+static boolean need_redraw; /* for doset() */
 
 #if defined(TOS) && defined(TEXTCOLOR)
 extern boolean colors_changed;  /* in tos.c */
@@ -587,11 +536,10 @@ static const menu_cmd_t default_menu_cmd_info[] = {
  */
 #define MAX_MENU_MAPPED_CMDS 32 /* some number */
 char mapped_menu_cmds[MAX_MENU_MAPPED_CMDS + 1]; /* exported */
-/* mapped_menu_op migrated to nle_options() */
-/* Per-env. Was __thread; OMP coroutine-resume hazard. */
-#define n_menu_mapped (current_nle_ctx->s_n_menu_mapped)
+static char mapped_menu_op[MAX_MENU_MAPPED_CMDS + 1];
+static short n_menu_mapped = 0;
 
-/* initial / from_file migrated to nle_options() */
+static boolean initial, from_file;
 
 STATIC_DCL void FDECL(nmcpy, (char *, const char *, int));
 STATIC_DCL void FDECL(escapes, (const char *, char *));
@@ -753,10 +701,6 @@ initoptions_init()
 #endif
     int i;
 
-    /* Seed the per-env boolopt[] / compopt[] from their const baselines. */
-    memcpy(boolopt, boolopt_baseline, sizeof(boolopt_baseline));
-    memcpy(compopt, compopt_baseline, sizeof(compopt_baseline));
-
     /* set up the command parsing */
     reset_commands(TRUE); /* init */
 
@@ -766,176 +710,6 @@ initoptions_init()
 
     /* for detection of configfile options specified multiple times */
     iflags.opt_booldup = iflags.opt_compdup = (int *) 0;
-
-    /* Stage 5 Option-A patch: when NEARDATA is __thread, &flags.X etc.
-     * cannot appear in static initializers. The boolopt[] entries above
-     * are NULL; here we patch each entry by name at runtime. The #ifdef
-     * skeleton MUST match boolopt[]'s exactly so only the live entry
-     * gets its address. */
-    for (i = 0; boolopt[i].name; i++) {
-        if (!strcmp(boolopt[i].name, "blind"))  boolopt[i].addr = &u.uroleplay.blind;
-        if (!strcmp(boolopt[i].name, "nudist")) boolopt[i].addr = &u.uroleplay.nudist;
-        if (!strcmp(boolopt[i].name, "acoustics")) boolopt[i].addr = (boolean *)&flags.acoustics;
-#if defined(SYSFLAGS) && defined(AMIGA)
-        if (!strcmp(boolopt[i].name, "altmeta")) boolopt[i].addr = (boolean *)&sysflags.altmeta;
-#else
-#ifdef ALTMETA
-        if (!strcmp(boolopt[i].name, "altmeta")) boolopt[i].addr = (boolean *)&iflags.altmeta;
-#else
-#endif
-#endif
-        if (!strcmp(boolopt[i].name, "ascii_map")) boolopt[i].addr = (boolean *)&iflags.wc_ascii_map;
-#if defined(SYSFLAGS) && defined(MFLOPPY)
-        if (!strcmp(boolopt[i].name, "asksavedisk")) boolopt[i].addr = (boolean *)&sysflags.asksavedisk;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "autodescribe")) boolopt[i].addr = (boolean *)&iflags.autodescribe;
-        if (!strcmp(boolopt[i].name, "autodig")) boolopt[i].addr = (boolean *)&flags.autodig;
-        if (!strcmp(boolopt[i].name, "autoopen")) boolopt[i].addr = (boolean *)&flags.autoopen;
-        if (!strcmp(boolopt[i].name, "autopickup")) boolopt[i].addr = (boolean *)&flags.pickup;
-        if (!strcmp(boolopt[i].name, "autoquiver")) boolopt[i].addr = (boolean *)&flags.autoquiver;
-#if defined(MICRO) && !defined(AMIGA)
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "bones")) boolopt[i].addr = (boolean *)&flags.bones;
-#ifdef INSURANCE
-        if (!strcmp(boolopt[i].name, "checkpoint")) boolopt[i].addr = (boolean *)&flags.ins_chkpt;
-#else
-#endif
-#ifdef MFLOPPY
-        if (!strcmp(boolopt[i].name, "checkspace")) boolopt[i].addr = (boolean *)&iflags.checkspace;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "clicklook")) boolopt[i].addr = (boolean *)&iflags.clicklook;
-        if (!strcmp(boolopt[i].name, "cmdassist")) boolopt[i].addr = (boolean *)&iflags.cmdassist;
-#if defined(MICRO) || defined(WIN32) || defined(CURSES_GRAPHICS)
-        if (!strcmp(boolopt[i].name, "color")) boolopt[i].addr = (boolean *)&iflags.wc_color;
-#else /* systems that support multiple terminals, many monochrome */
-        if (!strcmp(boolopt[i].name, "color")) boolopt[i].addr = (boolean *)&iflags.wc_color;
-#endif
-        if (!strcmp(boolopt[i].name, "confirm")) boolopt[i].addr = (boolean *)&flags.confirm;
-        if (!strcmp(boolopt[i].name, "dark_room")) boolopt[i].addr = (boolean *)&flags.dark_room;
-        if (!strcmp(boolopt[i].name, "eight_bit_tty")) boolopt[i].addr = (boolean *)&iflags.wc_eight_bit_input;
-#if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS) || defined(X11_GRAPHICS)
-        if (!strcmp(boolopt[i].name, "extmenu")) boolopt[i].addr = (boolean *)&iflags.extmenu;
-#else
-#endif
-#ifdef OPT_DISPMAP
-        if (!strcmp(boolopt[i].name, "fast_map")) boolopt[i].addr = (boolean *)&flags.fast_map;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "female")) boolopt[i].addr = (boolean *)&flags.female;
-        if (!strcmp(boolopt[i].name, "fixinv")) boolopt[i].addr = (boolean *)&flags.invlet_constant;
-#if defined(SYSFLAGS) && defined(AMIFLUSH)
-        if (!strcmp(boolopt[i].name, "flush")) boolopt[i].addr = (boolean *)&sysflags.amiflush;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "force_invmenu")) boolopt[i].addr = (boolean *)&iflags.force_invmenu;
-        if (!strcmp(boolopt[i].name, "fullscreen")) boolopt[i].addr = (boolean *)&iflags.wc2_fullscreen;
-        if (!strcmp(boolopt[i].name, "guicolor")) boolopt[i].addr = (boolean *)&iflags.wc2_guicolor;
-        if (!strcmp(boolopt[i].name, "help")) boolopt[i].addr = (boolean *)&flags.help;
-        if (!strcmp(boolopt[i].name, "herecmd_menu")) boolopt[i].addr = (boolean *)&iflags.herecmd_menu;
-        if (!strcmp(boolopt[i].name, "hilite_pet")) boolopt[i].addr = (boolean *)&iflags.wc_hilite_pet;
-        if (!strcmp(boolopt[i].name, "hilite_pile")) boolopt[i].addr = (boolean *)&iflags.hilite_pile;
-        if (!strcmp(boolopt[i].name, "hitpointbar")) boolopt[i].addr = (boolean *)&iflags.wc2_hitpointbar;
-#ifndef MAC
-        if (!strcmp(boolopt[i].name, "ignintr")) boolopt[i].addr = (boolean *)&flags.ignintr;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "implicit_uncursed")) boolopt[i].addr = (boolean *)&iflags.implicit_uncursed;
-        if (!strcmp(boolopt[i].name, "large_font")) boolopt[i].addr = (boolean *)&iflags.obsolete;
-        if (!strcmp(boolopt[i].name, "legacy")) boolopt[i].addr = (boolean *)&flags.legacy;
-        if (!strcmp(boolopt[i].name, "lit_corridor")) boolopt[i].addr = (boolean *)&flags.lit_corridor;
-        if (!strcmp(boolopt[i].name, "lootabc")) boolopt[i].addr = (boolean *)&flags.lootabc;
-#ifdef MAIL
-        if (!strcmp(boolopt[i].name, "mail")) boolopt[i].addr = (boolean *)&flags.biff;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "mention_walls")) boolopt[i].addr = (boolean *)&iflags.mention_walls;
-        if (!strcmp(boolopt[i].name, "menucolors")) boolopt[i].addr = (boolean *)&iflags.use_menu_color;
-        if (!strcmp(boolopt[i].name, "menu_tab_sep")) boolopt[i].addr = (boolean *)&iflags.menu_tab_sep;
-        if (!strcmp(boolopt[i].name, "menu_objsyms")) boolopt[i].addr = (boolean *)&iflags.menu_head_objsym;
-#ifdef TTY_GRAPHICS
-        if (!strcmp(boolopt[i].name, "menu_overlay")) boolopt[i].addr = (boolean *)&iflags.menu_overlay;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "monpolycontrol")) boolopt[i].addr = (boolean *)&iflags.mon_polycontrol;
-#ifdef NEWS
-        if (!strcmp(boolopt[i].name, "news")) boolopt[i].addr = (boolean *)&iflags.news;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "null")) boolopt[i].addr = (boolean *)&flags.null;
-#if defined(SYSFLAGS) && defined(MAC)
-        if (!strcmp(boolopt[i].name, "page_wait")) boolopt[i].addr = (boolean *)&sysflags.page_wait;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "perm_invent")) boolopt[i].addr = (boolean *)&iflags.perm_invent;
-        if (!strcmp(boolopt[i].name, "pickup_thrown")) boolopt[i].addr = (boolean *)&flags.pickup_thrown;
-        if (!strcmp(boolopt[i].name, "popup_dialog")) boolopt[i].addr = (boolean *)&iflags.wc_popup_dialog;
-        if (!strcmp(boolopt[i].name, "preload_tiles")) boolopt[i].addr = (boolean *)&iflags.wc_preload_tiles;
-        if (!strcmp(boolopt[i].name, "pushweapon")) boolopt[i].addr = (boolean *)&flags.pushweapon;
-#if defined(MICRO) && !defined(AMIGA)
-        if (!strcmp(boolopt[i].name, "rawio")) boolopt[i].addr = (boolean *)&iflags.rawio;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "rest_on_space")) boolopt[i].addr = (boolean *)&flags.rest_on_space;
-#ifdef RLECOMP
-        if (!strcmp(boolopt[i].name, "rlecomp")) boolopt[i].addr = (boolean *)&iflags.rlecomp;
-#if defined(COMPRESS) || defined(ZLIB_COMP)
-#else
-#endif
-#endif
-        if (!strcmp(boolopt[i].name, "safe_pet")) boolopt[i].addr = (boolean *)&flags.safe_dog;
-        if (!strcmp(boolopt[i].name, "sanity_check")) boolopt[i].addr = (boolean *)&iflags.sanity_check;
-        if (!strcmp(boolopt[i].name, "selectsaved")) boolopt[i].addr = (boolean *)&iflags.wc2_selectsaved;
-        if (!strcmp(boolopt[i].name, "showexp")) boolopt[i].addr = (boolean *)&flags.showexp;
-        if (!strcmp(boolopt[i].name, "showrace")) boolopt[i].addr = (boolean *)&flags.showrace;
-#ifdef SCORE_ON_BOTL
-        if (!strcmp(boolopt[i].name, "showscore")) boolopt[i].addr = (boolean *)&flags.showscore;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "silent")) boolopt[i].addr = (boolean *)&flags.silent;
-        if (!strcmp(boolopt[i].name, "softkeyboard")) boolopt[i].addr = (boolean *)&iflags.wc2_softkeyboard;
-        if (!strcmp(boolopt[i].name, "sortpack")) boolopt[i].addr = (boolean *)&flags.sortpack;
-        if (!strcmp(boolopt[i].name, "sparkle")) boolopt[i].addr = (boolean *)&flags.sparkle;
-        if (!strcmp(boolopt[i].name, "splash_screen")) boolopt[i].addr = (boolean *)&iflags.wc_splash_screen;
-        if (!strcmp(boolopt[i].name, "standout")) boolopt[i].addr = (boolean *)&flags.standout;
-        if (!strcmp(boolopt[i].name, "status_updates")) boolopt[i].addr = (boolean *)&iflags.status_updates;
-        if (!strcmp(boolopt[i].name, "tiled_map")) boolopt[i].addr = (boolean *)&iflags.wc_tiled_map;
-        if (!strcmp(boolopt[i].name, "time")) boolopt[i].addr = (boolean *)&flags.time;
-#ifdef TIMED_DELAY
-        if (!strcmp(boolopt[i].name, "timed_delay")) boolopt[i].addr = (boolean *)&flags.nap;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "tombstone")) boolopt[i].addr = (boolean *)&flags.tombstone;
-        if (!strcmp(boolopt[i].name, "toptenwin")) boolopt[i].addr = (boolean *)&iflags.toptenwin;
-        if (!strcmp(boolopt[i].name, "travel")) boolopt[i].addr = (boolean *)&flags.travelcmd;
-#ifdef DEBUG
-        if (!strcmp(boolopt[i].name, "travel_debug")) boolopt[i].addr = (boolean *)&iflags.trav_debug;
-#endif
-        if (!strcmp(boolopt[i].name, "use_darkgray")) boolopt[i].addr = (boolean *)&iflags.wc2_darkgray;
-#ifdef WIN32
-        if (!strcmp(boolopt[i].name, "use_inverse")) boolopt[i].addr = (boolean *)&iflags.wc_inverse;
-#else
-        if (!strcmp(boolopt[i].name, "use_inverse")) boolopt[i].addr = (boolean *)&iflags.wc_inverse;
-#endif
-        if (!strcmp(boolopt[i].name, "verbose")) boolopt[i].addr = (boolean *)&flags.verbose;
-#ifdef TTY_TILES_ESCCODES
-        if (!strcmp(boolopt[i].name, "vt_tiledata")) boolopt[i].addr = (boolean *)&iflags.vt_tiledata;
-#else
-#endif
-        if (!strcmp(boolopt[i].name, "whatis_menu")) boolopt[i].addr = (boolean *)&iflags.getloc_usemenu;
-        if (!strcmp(boolopt[i].name, "whatis_moveskip")) boolopt[i].addr = (boolean *)&iflags.getloc_moveskip;
-        if (!strcmp(boolopt[i].name, "wizweight")) boolopt[i].addr = (boolean *)&iflags.wizweight;
-        if (!strcmp(boolopt[i].name, "wraptext")) boolopt[i].addr = (boolean *)&iflags.wc2_wraptext;
-#ifdef ZEROCOMP
-        if (!strcmp(boolopt[i].name, "zerocomp")) boolopt[i].addr = (boolean *)&iflags.zerocomp;
-#if defined(COMPRESS) || defined(ZLIB_COMP)
-#else
-#endif
-#endif
-    }
-
 
     for (i = 0; boolopt[i].name; i++) {
         if (boolopt[i].addr)
@@ -969,7 +743,7 @@ initoptions_init()
     flags.pile_limit = PILE_LIMIT_DFLT;  /* 5 */
     flags.runmode = RUN_LEAP;
     iflags.msg_history = 20;
-    /* msg_window has conflicting defaults for current_nle_ctx->multi-interface binary */
+    /* msg_window has conflicting defaults for multi-interface binary */
 #ifdef TTY_GRAPHICS
     iflags.prevmsg_window = 's';
 #else
@@ -1123,7 +897,7 @@ initoptions_finish()
 
 #ifdef STATUS_HILITES
     /*
-     * A current_nle_ctx->multi-interface binary might only support status highlighting
+     * A multi-interface binary might only support status highlighting
      * for some of the interfaces; check whether we asked for it but are
      * using one which doesn't.
      *
@@ -1186,7 +960,7 @@ escapes(cp, tp)
 const char *cp; /* might be 'tp', updating in place */
 char *tp; /* result is never longer than 'cp' */
 {
-    static const char oct[] = "01234567", dec[] = "0123456789",
+    static NEARDATA const char oct[] = "01234567", dec[] = "0123456789",
                                hex[] = "00112233445566778899aAbBcCdDeEfF";
     const char *dp;
     int cval, meta, dcount;
@@ -4466,17 +4240,17 @@ char* bindings;
     return TRUE;
 }
 
-static const char *menutype[] = { "traditional", "combination",
+static NEARDATA const char *menutype[] = { "traditional", "combination",
                                            "full", "partial" };
 
-static const char *burdentype[] = { "unencumbered", "burdened",
+static NEARDATA const char *burdentype[] = { "unencumbered", "burdened",
                                              "stressed",     "strained",
                                              "overtaxed",    "overloaded" };
 
-static const char *runmodes[] = { "teleport", "run", "walk",
+static NEARDATA const char *runmodes[] = { "teleport", "run", "walk",
                                            "crawl" };
 
-static const char *sortltype[] = { "none", "loot", "full" };
+static NEARDATA const char *sortltype[] = { "none", "loot", "full" };
 
 /*
  * Convert the given string of object classes to a string of default object
@@ -6389,7 +6163,7 @@ char *buf;
 {
     size_t len = strlen(buf);
     const char *p = index(buf, ':'), *q = index(buf, '=');
-    const struct symparse *sp = loadsyms;
+    struct symparse *sp = loadsyms;
 
     if (!p || (q && q < p))
         p = q;
@@ -7060,16 +6834,14 @@ char *op;
     char *wn, *tfg, *tbg, *newop;
     static const char *wnames[] = { "menu", "message", "status", "text" };
     static const char *shortnames[] = { "mnu", "msg", "sts", "txt" };
-    /* `iflags` is __thread; addresses non-constant. Auto storage (no
-     * `static`) admits non-constant initializers. */
-    char **fgp[] = { &iflags.wc_foregrnd_menu,
-                     &iflags.wc_foregrnd_message,
-                     &iflags.wc_foregrnd_status,
-                     &iflags.wc_foregrnd_text };
-    char **bgp[] = { &iflags.wc_backgrnd_menu,
-                     &iflags.wc_backgrnd_message,
-                     &iflags.wc_backgrnd_status,
-                     &iflags.wc_backgrnd_text };
+    static char **fgp[] = { &iflags.wc_foregrnd_menu,
+                            &iflags.wc_foregrnd_message,
+                            &iflags.wc_foregrnd_status,
+                            &iflags.wc_foregrnd_text };
+    static char **bgp[] = { &iflags.wc_backgrnd_menu,
+                            &iflags.wc_backgrnd_message,
+                            &iflags.wc_backgrnd_status,
+                            &iflags.wc_backgrnd_text };
 
     Strcpy(buf, op);
     newop = mungspaces(buf);
@@ -7148,7 +6920,7 @@ char *op;
 /* set up for wizard mode if player or save file has requested to it;
    called from port-specific startup code to handle `nethack -D' or
    OPTIONS=playmode:debug, or from dorecover()'s restgamestate() if
-   current_nle_ctx->restoring a game which was saved in wizard mode */
+   restoring a game which was saved in wizard mode */
 void
 set_playmode()
 {

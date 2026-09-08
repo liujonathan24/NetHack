@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* KMH -- Differences between the three weapon slots.
  *
@@ -88,7 +87,7 @@ register struct obj *obj;
     struct obj *olduwep = uwep;
 
     if (obj == uwep)
-        return; /* necessary to not set current_nle_ctx->unweapon */
+        return; /* necessary to not set unweapon */
     /* This message isn't printed in the caller because it happens
      * *whenever* Sunsword is unwielded, from whatever cause.
      */
@@ -107,12 +106,12 @@ register struct obj *obj;
      * 3.2.2:  Wielding arbitrary objects will give bashing message too.
      */
     if (obj) {
-        current_nle_ctx->unweapon = (obj->oclass == WEAPON_CLASS)
+        unweapon = (obj->oclass == WEAPON_CLASS)
                        ? is_launcher(obj) || is_ammo(obj) || is_missile(obj)
                              || (is_pole(obj) && !u.usteed)
                        : !is_weptool(obj) && !is_wet_towel(obj);
     } else
-        current_nle_ctx->unweapon = TRUE; /* for "bare hands" message */
+        unweapon = TRUE; /* for "bare hands" message */
 }
 
 STATIC_OVL boolean
@@ -245,13 +244,13 @@ register struct obj *obj;
 
 /*** Commands to change particular slot(s) ***/
 
-static const char wield_objs[] = {
+static NEARDATA const char wield_objs[] = {
     ALL_CLASSES, ALLOW_NONE, WEAPON_CLASS, TOOL_CLASS, 0
 };
-static const char ready_objs[] = {
+static NEARDATA const char ready_objs[] = {
     ALLOW_COUNT, COIN_CLASS, ALL_CLASSES, ALLOW_NONE, WEAPON_CLASS, 0
 };
-static const char bullets[] = { /* (note: different from dothrow.c) */
+static NEARDATA const char bullets[] = { /* (note: different from dothrow.c) */
     ALLOW_COUNT, COIN_CLASS, ALL_CLASSES, ALLOW_NONE,
     GEM_CLASS, WEAPON_CLASS, 0
 };
@@ -263,7 +262,7 @@ dowield()
     int result;
 
     /* May we attempt this? */
-    current_nle_ctx->multi = 0;
+    multi = 0;
     if (cantwield(youmonst.data)) {
         pline("Don't be ridiculous!");
         return 0;
@@ -276,7 +275,7 @@ dowield()
     else if (wep == uwep) {
         You("are already wielding that!");
         if (is_weptool(wep) || is_wet_towel(wep))
-            current_nle_ctx->unweapon = FALSE; /* [see setuwep()] */
+            unweapon = FALSE; /* [see setuwep()] */
         return 0;
     } else if (welded(uwep)) {
         weldmsg(uwep);
@@ -314,7 +313,7 @@ doswapweapon()
     int result = 0;
 
     /* May we attempt this? */
-    current_nle_ctx->multi = 0;
+    multi = 0;
     if (cantwield(youmonst.data)) {
         pline("Don't be ridiculous!");
         return 0;
@@ -362,7 +361,7 @@ dowieldquiver()
 
     /* Since the quiver isn't in your hands, don't check cantwield(), */
     /* will_weld(), touch_petrifies(), etc. */
-    current_nle_ctx->multi = 0;
+    multi = 0;
     /* forget last splitobj() before calling getobj() with ALLOW_COUNT */
     context.objsplit.child_oid = context.objsplit.parent_oid = 0;
 
@@ -592,7 +591,7 @@ const char *verb; /* "rub",&c */
     if (u.twoweap)
         untwoweapon();
     if (obj->oclass != WEAPON_CLASS)
-        current_nle_ctx->unweapon = TRUE;
+        unweapon = TRUE;
     return TRUE;
 }
 
@@ -686,7 +685,7 @@ uwepgone()
                 pline("%s shining.", Tobjnam(uwep, "stop"));
         }
         setworn((struct obj *) 0, W_WEP);
-        current_nle_ctx->unweapon = TRUE;
+        unweapon = TRUE;
         update_inventory();
     }
 }

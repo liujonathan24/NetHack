@@ -4,18 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Function-local statics migrated to nle_ctx_t */
-#define ate_brains    (current_nle_ctx->s_maybe_cannibal_ate_brains)
-#define save_hs       (current_nle_ctx->s_newuhs_save_hs)
-#define saved_hs      (current_nle_ctx->s_newuhs_saved_hs)
-/* File-statics msgbuf / force_save_hs per-env via nle_ctx_t.
- * Originals (char msgbuf[BUFSZ]; STATIC_OVL boolean force_save_hs = FALSE;)
- * removed below. The Static_assert guards the literal-256 sizing in nle.h. */
-#define msgbuf            (current_nle_ctx->s_eat_msgbuf)
-#define force_save_hs     (current_nle_ctx->s_eat_force_save_hs)
-_Static_assert(BUFSZ == 256, "eat.c: s_eat_msgbuf hard-coded to 256 in nle.h; update if BUFSZ changes");
 
 STATIC_PTR int NDECL(eatmdone);
 STATIC_PTR int NDECL(eatfood);
@@ -51,7 +39,7 @@ STATIC_DCL const char *FDECL(foodword, (struct obj *));
 STATIC_DCL int FDECL(tin_variety, (struct obj *, BOOLEAN_P));
 STATIC_DCL boolean FDECL(maybe_cannibal, (int, BOOLEAN_P));
 
-/* Char msgbuf[BUFSZ] migrated to current_nle_ctx->s_eat_msgbuf via macro at top of file. */
+char msgbuf[BUFSZ];
 
 /* also used to see if you're allowed to eat cats and dogs */
 #define CANNIBAL_ALLOWED() (Role_if(PM_CAVEMAN) || Race_if(PM_ORC))
@@ -81,8 +69,7 @@ STATIC_OVL NEARDATA const char allobj[] = {
     BALL_CLASS,   CHAIN_CLASS,  SPBOOK_CLASS, 0
 };
 
-/* STATIC_OVL boolean force_save_hs migrated to
- * current_nle_ctx->s_eat_force_save_hs via macro at top of file. */
+STATIC_OVL boolean force_save_hs = FALSE;
 
 /* see hunger states in hack.h - texts used on bottom line */
 const char *hu_stat[] = { "Satiated", "        ", "Hungry  ", "Weak    ",
@@ -161,8 +148,7 @@ static const struct {
                 { "", 0, 0, 0 } };
 #define TTSZ SIZE(tintxts)
 
-/* Per-env. Was __thread; OMP coroutine-resume hazard. */
-#define eatmbuf (current_nle_ctx->s_eatmbuf)
+static char *eatmbuf = 0; /* set by cpostfx() */
 
 /* called after mimicing is over */
 STATIC_PTR int
@@ -594,7 +580,7 @@ int *dmg_p; /* for dishing out extra damage in lieu of Int loss */
          */
         /* no such thing as mindless players */
         if (ABASE(A_INT) <= ATTRMIN(A_INT)) {
-            static const char brainlessness[] = "brainlessness";
+            static NEARDATA const char brainlessness[] = "brainlessness";
 
             if (Lifesaved) {
                 Strcpy(killer.name, brainlessness);
@@ -657,7 +643,7 @@ maybe_cannibal(pm, allowmsg)
 int pm;
 boolean allowmsg;
 {
-    /* Ate_brains migrated to nle_ctx_t */
+    static NEARDATA long ate_brains = 0L;
     struct permonst *fptr = &mons[pm]; /* food type */
 
     /* when poly'd into a mind flayer, multiple tentacle hits in one
@@ -1045,7 +1031,7 @@ int pm;
             if (u.usteed)
                 dismount_steed(DISMOUNT_FELL);
             nomul(-tmp);
-            current_nle_ctx->multi_reason = "pretending to be a pile of gold";
+            multi_reason = "pretending to be a pile of gold";
             Sprintf(buf,
                     Hallucination
                        ? "You suddenly dread being peeled and mimic %s again!"
@@ -1590,7 +1576,7 @@ struct obj *obj;
         incr_itimeout(&HDeaf, duration);
         context.botl = TRUE;
         nomul(-duration);
-        current_nle_ctx->multi_reason = "unconscious from rotten food";
+        multi_reason = "unconscious from rotten food";
         nomovemsg = "You are conscious again.";
         afternmv = Hear_again;
         return 1;
@@ -1797,7 +1783,7 @@ boolean already_partly_eaten;
 /*
  * Called on "first bite" of (non-corpse) food, after touchfood() has
  * marked it 'partly eaten'.  Used for non-rotten non-tin non-corpse food.
- * Messages should use present tense since current_nle_ctx->multi-turn food won't be
+ * Messages should use present tense since multi-turn food won't be
  * finishing at the time they're issued.
  */
 STATIC_OVL void
@@ -2803,8 +2789,6 @@ bite()
 void
 gethungry()
 {
-    int hunger_before = u.uhunger; /* hunger_rate_scale: scale net consumption */
-
     if (u.uinvulnerable)
         return; /* you don't feel hungrier */
 
@@ -2855,17 +2839,6 @@ gethungry()
             break;
         }
     }
-
-    /* hunger_rate_scale knob (1.0 = vanilla; 0.0 = never get hungry; >1 faster).
-     * Scale the net nutrition consumed this turn rather than each scattered
-     * decrement, so the vanilla path stays byte-identical when the knob is 1. */
-    if (nle_tuning.hunger_rate_scale != 1.0) {
-        int spent = hunger_before - u.uhunger;
-        if (spent > 0)
-            u.uhunger = hunger_before
-                        - (int) ((double) spent * nle_tuning.hunger_rate_scale + 0.5);
-    }
-
     newuhs(TRUE);
 }
 
@@ -2908,7 +2881,7 @@ int num;
             pline("You're having a hard time getting all of it down.");
             nomovemsg = "You're finally finished.";
             if (!context.victual.eating) {
-                current_nle_ctx->multi = -2;
+                multi = -2;
             } else {
                 context.victual.fullwarn = TRUE;
                 if (context.victual.canchoke && context.victual.reqtime > 1) {
@@ -2956,7 +2929,8 @@ newuhs(incr)
 boolean incr;
 {
     unsigned newhs;
-    /* Save_hs, saved_hs migrated to nle_ctx_t */
+    static unsigned save_hs;
+    static boolean saved_hs = FALSE;
     int h = u.uhunger;
 
     newhs = (h > 1000)
@@ -3007,7 +2981,7 @@ boolean incr;
         if (is_fainted())
             newhs = FAINTED;
         if (u.uhs <= WEAK || rn2(20 - uhunger_div_by_10) >= 19) {
-            if (!is_fainted() && current_nle_ctx->multi >= 0 /* %% */) {
+            if (!is_fainted() && multi >= 0 /* %% */) {
                 int duration = 10 - uhunger_div_by_10;
 
                 /* stop what you're doing, then faint */
@@ -3016,7 +2990,7 @@ boolean incr;
                 incr_itimeout(&HDeaf, duration);
                 context.botl = TRUE;
                 nomul(-duration);
-                current_nle_ctx->multi_reason = "fainted from lack of food";
+                multi_reason = "fainted from lack of food";
                 nomovemsg = "You regain consciousness.";
                 afternmv = unfaint;
                 newhs = FAINTED;
@@ -3167,7 +3141,7 @@ int corpsecheck; /* 0, no check, 1, corpses, 2, tinnable corpses */
     }
 
     /* Is there some food (probably a heavy corpse) here on the ground? */
-    for (otmp = level.objs[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
+    for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
         if (corpsecheck
                 ? (otmp->otyp == CORPSE
                    && (corpsecheck == 1 || tinnable(otmp)))
@@ -3235,9 +3209,9 @@ vomit() /* A good idea from David Neves */
     /* nomul()/You_can_move_again used to be unconditional, which was
        viable while eating but not for Vomiting countdown where hero might
        be immobilized for some other reason at the time vomit() is called */
-    if (current_nle_ctx->multi >= -2) {
+    if (multi >= -2) {
         nomul(-2);
-        current_nle_ctx->multi_reason = "vomiting";
+        multi_reason = "vomiting";
         nomovemsg = You_can_move_again;
     }
 }

@@ -37,8 +37,7 @@ struct trap {
 #define tnote vl.v_tnote
 };
 
-/* ftrap — stage 7' partial migrated to nle_ctx_t. */
-#define ftrap (current_nle_ctx->s7_ftrap)
+extern struct trap *ftrap;
 #define newtrap() (struct trap *) alloc(sizeof(struct trap))
 #define dealloc_trap(trap) free((genericptr_t)(trap))
 

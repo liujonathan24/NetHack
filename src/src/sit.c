@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "artifact.h"
 
 
@@ -71,7 +70,7 @@ dosit()
         && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
         register struct obj *obj;
 
-        obj = level.objs[u.ux][u.uy];
+        obj = level.objects[u.ux][u.uy];
         if (youmonst.data->mlet == S_DRAGON && obj->oclass == COIN_CLASS) {
             You("coil up around your %shoard.",
                 (obj->quan + money_cnt(invent) < u.ulevel * 1000) ? "meager "
@@ -235,7 +234,7 @@ dosit()
                 break;
             case 10:
                 if (Luck < 0 || (HSee_invisible & INTRINSIC)) {
-                    if (level.lflags.nommap) {
+                    if (level.flags.nommap) {
                         pline("A terrible drone fills your head!");
                         make_confused((HConfusion & TIMEOUT) + (long) rnd(30),
                                       FALSE);
@@ -283,7 +282,7 @@ dosit()
 
         if (!rn2(3) && IS_THRONE(levl[u.ux][u.uy].typ)) {
             /* may have teleported */
-            levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].rmflags = 0;
+            levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].flags = 0;
             pline_The("throne vanishes in a puff of logic.");
             newsym(u.ux, u.uy);
         }

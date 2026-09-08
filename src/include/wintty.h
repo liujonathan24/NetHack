@@ -24,7 +24,7 @@ typedef struct tty_mi {
 
 /* descriptor for tty-based windows */
 struct WinDesc {
-    int wflags;          /* window flags (XXX AW-full: was 'flags') */
+    int flags;           /* window flags */
     xchar type;          /* type of window */
     boolean active;      /* true if window is active */
     short offx, offy;    /* offset from topleft of display */
@@ -91,18 +91,16 @@ struct tty_status_fields {
 #endif
 #define NHW_BASE 6
 
-extern const struct window_procs tty_procs;
+extern struct window_procs tty_procs;
 
-/* port specific variable declarations.
- * Stage 10' — these used to be globals in wintty.c/getline.c.
- * Now per-env fields on nle_ctx_t (nle.h); macros expand to indirection.
- * Every consumer .c already includes "nle.h" for current_nle_ctx.
- * Field names distinct from macros to avoid clobbering nle.h struct decl
- * (hack.h pulls wintty.h before nle.h). */
-#define BASE_WINDOW (current_nle_ctx->base_window)
-#define wins        (current_nle_ctx->tty_wins)
-#define ttyDisplay  (current_nle_ctx->tty_display)
-#define morc        (current_nle_ctx->tty_morc)
+/* port specific variable declarations */
+extern winid BASE_WINDOW;
+
+extern struct WinDesc *wins[MAXWIN];
+
+extern struct DisplayDesc *ttyDisplay; /* the tty display descriptor */
+
+extern char morc;         /* last character typed to xwaitforspace */
 extern char defmorestr[]; /* default --more-- prompt */
 
 /* port specific external function references */
@@ -274,8 +272,7 @@ E void FDECL(video_update_positionbar, (char *));
 #undef fflush
 E int FDECL(nle_putchar, (int) );
 E int FDECL(nle_puts, (const char *) );
-E void FDECL(nle_xputs, (const char *) ); /* defined `void` in nle.c; `int` here
-    trips WebAssembly's strict indirect-call signature check (harmless native) */
+E int FDECL(nle_xputs, (const char *) );
 E int FDECL(nle_fflush, (FILE *) );
 
 #define putchar nle_putchar

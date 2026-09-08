@@ -134,20 +134,8 @@ struct objdescr {
     const char *oc_descr; /* description when name unknown */
 };
 
-#ifdef NLE_OBJECTS_GLOBAL
-/* Build-tool path (makedefs, lev_comp): regular writable globals so
- * those utilities can scratch oc_name_idx etc. while generating their
- * outputs. They don't have current_nle_ctx. */
-extern struct objclass objects[];
-extern struct objdescr obj_descr[];
-#else
-/* libnethack: per-env tables (per-game object randomization). Baseline
- * is shared const; nle_objects_init() in objects.c populates each env. */
-#define objects   (current_nle_ctx->s9o_objects_p)
-#define obj_descr (current_nle_ctx->s9o_obj_descr_p)
-extern const struct objclass objects_baseline[];
-extern const struct objdescr obj_descr_baseline[];
-#endif
+extern NEARDATA struct objclass objects[];
+extern NEARDATA struct objdescr obj_descr[];
 
 /*
  * All objects have a class. Make sure that all classes have a corresponding

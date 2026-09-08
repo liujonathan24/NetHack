@@ -4,94 +4,70 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
-#ifdef NLE_OBJECTS_GLOBAL
 int NDECL((*afternmv));
 int NDECL((*occupation));
-#endif
 
 /* from xxxmain.c */
 const char *hname = 0; /* name of the game (argv[0] of main) */
-/* hackpid migrated to nle_ctx_t (refactor stage 3c). */
+int hackpid = 0;       /* current process id */
 #if defined(UNIX) || defined(VMS)
+int locknum = 0; /* max num of simultaneous users */
 #endif
 #ifdef DEF_PAGER
 char *catmore = 0; /* default pager */
 #endif
 char chosen_windowtype[WINTYPELEN];
 
-#ifdef NLE_OBJECTS_GLOBAL
-int bases[MAXOCLASSES];
-/* Build-tool stubs — only used by makedefs/lev_comp linking. */
-NEARDATA int doorindex = 0;
-NEARDATA int in_doagain = 0;
-NEARDATA boolean in_mklev = FALSE;
-NEARDATA coord bhitpos = DUMMY;
-NEARDATA char plname[PL_NSIZ] = DUMMY;
-NEARDATA char pl_character[PL_CSIZ] = DUMMY;
-NEARDATA char pl_race = '\0';
-NEARDATA char pl_fruit[PL_FSIZ] = DUMMY;
-NEARDATA char tune[6] = DUMMY;
-/* Build-tool stubs. */
-NEARDATA char dogname[PL_PSIZ] = DUMMY;
-NEARDATA char catname[PL_PSIZ] = DUMMY;
-NEARDATA char horsename[PL_PSIZ] = DUMMY;
-NEARDATA char *save_cm = 0;
-struct fruit;
-NEARDATA struct fruit *ffruit = (struct fruit *) 0;
-#endif
-/* For libnethack, bases is a macro to nle_ctx_t. See decl.h. */
+NEARDATA int bases[MAXOCLASSES] = DUMMY;
 
-/* Nroom/nsubroom were NEARDATA __thread globals that the
- * per-step swap in nle.c copied in and out of the env's nle_ctx_t slot.
- * The struct field has existed since stage 3f (nle.h:136-137); this
- * migration drops the storage from decl.c and rewires decl.h (which is
- * the canonical extern point) to a per-env macro. The corresponding
- * swap in nle_swap_in/out (nle.c:825/845) is removed. Build-tool
- * binaries (makedefs, lev_comp) need the storage; they are now declared
- * under #ifdef NLE_OBJECTS_GLOBAL alongside other build-tool stubs. */
-#ifdef NLE_OBJECTS_GLOBAL
+NEARDATA int multi = 0;
+const char *multi_reason = NULL;
 NEARDATA int nroom = 0;
 NEARDATA int nsubroom = 0;
-#endif
+NEARDATA int occtime = 0;
 
 /* maze limits must be even; masking off lowest bit guarantees that */
-#ifdef NLE_OBJECTS_GLOBAL
 int x_maze_max = (COLNO - 1) & ~1, y_maze_max = (ROWNO - 1) & ~1;
-#endif
 
+int otg_temp; /* used by object_to_glyph() [otg] */
 
-/* in_doagain — migrated to nle_ctx_t. */
+NEARDATA int in_doagain = 0;
 
 /*
  *      The following structure will be initialized at startup time with
  *      the level numbers of some "important" things in the game.
  */
-/* dungeon_topology migrated to nle_ctx_t (stage 6'). Allocated in init_nle. */
+struct dgn_topology dungeon_topology = { DUMMY };
 
-/* quest_status — stage 9' batch C migrated to nle_ctx_t. */
+struct q_score quest_status = DUMMY;
 
-/* smeq — per-env room-equivalence work array, migrated to nle_ctx_t. */
-/* doorindex — migrated to nle_ctx_t. */
-/* save_cm — migrated to nle_ctx_t. */
+NEARDATA int warn_obj_cnt = 0;
+NEARDATA int smeq[MAXNROFROOMS + 1] = DUMMY;
+NEARDATA int doorindex = 0;
+NEARDATA char *save_cm = 0;
 
-/* killer — stage 9' batch C migrated to nle_ctx_t. */
-#ifdef NLE_OBJECTS_GLOBAL
+NEARDATA struct kinfo killer = DUMMY;
+NEARDATA long done_money = 0;
 const char *nomovemsg = 0;
-#endif
-/* plname/pl_character/pl_race/pl_fruit/tune — migrated to nle_ctx_t. */
-/* ffruit — migrated to nle_ctx_t. */
+NEARDATA char plname[PL_NSIZ] = DUMMY; /* player name */
+NEARDATA char pl_character[PL_CSIZ] = DUMMY;
+NEARDATA char pl_race = '\0';
 
-#ifdef NLE_OBJECTS_GLOBAL
+NEARDATA char pl_fruit[PL_FSIZ] = DUMMY;
+NEARDATA struct fruit *ffruit = (struct fruit *) 0;
+
+NEARDATA char tune[6] = DUMMY;
+NEARDATA boolean ransacked = 0;
+
 const char *occtxt = DUMMY;
-#endif
 const char quitchars[] = " \r\n\033";
 const char vowels[] = "aeiouAEIOU";
 const char ynchars[] = "yn";
 const char ynqchars[] = "ynq";
 const char ynaqchars[] = "ynaq";
 const char ynNaqchars[] = "yn#aq";
+NEARDATA long yn_number = 0L;
 
 const char disclosure_options[] = "iavgco";
 
@@ -110,82 +86,84 @@ const char *alllevels = "levels.*";
 const char *allbones = "bones*.*";
 #endif
 
-/* level_info — stage 7' partial migrated to nle_ctx_t (MAXLINFO entries). */
+struct linfo level_info[MAXLINFO];
 
-/* struct sinfo program_state migrated to nle_ctx_t (refactor stage 3b). */
+NEARDATA struct sinfo program_state;
 
 /* x/y/z deltas for the 10 movement directions (8 compass pts, 2 up/down) */
 const schar xdir[10] = { -1, -1, 0, 1, 1, 1, 0, -1, 0, 0 };
 const schar ydir[10] = { 0, -1, -1, -1, 0, 1, 1, 1, 0, 0 };
 const schar zdir[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, -1 };
 
+NEARDATA schar tbx = 0, tby = 0; /* mthrowu: target */
 
 /* for xname handling of multiple shot missile volleys:
    number of shots, index of current one, validity check, shoot vs throw */
-/* m_shot — stage 9' batch C migrated to nle_ctx_t. Initial value
- * ({0,0,STRANGE_OBJECT,FALSE}) gets re-set in init_nle. */
+NEARDATA struct multishot m_shot = { 0, 0, STRANGE_OBJECT, FALSE };
 
-/* dungeons[], sp_levchn, upstair, dnstair, upladder, dnladder, sstairs,
- * updest, dndest, inv_pos migrated to nle_ctx_t (stage 6').
- * All heap-allocated zero-init in init_nle; equivalent to the previous
- * { 0, 0, { 0, 0 }, 0 } / { 0, ... } / {0,0} static initializers. */
+NEARDATA dungeon dungeons[MAXDUNGEON]; /* ini'ed by init_dungeon() */
+NEARDATA s_level *sp_levchn;
+NEARDATA stairway upstair = { 0, 0, { 0, 0 }, 0 },
+                  dnstair = { 0, 0, { 0, 0 }, 0 };
+NEARDATA stairway upladder = { 0, 0, { 0, 0 }, 0 },
+                  dnladder = { 0, 0, { 0, 0 }, 0 };
+NEARDATA stairway sstairs = { 0, 0, { 0, 0 }, 0 };
+NEARDATA dest_area updest = { 0, 0, 0, 0, 0, 0, 0, 0 };
+NEARDATA dest_area dndest = { 0, 0, 0, 0, 0, 0, 0, 0 };
+NEARDATA coord inv_pos = { 0, 0 };
 
-/* in_mklev — migrated to nle_ctx_t. */
+NEARDATA boolean defer_see_monsters = FALSE;
+NEARDATA boolean in_mklev = FALSE;
+NEARDATA boolean stoned = FALSE; /* done to monsters hit by 'c' */
+NEARDATA boolean unweapon = FALSE;
+NEARDATA boolean mrg_to_wielded = FALSE;
 /* weapon picked is merged with wielded one */
 
-/* has_strong_rngseed migrated to nle_ctx_t (refactor stage 3a). */
+NEARDATA boolean in_steed_dismounting = FALSE;
+NEARDATA boolean has_strong_rngseed = FALSE;
 
-/* bhitpos — migrated to nle_ctx_t. Allocated in init_nle. */
-/* doors / rooms / subrooms / upstairs_room / dnstairs_room / sstairs_room
- * / ftrap — stage 7' partial migrated to nle_ctx_t (heap, see init_nle).
- * subrooms is initialized to point at rooms[MAXNROFROOMS+1] in init_nle
- * directly (no longer needs the per-startup subrooms_init() shim). */
-/* level — stage 7' completed: per-env on nle_ctx_t (s7_level_p).
- * The blocker (struct dig_info.level token collision) was solved by
- * renaming that struct field to `dlvl`. */
+NEARDATA coord bhitpos = DUMMY;
+NEARDATA coord doors[DOORMAX] = { DUMMY };
 
-void
-subrooms_init(void)
-{
-    /* no-op retained: init_nle now points subrooms at rooms[MAXNROFROOMS+1]
-     * directly. Kept so the existing call-site doesn't break. */
-}
-/* youmonst — stage 9' batch C migrated to nle_ctx_t. */
-/* context — migrated to nle_ctx_t (per-game state). */
-/* flags — migrated to nle_ctx_t.flags_ptr (per-env, heap).
- * The 12 struct-field `flags` collisions were renamed first so the
- * `#define flags (*current_nle_ctx->flags_ptr)` macro in flag.h is now
- * unambiguous. The storage formerly here was a process-global swapped on
- * every nle_step; that swap is retired in nle.c. */
+NEARDATA struct mkroom rooms[(MAXNROFROOMS + 1) * 2] = { DUMMY };
+NEARDATA struct mkroom *subrooms = &rooms[MAXNROFROOMS + 1];
+struct mkroom *upstairs_room, *dnstairs_room, *sstairs_room;
+
+dlevel_t level; /* level map */
+struct trap *ftrap = (struct trap *) 0;
+NEARDATA struct monst youmonst = DUMMY;
+NEARDATA struct context_info context = DUMMY;
+NEARDATA struct flag flags = DUMMY;
 #ifdef SYSFLAGS
-/* sysflags — migrated to nle_ctx_t.sysflags_ptr. */
+NEARDATA struct sysflag sysflags = DUMMY;
 #endif
-/* iflags — migrated to nle_ctx_t.iflags_ptr (per-env, heap). */
-/* struct you u migrated to nle_ctx_t (stage 4). Heap-allocated in
- * init_nle, accessed via the `u` macro in decl.h. */
-/* ubirthday migrated direct (stage 9' batch A). */
-/* urealtime — stage 9' batch C migrated to nle_ctx_t. */
+NEARDATA struct instance_flags iflags = DUMMY;
+NEARDATA struct you u = DUMMY;
+NEARDATA time_t ubirthday = DUMMY;
+NEARDATA struct u_realtime urealtime = DUMMY;
 
-/* lastseentyp — stage 7' partial migrated to nle_ctx_t. */
+schar lastseentyp[COLNO][ROWNO] = {
+    DUMMY
+}; /* last seen/touched dungeon typ */
 
-/* Body-slot pointers — stage 9' batch D migrated to nle_ctx_t (s9_u*).
- * worn[] now uses offsetof-based resolution; no TLS address pinning.
- * Definitions retained here only for build-tool (NLE_OBJECTS_GLOBAL) builds. */
-#ifdef NLE_OBJECTS_GLOBAL
 NEARDATA struct obj
+    *invent = (struct obj *) 0,
     *uwep = (struct obj *) 0, *uarm = (struct obj *) 0,
     *uswapwep = (struct obj *) 0,
     *uquiver = (struct obj *) 0,       /* quiver */
         *uarmu = (struct obj *) 0,     /* under-wear, so to speak */
+            *uskin = (struct obj *) 0, /* dragon armor, if a dragon */
                 *uarmc = (struct obj *) 0, *uarmh = (struct obj *) 0,
     *uarms = (struct obj *) 0, *uarmg = (struct obj *) 0,
     *uarmf = (struct obj *) 0, *uamul = (struct obj *) 0,
     *uright = (struct obj *) 0, *uleft = (struct obj *) 0,
     *ublindf = (struct obj *) 0, *uchain = (struct obj *) 0,
     *uball = (struct obj *) 0;
-#endif /* NLE_OBJECTS_GLOBAL */
-/* invent, uskin, current_wand, thrownobj, kickedobj migrated to nle_ctx_t
- * (stage 9' batch A/B). */
+/* some objects need special handling during destruction or placement */
+NEARDATA struct obj
+    *current_wand = 0,  /* wand currently zapped/applied */
+    *thrownobj = 0,     /* object in flight due to throwing */
+    *kickedobj = 0;     /* object in flight due to kicking */
 
 #ifdef TEXTCOLOR
 /*
@@ -212,32 +190,40 @@ const int shield_static[SHIELD_COUNT] = {
     S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
 };
 
-/* spl_book — stage 9' batch C migrated to nle_ctx_t (MAXSPELL+1 entries). */
+NEARDATA struct spell spl_book[MAXSPELL + 1] = { DUMMY };
 
-/* moves/monstermoves/wailmsg migrated direct (stage 9' batch A).
- * Init to 1L,1L,0L deferred to init_nle / c_reset path. */
+NEARDATA long moves = 1L, monstermoves = 1L;
+/* These diverge when player is Fast */
+NEARDATA long wailmsg = 0L;
 
-/* migrating_objs, billobjs migrated direct (stage 9' batch B). */
+/* objects that are moving to another dungeon level */
+NEARDATA struct obj *migrating_objs = (struct obj *) 0;
+/* objects not yet paid for */
+NEARDATA struct obj *billobjs = (struct obj *) 0;
 
 /* used to zero all elements of a struct obj and a struct monst */
-/* zeroobj / zeromonst — read-only sentinels (DUMMY = {0}). Dropped
- * NEARDATA so they live as a single shared symbol. */
-const struct obj zeroobj = DUMMY;
-const struct monst zeromonst = DUMMY;
+NEARDATA const struct obj zeroobj = DUMMY;
+NEARDATA const struct monst zeromonst = DUMMY;
 /* used to zero out union any; initializer deliberately omitted */
-const anything zeroany;
+NEARDATA const anything zeroany;
 
 /* originally from dog.c */
-/* dogname/catname/horsename — migrated to nle_ctx_t. */
-#ifdef NLE_OBJECTS_GLOBAL
+NEARDATA char dogname[PL_PSIZ] = DUMMY;
+NEARDATA char catname[PL_PSIZ] = DUMMY;
+NEARDATA char horsename[PL_PSIZ] = DUMMY;
 char preferred_pet; /* '\0', 'c', 'd', 'n' (none) */
-#endif
-/* mydogs, migrating_mons, apelist migrated direct (stage 9' batch B). */
-/* mvitals — stage 9' batch C migrated to nle_ctx_t (heap, NUMMONS entries). */
-/* domove_attempting, domove_succeeded migrated direct (stage 9' batch A). */
+/* monsters that went down/up together with @ */
+NEARDATA struct monst *mydogs = (struct monst *) 0;
+/* monsters that are moving to another dungeon level */
+NEARDATA struct monst *migrating_mons = (struct monst *) 0;
+NEARDATA struct autopickup_exception *apelist =
+                            (struct autopickup_exception *)0;
 
-/* c_color_names — read-only color-name table; drop NEARDATA. */
-const struct c_color_names c_color_names = {
+NEARDATA struct mvitals mvitals[NUMMONS];
+NEARDATA long domove_attempting = 0L;
+NEARDATA long domove_succeeded = 0L;
+
+NEARDATA struct c_color_names c_color_names = {
     "black",  "amber", "golden", "light blue", "red",   "green",
     "silver", "blue",  "purple", "white",      "orange"
 };
@@ -284,17 +270,22 @@ const char *materialnm[] = { "mysterious", "liquid",  "wax",        "organic",
                              "platinum",   "mithril", "plastic",    "glass",
                              "gemstone",   "stone" };
 
-/* Vision — stage 8' migrated to nle_ctx_t (vision_full_recalc, viz_array). */
+/* Vision */
+NEARDATA boolean vision_full_recalc = 0;
+NEARDATA char **viz_array = 0; /* used in cansee() and couldsee() macros */
 
-/* Global windowing data — stage 8' migrated to nle_ctx_t
- * (WIN_MESSAGE/STATUS/MAP/INVEN, toplines).
- * tc_gbl_data deferred (struct-tag self-reference). */
-/* tc_gbl_data — stage 8' migrated to nle_ctx_t. Heap-alloc'd in init_nle. */
+/* Global windowing data, defined here for multi-window-system support */
+NEARDATA winid WIN_MESSAGE = WIN_ERR;
+NEARDATA winid WIN_STATUS = WIN_ERR;
+NEARDATA winid WIN_MAP = WIN_ERR, WIN_INVEN = WIN_ERR;
+char toplines[TBUFSZ];
+/* Windowing stuff that's really tty oriented, but present for all ports */
+struct tc_gbl_data tc_gbl_data = { 0, 0, 0, 0 }; /* AS,AE, LI,CO */
 
-/* `fqn_prefix[]` migrated to current_nle_ctx->s_fqn_prefix.
- * Each env's table is zero-initialized when nle_ctx_t is calloc'd in
- * nle_start(); nle.c's main_loop_real() then populates each slot from
- * settings->hackdir (per-env) on the first step. */
+char *fqn_prefix[PREFIX_COUNT] = { (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0 };
 #ifdef WIN32
 boolean fqn_prefix_locked[PREFIX_COUNT] = { FALSE, FALSE, FALSE,
                                             FALSE, FALSE, FALSE,
@@ -332,9 +323,28 @@ NEARDATA struct savefile_info sfcap = {
 #endif
 };
 
-/* Sfrestinfo and sfsaveinfo migrated to nle_ctx_t (per-env).
- * Per-env init mirroring the original sfsaveinfo initializer happens in
- * init_nle (nle.c). sfrestinfo is calloc-zero-initialized like before. */
+NEARDATA struct savefile_info sfrestinfo, sfsaveinfo = {
+#ifdef NHSTDC
+    0x00000000UL
+#else
+    0x00000000L
+#endif
+#if defined(COMPRESS) || defined(ZLIB_COMP)
+        | SFI1_EXTERNALCOMP
+#endif
+#if defined(ZEROCOMP)
+        | SFI1_ZEROCOMP
+#endif
+#if defined(RLECOMP)
+        | SFI1_RLECOMP
+#endif
+    ,
+#ifdef NHSTDC
+    0x00000000UL, 0x00000000UL
+#else
+    0x00000000L, 0x00000000L
+#endif
+};
 
 struct plinemsg_type *plinemsg_types = (struct plinemsg_type *) 0;
 

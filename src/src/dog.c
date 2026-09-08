@@ -4,10 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
-
-/* Function-local statics promoted to nle_ctx_t fields. */
-#define petname_used    (current_nle_ctx->s_makedog_petname_used)
 
 STATIC_DCL int NDECL(pet_type);
 
@@ -159,8 +155,7 @@ makedog()
     register struct obj *otmp;
     const char *petname;
     int pettype;
-    /* Petname_used moved to nle_ctx_t
-     * (s_makedog_petname_used). See macro at top of file. */
+    static int petname_used = 0;
 
     if (preferred_pet == 'n')
         return ((struct monst *) 0);

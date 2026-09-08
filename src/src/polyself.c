@@ -20,10 +20,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Misc-2 per-env redirect (polyself.c) */
-#define sex_change_ok (current_nle_ctx->s_sex_change_ok)
 
 STATIC_DCL void FDECL(check_strangling, (BOOLEAN_P));
 STATIC_DCL void FDECL(polyman, (const char *, const char *));
@@ -38,8 +34,8 @@ STATIC_VAR const char no_longer_petrify_resistant[] =
     "No longer petrify-resistant, you";
 
 /* controls whether taking on new form or becoming new man can also
-   change sex (ought to be an arg to polymon() and newman() instead).
-   Migrated to nle_ctx_t.s_sex_change_ok. */
+   change sex (ought to be an arg to polymon() and newman() instead) */
+STATIC_VAR int sex_change_ok = 0;
 
 /* update the youmonst.data structure pointer and intrinsics */
 void
@@ -188,7 +184,7 @@ const char *fmt, *arg;
         uunstick();
     find_ac();
     if (was_mimicking) {
-        if (current_nle_ctx->multi < 0)
+        if (multi < 0)
             unmul("");
         youmonst.m_ap_type = M_AP_NOTHING;
         youmonst.mappearance = 0;
@@ -632,7 +628,7 @@ int mntmp;
     }
 
     /* if stuck mimicking gold, stop immediately */
-    if (current_nle_ctx->multi < 0 && U_AP_TYPE == M_AP_OBJECT
+    if (multi < 0 && U_AP_TYPE == M_AP_OBJECT
         && youmonst.data->mlet != S_MIMIC)
         unmul("");
     /* if becoming a non-mimic, stop mimicking anything */
@@ -1426,7 +1422,7 @@ dogaze()
                                   ? -d((int) mtmp->m_lev + 1,
                                        (int) mtmp->data->mattk[0].damd)
                                   : -200);
-                        current_nle_ctx->multi_reason = "frozen by a monster's gaze";
+                        multi_reason = "frozen by a monster's gaze";
                         nomovemsg = 0;
                         return 1;
                     } else
@@ -1489,7 +1485,7 @@ dohide()
         u.uundetected = 0;
         return 0;
     }
-    if (hides_under(youmonst.data) && !level.objs[u.ux][u.uy]) {
+    if (hides_under(youmonst.data) && !level.objects[u.ux][u.uy]) {
         There("is nothing to hide under here.");
         u.uundetected = 0;
         return 0;
@@ -1608,7 +1604,7 @@ mbodypart(mon, part)
 struct monst *mon;
 int part;
 {
-    static const char
+    static NEARDATA const char
         *humanoid_parts[] = { "arm",       "eye",  "face",         "finger",
                               "fingertip", "foot", "hand",         "handed",
                               "head",      "leg",  "light headed", "neck",

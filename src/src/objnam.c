@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 /* "an uncursed greased partly eaten guardian naga hatchling [corpse]" */
 #define PREFIX 80 /* (56) */
@@ -78,27 +77,9 @@ register const char *pref;
     return s;
 }
 
-/* manage a pool of BUFSZ buffers, so callers don't have to.
- * obufs migrated to nle_ctx_t (per-env heap, NUMOBUF*BUFSZ bytes). */
-#define obufs ((char (*)[BUFSZ]) current_nle_ctx->s_obufs_p)
-/* Obufidx + distantname per-env. */
-struct nle_objnam_state {
-    int _obufidx;
-    int _distantname;
-};
-static struct nle_objnam_state *
-nle_objnam(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_objnam_state *s = (struct nle_objnam_state *) current_nle_ctx->s_objnam_state;
-    if (!s) {
-        s = (struct nle_objnam_state *) nle_arena_calloc(1, sizeof(struct nle_objnam_state));
-        current_nle_ctx->s_objnam_state = s;
-    }
-    return s;
-}
-#define obufidx     (nle_objnam()->_obufidx)
-#define distantname (nle_objnam()->_distantname)
+/* manage a pool of BUFSZ buffers, so callers don't have to */
+static char NEARDATA obufs[NUMOBUF][BUFSZ];
+static int obufidx = 0;
 
 STATIC_OVL char *
 nextobuf()
@@ -246,7 +227,7 @@ struct obj *obj;
 {
     if (!obj->oartifact || !has_oname(obj))
         return FALSE;
-    if (!current_nle_ctx->program_state.gameover && !iflags.override_ID) {
+    if (!program_state.gameover && !iflags.override_ID) {
         if (not_fully_identified(obj))
             return FALSE;
     }
@@ -256,7 +237,7 @@ struct obj *obj;
 /* used by distant_name() to pass extra information to xname_flags();
    it would be much cleaner if this were a parameter, but that would
    require all of the xname() and doname() calls to be modified */
-/* Distantname is per-env via nle_objnam_state (above). */
+static int distantname = 0;
 
 /* Give the name of an object seen at a distance.  Unlike xname/doname,
  * we don't want to set dknown if it's not set already.
@@ -742,7 +723,7 @@ unsigned cxn_flags; /* bitmask of CXN_xxx values */
     if (pluralize)
         Strcpy(buf, makeplural(buf));
 
-    if (obj->otyp == T_SHIRT && current_nle_ctx->program_state.gameover) {
+    if (obj->otyp == T_SHIRT && program_state.gameover) {
         char tmpbuf[BUFSZ];
 
         Sprintf(eos(buf), " with text \"%s\"", tshirt_text(obj, tmpbuf));
@@ -1202,7 +1183,7 @@ unsigned doname_flags;
         break;
     }
 
-    if ((obj->owornmask & W_WEP) && !current_nle_ctx->mrg_to_wielded) {
+    if ((obj->owornmask & W_WEP) && !mrg_to_wielded) {
         if (obj->quan != 1L) {
             Strcat(bp, " (wielded)");
         } else {
@@ -1215,10 +1196,10 @@ unsigned doname_flags;
             Sprintf(eos(bp), " (%sweapon in %s)",
                     (obj->otyp == AKLYS) ? "tethered " : "", hand_s);
 
-            if (current_nle_ctx->warn_obj_cnt && obj == uwep && (EWarn_of_mon & W_WEP) != 0L) {
+            if (warn_obj_cnt && obj == uwep && (EWarn_of_mon & W_WEP) != 0L) {
                 if (!Blind) /* we know bp[] ends with ')'; overwrite that */
                     Sprintf(eos(bp) - 1, ", %s %s)",
-                            glow_verb(current_nle_ctx->warn_obj_cnt, TRUE),
+                            glow_verb(warn_obj_cnt, TRUE),
                             glow_color(obj->oartifact));
             }
         }
@@ -1259,11 +1240,11 @@ unsigned doname_flags;
             Strcat(bp, " (at the ready)");
         }
     }
-    /* treat 'current_nle_ctx->restoring' like suppress_price because shopkeeper and
+    /* treat 'restoring' like suppress_price because shopkeeper and
        bill might not be available yet while restore is in progress
        (objects won't normally be formatted during that time, but if
        'perm_invent' is enabled then they might be) */
-    if (iflags.suppress_price || current_nle_ctx->restoring) {
+    if (iflags.suppress_price || restoring) {
         ; /* don't attempt to obtain any stop pricing, even if 'with_price' */
     } else if (is_unpaid(obj)) { /* in inventory or in container in invent */
         long quotedprice = unpaid_cost(obj, TRUE);
@@ -2157,7 +2138,7 @@ struct sing_plur {
 /* word pairs that don't fit into formula-based transformations;
    also some suffices which have very few--often one--matches or
    which aren't systematically reversible (knives, staves) */
-static const struct sing_plur one_off[] = {
+static struct sing_plur one_off[] = {
     { "child",
       "children" },      /* (for wise guys who give their food funny names) */
     { "cubus", "cubi" }, /* in-/suc-cubus */
@@ -2677,7 +2658,7 @@ const char *u_str;      /* from user, so might be variant spelling */
 const char *o_str;      /* from objects[], so is in canonical form */
 boolean retry_inverted; /* optional extra "of" handling */
 {
-    static const char detect_SP[] = "detect ",
+    static NEARDATA const char detect_SP[] = "detect ",
                                SP_detection[] = " detection";
     char *p, buf[BUFSZ];
 
@@ -2770,8 +2751,7 @@ struct o_range {
 };
 
 /* wishable subranges of objects */
-/* read-only table: not __thread, just rodata. */
-STATIC_OVL const struct o_range o_ranges[] = {
+STATIC_OVL NEARDATA const struct o_range o_ranges[] = {
     { "bag", TOOL_CLASS, SACK, BAG_OF_TRICKS },
     { "lamp", TOOL_CLASS, OIL_LAMP, MAGIC_LAMP },
     { "candle", TOOL_CLASS, TALLOW_CANDLE, WAX_CANDLE },
@@ -3691,7 +3671,7 @@ struct obj *no_wish;
      * Disallow such topology tweaks for WIZKIT startup wishes.
      */
  wiztrap:
-    if (wizard && !current_nle_ctx->program_state.wizkit_wishing) {
+    if (wizard && !program_state.wizkit_wishing) {
         struct rm *lev;
         boolean madeterrain = FALSE;
         int trap, x = u.ux, y = u.uy;
@@ -3722,7 +3702,7 @@ struct obj *no_wish;
         p = eos(bp);
         if (!BSTRCMPI(bp, p - 8, "fountain")) {
             lev->typ = FOUNTAIN;
-            level.lflags.nfountains++;
+            level.flags.nfountains++;
             if (!strncmpi(bp, "magic ", 6))
                 lev->blessedftn = 1;
             pline("A %sfountain.", lev->blessedftn ? "magic " : "");
@@ -3733,7 +3713,7 @@ struct obj *no_wish;
             madeterrain = TRUE;
         } else if (!BSTRCMPI(bp, p - 4, "sink")) {
             lev->typ = SINK;
-            level.lflags.nsinks++;
+            level.flags.nsinks++;
             pline("A sink.");
             madeterrain = TRUE;
 
@@ -3744,7 +3724,7 @@ struct obj *no_wish;
             del_engr_at(x, y);
             pline("A %s.", (lev->typ == POOL) ? "pool" : "moat");
             /* Must manually make kelp! */
-            water_damage_chain(level.objs[x][y], TRUE);
+            water_damage_chain(level.objects[x][y], TRUE);
             madeterrain = TRUE;
 
         /* also matches "molten lava" */

@@ -3,11 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffer for piousness() (renamed from `buf`
- * to avoid collision with the `char buf[BUFSZ]` local elsewhere in this TU). */
-#define piousness_buf (current_nle_ctx->s_priest_piousness_buf)
 #include "mfndpos.h"
 
 /* these match the categorizations shown by enlightenment */
@@ -342,7 +337,7 @@ char *pname; /* caller-supplied output buffer */
     Strcat(pname, what);
     /* same as distant_monnam(), more or less... */
     if (do_hallu || !high_priest || !Is_astralevel(&u.uz)
-        || distu(mon->mx, mon->my) <= 2 || current_nle_ctx->program_state.gameover) {
+        || distu(mon->mx, mon->my) <= 2 || program_state.gameover) {
         Strcat(pname, " of ");
         Strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
@@ -514,7 +509,7 @@ int roomno;
             if (flags.verbose)
                 You("are frightened to death, and unable to move.");
             nomul(-3);
-            current_nle_ctx->multi_reason = "being terrified of a ghost";
+            multi_reason = "being terrified of a ghost";
             nomovemsg = "You regain your composure.";
         }
     }
@@ -792,8 +787,8 @@ struct monst *priest;
         break;
     }
 
-    buzz(-10 - (AD_ELEC - 1), 6, x, y, sgn(current_nle_ctx->tbx),
-         sgn(current_nle_ctx->tby)); /* bolt of lightning */
+    buzz(-10 - (AD_ELEC - 1), 6, x, y, sgn(tbx),
+         sgn(tby)); /* bolt of lightning */
     exercise(A_WIS, FALSE);
 }
 
@@ -835,7 +830,7 @@ angry_priest()
 
 /*
  * When saving bones, find priests that aren't on their shrine level,
- * and remove them.  This avoids big problems when current_nle_ctx->restoring bones.
+ * and remove them.  This avoids big problems when restoring bones.
  * [Perhaps we should convert them into roamers instead?]
  */
 void
@@ -851,7 +846,7 @@ clearpriests()
     }
 }
 
-/* munge priest-specific structure when current_nle_ctx->restoring -dlc */
+/* munge priest-specific structure when restoring -dlc */
 void
 restpriest(mtmp, ghostly)
 register struct monst *mtmp;
@@ -899,7 +894,7 @@ piousness(showneg, suffix)
 boolean showneg;
 const char *suffix;
 {
-    /* Piousness_buf (was `buf[32]`) migrated to nle_ctx_t */
+    static char buf[32]; /* bigger than "insufficiently neutral" */
     const char *pio;
 
     /* note: piousness 20 matches MIN_QUEST_ALIGN (quest.h) */
@@ -926,13 +921,13 @@ const char *suffix;
     else
         pio = "transgressed";
 
-    Sprintf(piousness_buf, "%s", pio);
+    Sprintf(buf, "%s", pio);
     if (suffix && (!showneg || u.ualign.record >= 0)) {
         if (u.ualign.record != 3)
-            Strcat(piousness_buf, " ");
-        Strcat(piousness_buf, suffix);
+            Strcat(buf, " ");
+        Strcat(buf, suffix);
     }
-    return piousness_buf;
+    return buf;
 }
 
 /* stethoscope or probing applied to monster -- one-line feedback */

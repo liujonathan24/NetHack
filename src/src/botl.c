@@ -4,11 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env return buffer for get_strength_str() (renamed from
- * `buf` to avoid clobbering other `buf` locals in this TU). */
-#define strength_buf (current_nle_ctx->s_botl_strength_buf)
 #ifndef LONG_MAX
 #include <limits.h>
 #endif
@@ -18,39 +13,7 @@ extern const char *hu_stat[]; /* defined in eat.c */
 const char *const enc_stat[] = { "",         "Burdened",  "Stressed",
                                  "Strained", "Overtaxed", "Overloaded" };
 
-/* Per-env botl.c state. mrank_sz / newbot1 / newbot2 / oldgoldsym /
- * oldrndencode / subfields / conditionbitmask2str buf / status_hilite2str buf
- * bundled into one struct, lazily allocated via nle_botl(). */
-#define MAX_SUBFIELDS_BOTL 16
-struct nle_botl_state {
-    int   _mrank_sz;
-    char  _newbot1[BUFSZ];
-    char  _newbot2[BUFSZ];
-    nhsym _oldgoldsym;
-    int   _oldrndencode;
-    char *_subfields[MAX_SUBFIELDS_BOTL];
-    char  _condbitmask2str_buf[BUFSZ];
-    char  _hilite2str_buf[BUFSZ];
-};
-static struct nle_botl_state *
-nle_botl(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_botl_state *s = (struct nle_botl_state *) current_nle_ctx->s_botl_state;
-    if (!s) {
-        s = (struct nle_botl_state *) nle_arena_calloc(1, sizeof(struct nle_botl_state));
-        current_nle_ctx->s_botl_state = s;
-    }
-    return s;
-}
-#define mrank_sz              (nle_botl()->_mrank_sz)
-#define newbot1               (nle_botl()->_newbot1)
-#define newbot2               (nle_botl()->_newbot2)
-#define oldgoldsym            (nle_botl()->_oldgoldsym)
-#define oldrndencode          (nle_botl()->_oldrndencode)
-#define subfields             (nle_botl()->_subfields)
-#define condbitmask2str_buf   (nle_botl()->_condbitmask2str_buf)
-#define hilite2str_buf        (nle_botl()->_hilite2str_buf)
+STATIC_OVL NEARDATA int mrank_sz = 0; /* loaded by max_rank_sz (from u_init) */
 STATIC_DCL const char *NDECL(rank);
 STATIC_DCL void NDECL(bot_via_windowport);
 STATIC_DCL void NDECL(stat_update_time);
@@ -58,20 +21,20 @@ STATIC_DCL void NDECL(stat_update_time);
 static char *
 get_strength_str()
 {
-    /* Strength_buf (was `buf`) migrated to nle_ctx_t */
+    static char buf[32];
     int st = ACURR(A_STR);
 
     if (st > 18) {
         if (st > STR18(100))
-            Sprintf(strength_buf, "%2d", st - 100);
+            Sprintf(buf, "%2d", st - 100);
         else if (st < STR18(100))
-            Sprintf(strength_buf, "18/%02d", st - 18);
+            Sprintf(buf, "18/%02d", st - 18);
         else
-            Sprintf(strength_buf, "18/**");
+            Sprintf(buf, "18/**");
     } else
-        Sprintf(strength_buf, "%-1d", st);
+        Sprintf(buf, "%-1d", st);
 
-    return strength_buf;
+    return buf;
 }
 
 void
@@ -85,7 +48,7 @@ check_gold_symbol()
 char *
 do_statusline1()
 {
-    /* newbot1 migrated to nle_botl()->_newbot1 */
+    static char newbot1[BUFSZ];
     register char *nb;
     register int i, j;
 
@@ -134,8 +97,8 @@ do_statusline1()
 char *
 do_statusline2()
 {
-    /* newbot2 migrated to nle_botl()->_newbot2 */
-    char /* dungeon location (and gold), hero health (HP, PW, AC),
+    static char newbot2[BUFSZ], /* MAXCO: botl.h */
+         /* dungeon location (and gold), hero health (HP, PW, AC),
             experience (HD if poly'd, else Exp level and maybe Exp points),
             time (in moves), varying number of status conditions */
          dloc[QBUFSZ], hlth[QBUFSZ], expr[QBUFSZ], tmmv[QBUFSZ], cond[QBUFSZ];
@@ -550,7 +513,7 @@ STATIC_DCL boolean FDECL(status_hilite_menu_add, (int));
 /* If entries are added to this, botl.h will require updating too.
    'max' value of BL_EXP gets special handling since the percentage
    involved isn't a direct 100*current/maximum calculation. */
-static struct istat_s initblstats[MAXBLSTATS] = {
+STATIC_VAR struct istat_s initblstats[MAXBLSTATS] = {
     INIT_BLSTAT("title", "%s", ANY_STR, MAXVALWIDTH, BL_TITLE),
     INIT_BLSTAT("strength", " St:%s", ANY_INT, 10, BL_STR),
     INIT_BLSTAT("dexterity", " Dx:%s", ANY_INT,  10, BL_DX),
@@ -581,23 +544,22 @@ static struct istat_s initblstats[MAXBLSTATS] = {
 #undef INIT_BLSTAT
 #undef INIT_THRESH
 
-/* blstats / blinit / update_all / valset / status_hilites — per-env
- * bottom-line state migrated to nle_ctx_t. */
-#define blstats ((struct istat_s (*)[MAXBLSTATS]) current_nle_ctx->s_blstats_p)
-#define blinit       (current_nle_ctx->s_blinit)
-#define update_all   (current_nle_ctx->s_update_all)
-#define valset       (current_nle_ctx->s_valset)
-/* Per-env status state migrated from static/__thread to nle_ctx_t.
- * bl_hilite_moves was __thread (broken under OMP coroutine-resume).
- * cond_hilites[] was a plain static (process-global) — races under concurrent
- * envs writing condition highlight masks during render_status.
- * now_or_before_idx was __thread — same OMP cross-thread TLS hazard. */
+struct istat_s blstats[2][MAXBLSTATS];
+static boolean blinit = FALSE, update_all = FALSE;
+static boolean valset[MAXBLSTATS];
 #ifdef STATUS_HILITES
-#define bl_hilite_moves     (current_nle_ctx->s_bl_hilite_moves)
+static long bl_hilite_moves = 0L;
 #endif
-/* cond_hilites and now_or_before_idx used regardless of STATUS_HILITES */
-#define cond_hilites        (current_nle_ctx->s_cond_hilites)
-#define now_or_before_idx   (current_nle_ctx->s_now_or_before_idx)
+
+/* we don't put this next declaration in #ifdef STATUS_HILITES.
+ * In the absence of STATUS_HILITES, each array
+ * element will be 0 however, and quite meaningless,
+ * but we need to pass the first array element as
+ * the final argument of status_update, with or
+ * without STATUS_HILITES.
+ */
+static unsigned long cond_hilites[BL_ATTCLR_MAX];
+static int now_or_before_idx = 0; /* 0..1 for array[2][] first index */
 
 STATIC_OVL void
 bot_via_windowport()
@@ -803,7 +765,8 @@ eval_notify_windowport_field(fld, valsetlist, idx)
 int fld, idx;
 boolean *valsetlist;
 {
-    /* oldrndencode / oldgoldsym migrated to nle_botl() */
+    static int oldrndencode = 0;
+    static nhsym oldgoldsym = 0;
     int pc, chg, color = NO_COLOR;
     unsigned anytype;
     boolean updated = FALSE, reset;
@@ -1044,16 +1007,13 @@ status_finish()
 STATIC_OVL void
 init_blstats()
 {
-    /* The original `static boolean initalready` tripped under shared-libnethack
-     * vecenv (env 2 saw env 1's TRUE). Moved to per-env on nle_ctx_t so the
-     * once-per-game safety check is preserved across envs. */
+    static boolean initalready = FALSE;
     int i, j;
 
-    if (current_nle_ctx->s_blstats_initalready) {
+    if (initalready) {
         impossible("init_blstats called more than once.");
         return;
     }
-    current_nle_ctx->s_blstats_initalready = 1;
     for (i = 0; i <= 1; ++i) {
         for (j = 0; j < MAXBLSTATS; ++j) {
 #ifdef STATUS_HILITES
@@ -1072,7 +1032,7 @@ init_blstats()
 #endif
         }
     }
-    /* initalready already set above (per-env on nle_ctx_t). */
+    initalready = TRUE;
 }
 
 /*
@@ -1443,8 +1403,7 @@ int idx;
 /* Core status hiliting support */
 /****************************************************************************/
 
-/* status_hilites — per-env status hilite table migrated to nle_ctx_t. */
-#define status_hilites ((struct hilite_s *) current_nle_ctx->s_status_hilites_p)
+struct hilite_s status_hilites[MAXBLSTATS];
 
 static struct fieldid_t {
     const char *fieldname;
@@ -1526,9 +1485,9 @@ long augmented_time; /* no longer augmented; it once encoded fractional
                       * amounts for multiple moves within same turn     */
 {
     /*
-     * This 'current_nle_ctx->multi' handling may need some tuning...
+     * This 'multi' handling may need some tuning...
      */
-    if (current_nle_ctx->multi)
+    if (multi)
         return FALSE;
 
     if (!Is_Temp_Hilite(bl_p->hilite_rule))
@@ -1940,7 +1899,7 @@ char *str;
 char ***sfarr;
 int maxsf;
 {
-    /* subfields migrated to nle_botl()->_subfields */
+    static char *subfields[MAX_SUBFIELDS];
     char *st = (char *) 0;
     int sf = 0;
 
@@ -2108,7 +2067,7 @@ boolean from_configfile;
 
     ++sidx;
     while (s[sidx]) {
-        char buf[BUFSZ], **sfs;
+        char buf[BUFSZ], **subfields;
         int sf = 0;     /* subfield count */
         int kidx;
 
@@ -2272,7 +2231,7 @@ boolean from_configfile;
         }
         coloridx = -1;
         Strcpy(buf, how);
-        sf = splitsubfields(buf, &sfs, 0);
+        sf = splitsubfields(buf, &subfields, 0);
 
         if (sf < 1)
             return FALSE;
@@ -2280,7 +2239,7 @@ boolean from_configfile;
         disp_attrib = HL_UNDEF;
 
         for (i = 0; i < sf; ++i) {
-            int a = match_str2attr(sfs[i], FALSE);
+            int a = match_str2attr(subfields[i], FALSE);
 
             if (a == ATR_DIM)
                 disp_attrib |= HL_DIM;
@@ -2295,7 +2254,7 @@ boolean from_configfile;
             else if (a == ATR_NONE)
                 disp_attrib = HL_NONE;
             else {
-                int c = match_str2clr(sfs[i]);
+                int c = match_str2clr(subfields[i]);
 
                 if (c >= CLR_MAX || coloridx != -1)
                     return FALSE;
@@ -2408,7 +2367,7 @@ STATIC_OVL char *
 conditionbitmask2str(ul)
 unsigned long ul;
 {
-    char *buf = condbitmask2str_buf; /* migrated to nle_botl() */
+    static char buf[BUFSZ];
     int i;
     boolean first = TRUE;
     const char *alias = (char *) 0;
@@ -2479,19 +2438,19 @@ str2conditionbitmask(str)
 char *str;
 {
     unsigned long conditions_bitmask = 0UL;
-    char **sfs;
+    char **subfields;
     int i, sf;
 
-    sf = splitsubfields(str, &sfs, SIZE(valid_conditions));
+    sf = splitsubfields(str, &subfields, SIZE(valid_conditions));
 
     if (sf < 1)
         return 0UL;
 
     for (i = 0; i < sf; ++i) {
-        unsigned long bm = match_str2conditionbitmask(sfs[i]);
+        unsigned long bm = match_str2conditionbitmask(subfields[i]);
 
         if (!bm) {
-            config_error_add("Unknown condition '%s'", sfs[i]);
+            config_error_add("Unknown condition '%s'", subfields[i]);
             return 0UL;
         }
         conditions_bitmask |= bm;
@@ -2528,7 +2487,7 @@ int sidx;
     sidx++;
     while(s[sidx]) {
         int sf = 0;     /* subfield count */
-        char buf[BUFSZ], **sfs;
+        char buf[BUFSZ], **subfields;
 
         tmp = s[sidx];
         if (!*tmp) {
@@ -2563,7 +2522,7 @@ int sidx;
         }
 
         Strcpy(buf, how);
-        sf = splitsubfields(buf, &sfs, 0);
+        sf = splitsubfields(buf, &subfields, 0);
 
         /*
          * conditions_bitmask now has bits set representing
@@ -2586,7 +2545,7 @@ int sidx;
          */
 
         for (i = 0; i < sf; ++i) {
-            int a = match_str2attr(sfs[i], FALSE);
+            int a = match_str2attr(subfields[i], FALSE);
 
             if (a == ATR_DIM)
                 cond_hilites[HL_ATTCLR_DIM] |= conditions_bitmask;
@@ -2605,7 +2564,7 @@ int sidx;
                 cond_hilites[HL_ATTCLR_INVERSE] &= ~conditions_bitmask;
                 cond_hilites[HL_ATTCLR_BOLD] &= ~conditions_bitmask;
             } else {
-                int k = match_str2clr(sfs[i]);
+                int k = match_str2clr(subfields[i]);
 
                 if (k >= CLR_MAX)
                     return FALSE;
@@ -2684,14 +2643,8 @@ struct _status_hilite_line_str {
     struct _status_hilite_line_str *next;
 };
 
-/* Per-env. Were __thread; cross-thread coroutine resume (env
- * init on main thread, step on OMP worker) gave worker an empty TLS list,
- * leaking allocs from init thread and risking stale pointer dereference. */
-#define status_hilite_str \
-    ((struct _status_hilite_line_str *) current_nle_ctx->s_status_hilite_str_p)
-#define set_status_hilite_str(v) \
-    (current_nle_ctx->s_status_hilite_str_p = (void *)(v))
-#define status_hilite_str_id  (current_nle_ctx->s_status_hilite_str_id)
+static struct _status_hilite_line_str *status_hilite_str = 0;
+static int status_hilite_str_id = 0;
 
 STATIC_OVL void
 status_hilite_linestr_add(fld, hl, mask, str)
@@ -2720,7 +2673,7 @@ const char *str;
             nxt = nxt->next;
         nxt->next = tmp;
     } else {
-        set_status_hilite_str(tmp);
+        status_hilite_str = tmp;
     }
 }
 
@@ -2734,7 +2687,7 @@ status_hilite_linestr_done()
         free(tmp);
         tmp = nxt;
     }
-    set_status_hilite_str(0);
+    status_hilite_str = (struct _status_hilite_line_str *) 0;
     status_hilite_str_id = 0;
 }
 
@@ -2869,7 +2822,7 @@ STATIC_OVL char *
 status_hilite2str(hl)
 struct hilite_s *hl;
 {
-    char *buf = hilite2str_buf; /* migrated to nle_botl() */
+    static char buf[BUFSZ];
     int clr = 0, attr = 0;
     char behavebuf[BUFSZ];
     char clrbuf[BUFSZ];

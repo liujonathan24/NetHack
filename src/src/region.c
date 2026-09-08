@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "lev.h"
 
 /*
@@ -12,11 +11,9 @@
  * structure eventually.
  */
 
-/* Per-env region storage. Was process-global + __thread —
- * env A's gas clouds leaked into env B's effect-of-being-in-cloud check. */
-#define regions     (*(NhRegion ***)&current_nle_ctx->s_regions)
-#define n_regions   (current_nle_ctx->s_n_regions)
-#define max_regions (current_nle_ctx->s_max_regions)
+static NhRegion **regions;
+static int n_regions = 0;
+static int max_regions = 0;
 
 #define NO_CALLBACK (-1)
 

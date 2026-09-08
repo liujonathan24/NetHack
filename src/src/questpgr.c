@@ -3,34 +3,11 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "dlb.h"
 
 /*  quest-specific pager routines. */
 
 #include "qtext.h"
-
-/* Per-env quest pager state. Was four file-statics
- * (cvt_buf, nambuf, qt_list, msg_file) racing across envs; now all four
- * route through current_nle_ctx. qt_list is a heap-allocated struct
- * qtlists pointed to by s_qt_list_p; nle.c allocates it in init_nle via
- * nle_qtlist_alloc() so nle.h doesn't need qtext.h. */
-#define cvt_buf  (current_nle_ctx->s_cvt_buf)
-#define nambuf   (current_nle_ctx->s_nambuf)
-#define qt_list  (*current_nle_ctx->s_qt_list_p)
-#define msg_file (current_nle_ctx->s_msg_file)
-
-/* called from init_nle (nle.c) to alloc the per-env qt_list backing store. */
-void
-nle_qtlist_alloc(struct qtlists **target)
-{
-    struct qtlists *q = (struct qtlists *) alloc(sizeof(struct qtlists));
-    if (q) {
-        q->common = (struct qtmsg *) 0;
-        q->chrole = (struct qtmsg *) 0;
-    }
-    *target = q;
-}
 
 #define QTEXT_FILE "quest.dat"
 
@@ -38,12 +15,8 @@ nle_qtlist_alloc(struct qtlists **target)
 #include "wintty.h"
 #endif
 
-/* Lev_message migrated to per-env nle_ctx_t. Was a NON-static
- * cross-TU heap pointer freed here in deliver_splev_message; env B's level
- * entry could free() env A's still-pending lev_message → dangling UAF.
- * Routing the macro to the same per-env slot as sp_lev.c eliminates the
- * cross-env free. */
-#define lev_message (current_nle_ctx->s_sp_lev_message_p)
+/* from sp_lev.c, for deliver_splev_message() */
+extern char *lev_message;
 
 static void NDECL(dump_qtlist);
 static void FDECL(Fread, (genericptr_t, int, int, dlb *));
@@ -61,7 +34,11 @@ STATIC_DCL void FDECL(deliver_by_pline, (struct qtmsg *));
 STATIC_DCL void FDECL(deliver_by_window, (struct qtmsg *, int));
 STATIC_DCL boolean FDECL(skip_pager, (BOOLEAN_P));
 
-/* cvt_buf, qt_list, msg_file, nambuf migrated to nle_ctx_t — see macros above. */
+static char cvt_buf[64];
+static struct qtlists qt_list;
+static dlb *msg_file;
+/* used by ldrname() and neminame(), then copied into cvt_buf */
+static char nambuf[sizeof cvt_buf];
 
 /* dump the character msg list to check appearance;
    build with DEBUG enabled and use DEBUGFILES=questpgr.c
@@ -606,7 +583,7 @@ skip_pager(common)
 boolean common;
 {
     /* WIZKIT: suppress plot feedback if starting with quest artifact */
-    if (current_nle_ctx->program_state.wizkit_wishing)
+    if (program_state.wizkit_wishing)
         return TRUE;
     if (!(common ? qt_list.common : qt_list.chrole)) {
         panic("%s: no %s quest text data available",

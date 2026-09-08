@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL const char *NDECL(dev_name);
 STATIC_DCL void FDECL(get_mplname, (struct monst *, char *));

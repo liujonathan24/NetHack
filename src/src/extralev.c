@@ -7,30 +7,20 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 struct rogueroom {
     xchar rlx, rly;
     xchar dx, dy;
     boolean real;
     uchar doortable;
-    int nle_room_idx; /* renamed from `nroom` for macro safety */
+    int nroom; /* Only meaningful for "real" rooms */
 };
 #define UP 1
 #define DOWN 2
 #define LEFT 4
 #define RIGHT 8
 
-/* Misc-2: r[3][3] migrated to nle_ctx_t.s_extralev_r.
- * Lazy heap alloc; calloc zero-init matches the original BSS-zeroed static. */
-static struct rogueroom (*_au8_get_r(void))[3]
-{
-    if (!current_nle_ctx->s_extralev_r)
-        current_nle_ctx->s_extralev_r =
-            (struct rogueroom *) calloc(9, sizeof(struct rogueroom));
-    return (struct rogueroom (*)[3]) current_nle_ctx->s_extralev_r;
-}
-#define r (_au8_get_r())
+static NEARDATA struct rogueroom r[3][3];
 STATIC_DCL void FDECL(roguejoin, (int, int, int, int, int));
 STATIC_DCL void FDECL(roguecorr, (int, int, int));
 STATIC_DCL void FDECL(miniwalk, (int, int));
@@ -82,7 +72,7 @@ int x, y, dir;
             fromy += 7 * y;
             if (!IS_WALL(levl[fromx][fromy].typ))
                 impossible("down: no wall at %d,%d?", fromx, fromy);
-            dodoor(fromx, fromy, &rooms[r[x][y].nle_room_idx]);
+            dodoor(fromx, fromy, &rooms[r[x][y].nroom]);
             levl[fromx][fromy].doormask = D_NODOOR;
             fromy++;
         }
@@ -104,7 +94,7 @@ int x, y, dir;
             toy += 7 * y;
             if (!IS_WALL(levl[tox][toy].typ))
                 impossible("up: no wall at %d,%d?", tox, toy);
-            dodoor(tox, toy, &rooms[r[x][y].nle_room_idx]);
+            dodoor(tox, toy, &rooms[r[x][y].nroom]);
             levl[tox][toy].doormask = D_NODOOR;
             toy--;
         }
@@ -124,7 +114,7 @@ int x, y, dir;
             fromy += 7 * y;
             if (!IS_WALL(levl[fromx][fromy].typ))
                 impossible("down: no wall at %d,%d?", fromx, fromy);
-            dodoor(fromx, fromy, &rooms[r[x][y].nle_room_idx]);
+            dodoor(fromx, fromy, &rooms[r[x][y].nroom]);
             levl[fromx][fromy].doormask = D_NODOOR;
             fromx++;
         }
@@ -146,7 +136,7 @@ int x, y, dir;
             toy += 7 * y;
             if (!IS_WALL(levl[tox][toy].typ))
                 impossible("left: no wall at %d,%d?", tox, toy);
-            dodoor(tox, toy, &rooms[r[x][y].nle_room_idx]);
+            dodoor(tox, toy, &rooms[r[x][y].nroom]);
             levl[tox][toy].doormask = D_NODOOR;
             tox--;
         }
@@ -234,13 +224,13 @@ makeroguerooms()
      */
 #define here r[x][y]
 
-    current_nle_ctx->s_nroom = 0;
+    nroom = 0;
     for (y = 0; y < 3; y++)
         for (x = 0; x < 3; x++) {
             /* Note: we want to insure at least 1 room.  So, if the
              * first 8 are all dummies, force the last to be a room.
              */
-            if (!rn2(5) && (current_nle_ctx->s_nroom || (x < 2 && y < 2))) {
+            if (!rn2(5) && (nroom || (x < 2 && y < 2))) {
                 /* Arbitrary: dummy rooms may only go where real
                  * ones do.
                  */
@@ -255,19 +245,19 @@ makeroguerooms()
                 /* boundaries of room floor */
                 here.rlx = rnd(23 - here.dx + 1);
                 here.rly = rnd(((y == 2) ? 5 : 4) - here.dy + 1);
-                current_nle_ctx->s_nroom++;
+                nroom++;
             }
             here.doortable = 0;
         }
     miniwalk(rn2(3), rn2(3));
-    current_nle_ctx->s_nroom = 0;
+    nroom = 0;
     for (y = 0; y < 3; y++)
         for (x = 0; x < 3; x++) {
             if (here.real) { /* Make a room */
                 int lowx, lowy, hix, hiy;
 
-                r[x][y].nle_room_idx = current_nle_ctx->s_nroom;
-                smeq[current_nle_ctx->s_nroom] = current_nle_ctx->s_nroom;
+                r[x][y].nroom = nroom;
+                smeq[nroom] = nroom;
 
                 lowx = 1 + 26 * x + here.rlx;
                 lowy = 7 * y + here.rly;
@@ -315,9 +305,9 @@ makerogueghost()
     struct mkroom *croom;
     int x, y;
 
-    if (!current_nle_ctx->s_nroom)
+    if (!nroom)
         return; /* Should never happen */
-    croom = &rooms[rn2(current_nle_ctx->s_nroom)];
+    croom = &rooms[rn2(nroom)];
     x = somex(croom);
     y = somey(croom);
     if (!(ghost = makemon(&mons[PM_GHOST], x, y, NO_MM_FLAGS)))

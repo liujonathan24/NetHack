@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "lev.h" /* save & restore info */
 
 STATIC_DCL void FDECL(setgemprobs, (d_level *));
@@ -13,8 +12,7 @@ STATIC_DCL void NDECL(shuffle_all);
 STATIC_DCL boolean FDECL(interesting_to_discover, (int));
 STATIC_DCL char *FDECL(oclass_to_name, (CHAR_P, char *));
 
-/* disco[] — per-env object discovery list. Migrated to nle_ctx_t. */
-#define disco (current_nle_ctx->s_disco_p)
+static NEARDATA short disco[NUM_OBJECTS] = DUMMY;
 
 #ifdef USE_TILES
 STATIC_DCL void NDECL(shuffle_tiles);
@@ -364,7 +362,7 @@ boolean credit_hero;
                 exercise(A_WIS, TRUE);
         }
         /* moves==1L => initial inventory, gameover => final disclosure */
-        if (moves > 1L && !current_nle_ctx->program_state.gameover) {
+        if (moves > 1L && !program_state.gameover) {
             if (objects[oindx].oc_class == GEM_CLASS)
                 gem_learned(oindx); /* could affect price of unpaid gems */
             update_inventory();
@@ -495,7 +493,7 @@ char *buf;
 int
 doclassdisco()
 {
-    static const char
+    static NEARDATA const char
         prompt[] = "View discoveries for which sort of objects?",
         havent_discovered_any[] = "haven't discovered any %s yet.",
         unique_items[] = "unique items",

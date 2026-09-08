@@ -21,9 +21,7 @@
 
 struct dig_info { /* apply.c, hack.c */
     int effort;
-    d_level dlvl;            /* renamed from `level` so the global token
-                                `level` can become a macro for the per-env
-                                dlevel_t (stage 7' completion). */
+    d_level level;
     coord pos;
     long lastdigtime;
     boolean down, chew, warned, quiet;
@@ -144,7 +142,6 @@ struct context_info {
     struct novel_tracking novel;
 };
 
-/* context — per-game state migrated to nle_ctx_t. */
-#define context (*current_nle_ctx->s_context_p)
+extern NEARDATA struct context_info context;
 
 #endif /* CONTEXT_H */

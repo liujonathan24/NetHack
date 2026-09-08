@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 STATIC_PTR int NDECL(stealarm);
 
@@ -141,10 +140,8 @@ register struct monst *mtmp;
 }
 
 /* steal armor after you finish taking it off */
-/* stealoid/stealmid — migrated to nle_ctx_t. File-local macros only
- * (uhitm.c has an unrelated local `struct obj *stealoid`). */
-#define stealoid (current_nle_ctx->stealoid_v)
-#define stealmid (current_nle_ctx->stealmid_v)
+unsigned int stealoid; /* object to be stolen */
+unsigned int stealmid; /* monster doing the stealing */
 
 STATIC_PTR int
 stealarm(VOID_ARGS)
@@ -411,7 +408,7 @@ char *objnambuf;
                 /* can't charm you without first waking you */
                 if (Unaware)
                     unmul((char *) 0);
-                slowly = (armordelay >= 1 || current_nle_ctx->multi < 0);
+                slowly = (armordelay >= 1 || multi < 0);
                 if (flags.female)
                     pline("%s charms you.  You gladly %s your %s.",
                           !seen ? "She" : Monnam(mtmp),
@@ -430,15 +427,15 @@ char *objnambuf;
                                                       : "you start taking",
                           equipname(otmp));
                 named++;
-                /* the following is to set current_nle_ctx->multi for later on */
+                /* the following is to set multi for later on */
                 nomul(-armordelay);
-                current_nle_ctx->multi_reason = "taking off clothes";
+                multi_reason = "taking off clothes";
                 nomovemsg = 0;
                 remove_worn_item(otmp, TRUE);
                 otmp->cursed = curssv;
-                if (current_nle_ctx->multi < 0) {
+                if (multi < 0) {
                     /*
-                    current_nle_ctx->multi = 0;
+                    multi = 0;
                     afternmv = 0;
                     */
                     stealoid = otmp->o_id;
@@ -477,7 +474,7 @@ char *objnambuf;
         minstapetrify(mtmp, TRUE);
         return -1;
     }
-    return (current_nle_ctx->multi < 0) ? 0 : 1;
+    return (multi < 0) ? 0 : 1;
 }
 
 /* Returns 1 if otmp is free'd, 0 otherwise. */

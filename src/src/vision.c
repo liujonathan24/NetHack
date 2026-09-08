@@ -3,22 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details.       */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env scratch array — colbump is written/read across
- * the vision_recalc body and bracketed by zero-fills at function entry
- * and exit, so per-env storage matches the original lifetime. */
-#define colbump (current_nle_ctx->s_vision_colbump)
-#include <stdlib.h> /* calloc */
-
-/* Close_dy/far_dy are arrays of pointers into the
- * generated close_table[]/far_table[] vis_tab.h tables. Per-env storage
- * lives on nle_ctx_t as void * (size depends on CLOSE_MAX_BC_DY /
- * FAR_MAX_BC_DY which come from the generated header — not visible to
- * nle.h). The macros below cast to the real typed pointer-array.
- * view_init() allocates lazily on first call per env. */
-#define close_dy ((close2d **) current_nle_ctx->s_close_dy)
-#define far_dy   ((far2d   **) current_nle_ctx->s_far_dy)
 
 /* Circles
  * ==================================================================*/
@@ -87,27 +71,27 @@ char circle_start[] = {
 
 /*------ global variables ------*/
 
-/* viz_array is already a per-env macro in vision.h (stage 8'). Migrate
- * viz_rmin/viz_rmax similarly. */
-#define viz_rmin  (current_nle_ctx->s_viz_rmin)
-#define viz_rmax  (current_nle_ctx->s_viz_rmax)
+#if 0 /* (moved to decl.c) */
+/* True if we need to run a full vision recalculation. */
+boolean vision_full_recalc = 0;
+
+/* Pointers to the current vision array. */
+char    **viz_array;
+#endif
+char *viz_rmin, *viz_rmax; /* current vision cs bounds */
 
 /*------ local variables ------*/
 
-/* All five 2D vision work-buffers migrated to nle_ctx_t. cs_rows0/1
- * are arrays of pointers — they get populated in vision_init() to point
- * into could_see; we just move them with the rest. */
-#define could_see ((char (*)[ROWNO][COLNO]) current_nle_ctx->s_could_see_p)
-#define viz_clear ((char (*)[COLNO]) current_nle_ctx->s_viz_clear_p)
-#define left_ptrs ((char (*)[COLNO]) current_nle_ctx->s_left_ptrs_p)
-#define right_ptrs ((char (*)[COLNO]) current_nle_ctx->s_right_ptrs_p)
-#define cs_rows0       (current_nle_ctx->s_cs_rows0)
-#define cs_rows1       (current_nle_ctx->s_cs_rows1)
-#define cs_rmin0       (current_nle_ctx->s_cs_rmin0)
-#define cs_rmax0       (current_nle_ctx->s_cs_rmax0)
-#define cs_rmin1       (current_nle_ctx->s_cs_rmin1)
-#define cs_rmax1       (current_nle_ctx->s_cs_rmax1)
-#define viz_clear_rows (current_nle_ctx->s_viz_clear_rows)
+static char could_see[2][ROWNO][COLNO]; /* vision work space */
+static char *cs_rows0[ROWNO], *cs_rows1[ROWNO];
+static char cs_rmin0[ROWNO], cs_rmax0[ROWNO];
+static char cs_rmin1[ROWNO], cs_rmax1[ROWNO];
+
+static char viz_clear[ROWNO][COLNO]; /* vision clear/blocked map */
+static char *viz_clear_rows[ROWNO];
+
+static char left_ptrs[ROWNO][COLNO]; /* LOS algorithm helpers */
+static char right_ptrs[ROWNO][COLNO];
 
 /* Forward declarations. */
 STATIC_DCL void FDECL(fill_point, (int, int));
@@ -187,7 +171,7 @@ register struct rm *lev;
         return 1;
 
     /* Boulders block light. */
-    for (obj = level.objs[x][y]; obj; obj = obj->nexthere)
+    for (obj = level.objects[x][y]; obj; obj = obj->nexthere)
         if (obj->otyp == BOULDER)
             return 1;
 
@@ -531,28 +515,13 @@ int control;
     register struct rm *lev; /* pointer to current pos */
     struct rm *flev; /* pointer to position in "front" of current pos */
     extern unsigned char seenv_matrix[3][3]; /* from display.c */
-    /* Colbump migrated to nle_ctx_t */
+    static unsigned char colbump[COLNO + 1]; /* cols to bump sv */
     unsigned char *sv;                       /* ptr to seen angle bits */
     int oldseenv;                            /* previous seenv value */
 
     vision_full_recalc = 0; /* reset flag */
     if (in_mklev || !iflags.vision_inited)
         return;
-
-    /* vision_radius knob: override the hero's night-vision range so they see
-     * this many cells in the dark (0 = vanilla). Lit areas are unaffected.
-     * Clamp to [1, MAX_RADIUS]: nv_range indexes circle_data[] via circle_ptr()
-     * (valid only up to MAX_RADIUS), and a huge/inf knob value would otherwise
-     * cast to a wild int and walk off the table -> SIGSEGV in vision_recalc.
-     * The `>= MAX_RADIUS` test runs on the double, so inf/huge are caught
-     * before the (int) cast (which would itself be UB for those). */
-    if (nle_tuning.vision_radius > 0.0) {
-        u.nv_range = (nle_tuning.vision_radius >= (double) MAX_RADIUS)
-                         ? MAX_RADIUS
-                         : (int) nle_tuning.vision_radius;
-        if (u.nv_range < 1)
-            u.nv_range = 1;
-    }
 
     /*
      * Either the light sources have been taken care of, or we must
@@ -760,28 +729,6 @@ int control;
 
         for (col = start; col <= stop;
              lev += ROWNO, sv += (int) colbump[++col]) {
-            /* vision_radius knob (hard sight limit): force any cell farther than
-             * `vision_radius` from the hero out of sight -- even inside a lit
-             * room, which NetHack would otherwise reveal whole. Routing through
-             * not_in_sight makes the existing newsym() logic re-hide a cell that
-             * just left sight (unexplored -> stone, explored -> dim memory), so
-             * shrinking the radius live removes newly-unseen area for free.
-             * Guarded on the non-default knob (>0), so vanilla play is
-             * byte-identical (golden parity preserved). */
-            if (nle_tuning.vision_radius > 0.0) {
-                /* Clamp like nv_range above: a huge knob makes vr*vr overflow
-                 * int (UB / wrong result). MAX_RADIUS covers the whole map. */
-                int vr = (nle_tuning.vision_radius >= (double) MAX_RADIUS)
-                             ? MAX_RADIUS
-                             : (int) nle_tuning.vision_radius;
-                int vdx = col - u.ux, vdy = row - u.uy;
-                if (vr < 1)
-                    vr = 1;
-                if (vdx * vdx + vdy * vdy > vr * vr) {
-                    next_row[col] &= ~(IN_SIGHT | COULD_SEE);
-                    goto not_in_sight;
-                }
-            }
             if (next_row[col] & IN_SIGHT) {
                 /*
                  * We see this position because of night- or xray-vision.
@@ -876,9 +823,9 @@ skip:
     /* This newsym() caused a crash delivering msg about failure to open
      * dungeon file init_dungeons() -> panic() -> done(11) ->
      * vision_recalc(2) -> newsym() -> crash!  u.ux and u.uy are 0 and
-     * current_nle_ctx->program_state.panicking == 1 under those circumstances
+     * program_state.panicking == 1 under those circumstances
      */
-    if (!current_nle_ctx->program_state.panicking)
+    if (!program_state.panicking)
         newsym(u.ux, u.uy); /* Make sure the hero shows up! */
 
     /* Set the new min and max pointers. */
@@ -886,12 +833,6 @@ skip:
     viz_rmax = next_rmax;
 
     recalc_mapseen();
-
-    /* reveal_map knob is now applied as a render-time overlay on
-     * the emitted observation in the rl window port (NetHackRL::fill_obs), never
-     * mutating the hero's remembered map (gbuf) here. This keeps the knobs
-     * reversible and side-effect-free; the vanilla game and golden parity are
-     * untouched. */
 }
 
 /*
@@ -1156,23 +1097,15 @@ int row, col;
 /*
  * Variables local to both Algorithms C and D.
  */
-/* File-scope statics moved per-env to nle_ctx_t. */
-#define start_row  (current_nle_ctx->s_vis_start_row)
-#define start_col  (current_nle_ctx->s_vis_start_col)
-#define step       (current_nle_ctx->s_vis_step)
-#define cs_rows    (current_nle_ctx->s_vis_cs_rows)
-#define cs_left    (current_nle_ctx->s_vis_cs_left)
-#define cs_right   (current_nle_ctx->s_vis_cs_right)
-#define vis_func   (current_nle_ctx->s_vis_func)
-#define varg       (current_nle_ctx->s_vis_varg)
+static int start_row;
+static int start_col;
+static int step;
+static char **cs_rows;
+static char *cs_left;
+static char *cs_right;
 
-/* Per-env vision recursion-depth guard. Legitimate
- * left_side/right_side recursion is bounded by ROWNO=21. If we exceed
- * 64 we know we're looping. The volatile cast prevents the compiler
- * from optimizing the guard away based on dataflow analysis of the
- * recursive call chain. */
-#define VISION_RECUR_LIMIT 64
-#define vision_recur_depth (*(volatile int *)&current_nle_ctx->s_vision_recur_depth)
+static void FDECL((*vis_func), (int, int, genericptr_t));
+static genericptr_t varg;
 
 /*
  * Both Algorithms C and D use the following macros.
@@ -1675,8 +1608,9 @@ cleardone:
  */
 #include "vis_tab.h"
 
-/* 3D table pointers moved into nle_ctx_t.{s_close_dy,s_far_dy}.
- * Allocated lazily in view_init() per env. */
+/* 3D table pointers. */
+static close2d *close_dy[CLOSE_MAX_BC_DY];
+static far2d *far_dy[FAR_MAX_BC_DY];
 
 STATIC_DCL void FDECL(right_side,  (int, int, int, int, int,
                                     int, int, char *));
@@ -1692,18 +1626,6 @@ STATIC_OVL void
 view_init()
 {
     int i;
-
-    /* Allocate per-env close_dy/far_dy on demand.
-     * Re-entry on a re-init is safe: free + alloc keeps tables fresh in
-     * case vis_tab.h is ever regenerated with new sizes. */
-    if (current_nle_ctx->s_close_dy)
-        free(current_nle_ctx->s_close_dy);
-    if (current_nle_ctx->s_far_dy)
-        free(current_nle_ctx->s_far_dy);
-    current_nle_ctx->s_close_dy =
-        calloc(CLOSE_MAX_BC_DY, sizeof(close2d *));
-    current_nle_ctx->s_far_dy =
-        calloc(FAR_MAX_BC_DY, sizeof(far2d *));
 
     for (i = 0; i < CLOSE_MAX_BC_DY; i++)
         close_dy[i] = &close_table[i];
@@ -1817,13 +1739,6 @@ char *limits;       /* points at range limit for current row, or NULL */
     char *row_max = NULL; /* right most */
     int lim_max;          /* right most limit of circle */
 
-    /* Bail on pathological recursion. Depth is reset to 0
-     * at every view_from() entry, so 64 covers ROWNO=21 plus generous
-     * branching. Returning early may leave one tick's vision frame
-     * slightly stale, but keeps the env alive instead of hanging. */
-    if (vision_recur_depth >= VISION_RECUR_LIMIT) return;
-    vision_recur_depth++;
-
     nrow = row + step;
     deeper = good_row(nrow) && (!limits || (*limits >= *(limits + 1)));
     if (!vis_func) {
@@ -1856,15 +1771,7 @@ char *limits;       /* points at range limit for current row, or NULL */
      * change the above assignment so that left and not left_shadow is the
      * variable that gets the shadow.
      */
-    /* Bound the while loop too — corrupted right_ptrs can
-     * cause loc_right to not progress, spinning the loop. COLNO=79 is the
-     * legitimate max; 256 covers it generously. */
-    int _iter = 0;
     while (left <= right_mark) {
-        if (++_iter > 256) {
-            vision_recur_depth--;
-            return;
-        }
         loc_right = right_ptrs[row][left];
         if (loc_right > lim_max)
             loc_right = lim_max;
@@ -2110,10 +2017,6 @@ char *limits;
     char *row_max = NULL; /* right most */
     int lim_min;
 
-    /* Vecenv safety bail (see right_side). */
-    if (vision_recur_depth >= VISION_RECUR_LIMIT) return;
-    vision_recur_depth++;
-
     nrow = row + step;
     deeper = good_row(nrow) && (!limits || (*limits >= *(limits + 1)));
     if (!vis_func) {
@@ -2134,13 +2037,7 @@ char *limits;
     /* This value could be illegal. */
     right_shadow = close_shadow(FROM_LEFT, row, cb_row, cb_col);
 
-    /* Loop iteration cap (see right_side). */
-    int _iter = 0;
     while (right >= left_mark) {
-        if (++_iter > 256) {
-            vision_recur_depth--;
-            return;
-        }
         loc_left = left_ptrs[row][right];
         if (loc_left < lim_min)
             loc_left = lim_min;
@@ -2317,9 +2214,6 @@ genericptr_t arg;
     int nrow, left, right, left_row, right_row;
     char *limits;
 
-    /* Reset recursion guard for this view_from call. */
-    vision_recur_depth = 0;
-
     /* Set globals for near_shadow(), far_shadow(), etc. to use. */
     start_col = scol;
     start_row = srow;
@@ -2433,13 +2327,6 @@ char *limits;   /* points at range limit for current row, or NULL */
     char *row_max = NULL;       /* right most [used by macro set_max()] */
     int lim_max;                /* right most limit of circle */
 
-    /* NLE vecenv: hard recursion bail. Algorithm C's right_side has no
-     * intrinsic depth bound when right_ptrs is in a pathological state;
-     * vecenv level-gen for certain seeds hits this. ROWNO=21 so 64 is a
-     * generous cap that no honest call should ever reach. */
-    if (vision_recur_depth >= 64) return;
-    vision_recur_depth++;
-
     nrow = row + step;
     /*
      * Can go deeper if the row is in bounds and the next row is within
@@ -2463,15 +2350,7 @@ char *limits;   /* points at range limit for current row, or NULL */
     } else
         lim_max = COLNO - 1;
 
-    {
-    /* NLE vecenv: bound this loop. The legitimate iteration count is at
-     * most COLNO cells across a row; if we exceed that, a corrupt or
-     * pathological right_ptrs has put us in an infinite "left = right_edge"
-     * back-up loop (see line ~2470 below). Bail to keep multi-env training
-     * from hanging in dog_move -> do_clear_area -> right_side. */
-    int nle_iter = 0;
     while (left <= right_mark) {
-        if (++nle_iter > COLNO + 8) goto nle_right_done;
         right_edge = right_ptrs[row][left];
         if (right_edge > lim_max)
             right_edge = lim_max;
@@ -2533,7 +2412,7 @@ char *limits;   /* points at range limit for current row, or NULL */
              *
              */
             if (left > lim_max)
-                goto nle_right_done;            /* check (1) */
+                return;            /* check (1) */
             if (left == lim_max) { /* check (2) */
                 if (vis_func) {
                     (*vis_func)(lim_max, row, varg);
@@ -2541,7 +2420,7 @@ char *limits;   /* points at range limit for current row, or NULL */
                     set_cs(rowp, lim_max);
                     set_max(lim_max);
                 }
-                goto nle_right_done;
+                return;
             }
             /*
              * Check if we can see any spots in the opening.  We might
@@ -2616,9 +2495,6 @@ char *limits;   /* points at range limit for current row, or NULL */
             left = right + 1; /* no limit check necessary */
         }
     }
-nle_right_done:;
-    } /* close nle_iter block */
-    vision_recur_depth--;
 }
 
 /*
@@ -2640,11 +2516,6 @@ char *limits;
 #ifdef GCC_WARN
     rowp = row_min = row_max = 0;
 #endif
-
-    /* NLE vecenv: hard recursion bail (mirror of right_side). */
-    if (vision_recur_depth >= 64) return;
-    vision_recur_depth++;
-
     nrow = row + step;
     deeper = good_row(nrow) && (!limits || (*limits >= *(limits + 1)));
     if (!vis_func) {
@@ -2662,12 +2533,7 @@ char *limits;
     } else
         lim_min = 0;
 
-    {
-    /* NLE vecenv: mirror of right_side's iter cap — bound the inner loop so
-     * pathological left_ptrs values can't hang multi-env training. */
-    int nle_iter = 0;
     while (right >= left_mark) {
-        if (++nle_iter > COLNO + 8) goto nle_left_done;
         left_edge = left_ptrs[row][right];
         if (left_edge < lim_min)
             left_edge = lim_min;
@@ -2707,7 +2573,7 @@ char *limits;
 
             /* Check for boundary conditions. */
             if (right < lim_min)
-                goto nle_left_done;
+                return;
             if (right == lim_min) {
                 if (vis_func) {
                     (*vis_func)(lim_min, row, varg);
@@ -2715,7 +2581,7 @@ char *limits;
                     set_cs(rowp, lim_min);
                     set_min(lim_min);
                 }
-                goto nle_left_done;
+                return;
             }
             /* Check if we can see any spots in the opening. */
             if (right <= left_edge) {
@@ -2764,9 +2630,6 @@ char *limits;
             right = left - 1; /* no limit check necessary */
         }
     }
-nle_left_done:;
-    } /* close nle_iter block */
-    vision_recur_depth--;
 }
 
 /*
@@ -2790,9 +2653,6 @@ genericptr_t arg;
     int left;       /* the left-most visible column */
     int right;      /* the right-most visible column */
     char *limits;   /* range limit for next row */
-
-    /* Reset recursion guard for this view_from call (alg C path). */
-    vision_recur_depth = 0;
 
     /* Set globals for q?_path(), left_side(), and right_side() to use. */
     start_col = scol;

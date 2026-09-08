@@ -4,21 +4,17 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
-/* Per-env return buffer */
-#define offdelaybuf (current_nle_ctx->s_do_wear_offdelaybuf)
-
-static const char see_yourself[] = "see yourself";
-static const char unknown_type[] = "Unknown type of %s (%d)";
-static const char c_armor[] = "armor", c_suit[] = "suit",
+static NEARDATA const char see_yourself[] = "see yourself";
+static NEARDATA const char unknown_type[] = "Unknown type of %s (%d)";
+static NEARDATA const char c_armor[] = "armor", c_suit[] = "suit",
                            c_shirt[] = "shirt", c_cloak[] = "cloak",
                            c_gloves[] = "gloves", c_boots[] = "boots",
                            c_helmet[] = "helmet", c_shield[] = "shield",
                            c_weapon[] = "weapon", c_sword[] = "sword",
                            c_axe[] = "axe", c_that_[] = "that";
 
-static const long takeoff_order[] = {
+static NEARDATA const long takeoff_order[] = {
     WORN_BLINDF, W_WEP,      WORN_SHIELD, WORN_GLOVES, LEFT_RING,
     RIGHT_RING,  WORN_CLOAK, WORN_HELMET, WORN_AMUL,   WORN_ARMOR,
     WORN_SHIRT,  WORN_BOOTS, W_SWAPWEP,   W_QUIVER,    0L
@@ -87,8 +83,7 @@ struct obj *otmp;
 
 /* starting equipment gets auto-worn at beginning of new game,
    and we don't want stealth or displacement feedback then */
-/* Per-env. Was __thread; OMP coroutine-resume hazard. */
-#define initial_don (current_nle_ctx->s_initial_don)
+static boolean initial_don = FALSE; /* manipulated in set_wear() */
 
 /* putting on or taking off an item which confers stealth;
    give feedback and discover it iff stealth state is changing */
@@ -1346,7 +1341,7 @@ cancel_don()
          || afternmv == Gloves_on || afternmv == Armor_on);
     afternmv = (int NDECL((*))) 0;
     nomovemsg = (char *) 0;
-    current_nle_ctx->multi = 0;
+    multi = 0;
     context.takeoff.delay = 0;
     context.takeoff.what = 0L;
 }
@@ -1381,7 +1376,7 @@ struct obj *stolenobj; /* no message if stolenobj is already being doffing */
                 thesimpleoname(otmp));
     } else {
         buf[0] = '\0';   /* silently stop doffing stolenobj */
-        result = -current_nle_ctx->multi; /* remember this before calling unmul() */
+        result = -multi; /* remember this before calling unmul() */
     }
     unmul(buf);
     /* while putting on, item becomes worn immediately but side-effects are
@@ -1396,30 +1391,13 @@ struct obj *stolenobj; /* no message if stolenobj is already being doffing */
 
 /* both 'clothes' and 'accessories' now include both armor and accessories;
    TOOL_CLASS is for eyewear, FOOD_CLASS is for MEAT_RING */
-static const char clothes[] = {
+static NEARDATA const char clothes[] = {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, 0
 };
-static const char accessories[] = {
+static NEARDATA const char accessories[] = {
     RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, ARMOR_CLASS, 0
 };
-/* Per-env do_wear.c state. Narmorpieces / Naccessories bundled. */
-struct nle_do_wear_state {
-    int _Narmorpieces;
-    int _Naccessories;
-};
-static struct nle_do_wear_state *
-nle_do_wear(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_do_wear_state *s = (struct nle_do_wear_state *) current_nle_ctx->s_do_wear_state;
-    if (!s) {
-        s = (struct nle_do_wear_state *) nle_arena_calloc(1, sizeof(struct nle_do_wear_state));
-        current_nle_ctx->s_do_wear_state = s;
-    }
-    return s;
-}
-#define Narmorpieces  (nle_do_wear()->_Narmorpieces)
-#define Naccessories  (nle_do_wear()->_Naccessories)
+STATIC_VAR NEARDATA int Narmorpieces, Naccessories;
 
 /* assign values to Narmorpieces and Naccessories */
 STATIC_OVL void
@@ -1599,7 +1577,7 @@ int
 armoroff(otmp)
 struct obj *otmp;
 {
-    /* Offdelaybuf migrated to nle_ctx_t */
+    static char offdelaybuf[60];
     int delay = -objects[otmp->otyp].oc_delay;
     const char *what = 0;
 
@@ -1609,7 +1587,7 @@ struct obj *otmp;
        delays and which didn't; now both are handled for all types */
     if (delay) {
         nomul(delay);
-        current_nle_ctx->multi_reason = "disrobing";
+        multi_reason = "disrobing";
         if (is_helmet(otmp)) {
             what = helm_simple_name(otmp);
             afternmv = Helmet_off;
@@ -2053,10 +2031,10 @@ struct obj *obj;
         delay = -objects[obj->otyp].oc_delay;
         if (delay) {
             nomul(delay);
-            current_nle_ctx->multi_reason = "dressing up";
+            multi_reason = "dressing up";
             nomovemsg = "You finish your dressing maneuver.";
         } else {
-            unmul(""); /* call (*aftermv)(), clear it+nomovemsg+current_nle_ctx->multi_reason */
+            unmul(""); /* call (*aftermv)(), clear it+nomovemsg+multi_reason */
             on_msg(obj);
         }
         context.takeoff.mask = context.takeoff.what = 0L;
@@ -2813,7 +2791,7 @@ struct obj *obj;
 const char *verb; /* "dip" or "grease", or null to avoid messages */
 boolean only_if_known_cursed; /* ignore covering unless known to be cursed */
 {
-    static const char need_to_take_off_outer_armor[] =
+    static NEARDATA const char need_to_take_off_outer_armor[] =
         "need to take off %s to %s %s.";
     char buf[BUFSZ];
     boolean anycovering = !only_if_known_cursed; /* more comprehensible... */

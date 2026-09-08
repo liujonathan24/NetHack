@@ -4,16 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env return buffer */
-#define tnbuf (current_nle_ctx->s_trap_tnbuf)
-
-/* File-static migrated to nle_ctx_t. */
-#define force_mintrap (current_nle_ctx->s_force_mintrap)
-/* Function-local static `recursive_mine` in dotrap()
- * migrated to per-env nle_ctx_t field. */
-#define recursive_mine  (current_nle_ctx->s_dotrap_recursive_mine)
 
 extern const char *const destroy_strings[][3]; /* from zap.c */
 
@@ -50,7 +40,7 @@ STATIC_DCL boolean FDECL(thitm, (int, struct monst *, struct obj *, int,
 STATIC_DCL void NDECL(maybe_finish_sokoban);
 
 /* mintrap() should take a flags argument, but for time being we use this */
-/* force_mintrap migrated to current_nle_ctx->s_force_mintrap. */
+STATIC_VAR int force_mintrap = 0;
 
 STATIC_VAR const char *const a_your[2] = { "a", "your" };
 STATIC_VAR const char *const A_Your[2] = { "A", "Your" };
@@ -153,7 +143,7 @@ const char *ostr;
 int type;
 int ef_flags;
 {
-    static const char
+    static NEARDATA const char
         *const action[] = { "smoulder", "rust", "rot", "corrode" },
         *const msg[] = { "burnt", "rusted", "rotten", "corroded" },
         *const bythe[] = { "heat", "oxidation", "decay", "corrosion" };
@@ -431,9 +421,9 @@ int x, y, typ;
         else if (lev->typ == STONE || lev->typ == SCORR)
             lev->typ = CORR;
         else if (IS_WALL(lev->typ) || lev->typ == SDOOR)
-            lev->typ = level.lflags.is_maze_lev
+            lev->typ = level.flags.is_maze_lev
                            ? ROOM
-                           : level.lflags.is_cavernous_lev ? CORR : DOOR;
+                           : level.flags.is_cavernous_lev ? CORR : DOOR;
 
         unearth_objs(x, y);
         break;
@@ -1512,9 +1502,7 @@ unsigned trflags;
              * the ground, and you being affected again by the same
              * mine because it hasn't been deleted yet
              */
-            /* `static boolean recursive_mine = FALSE;`
-             * migrated to current_nle_ctx->s_dotrap_recursive_mine (calloc
-             * zeroes the field = FALSE). See top-of-file #define. */
+            static boolean recursive_mine = FALSE;
 
             if (recursive_mine)
                 break;
@@ -1579,7 +1567,7 @@ trapnote(trap, noprefix)
 struct trap *trap;
 boolean noprefix;
 {
-    /* Tnbuf migrated to nle_ctx_t */
+    static char tnbuf[12];
     const char *tn,
         *tnnames[12] = { "C note",  "D flat", "D note",  "E flat",
                          "E note",  "F note", "F sharp", "G note",
@@ -1718,9 +1706,10 @@ struct trap *trap;
  * prevent them from vanishing if you are killed. They
  * will reappear at the launchplace in bones files.
  */
-/* launchplace — per-env via nle_ctx_t fields. */
-struct launchplace_s { struct obj *obj; xchar x, y; };
-#define launchplace (*(struct launchplace_s *)&current_nle_ctx->s_launchplace_obj)
+static struct {
+    struct obj *obj;
+    xchar x, y;
+} launchplace;
 
 STATIC_OVL void
 launch_drop_spot(obj, x, y)
@@ -1888,7 +1877,7 @@ int style;
                 break;
             }
         } else if (bhitpos.x == u.ux && bhitpos.y == u.uy) {
-            if (current_nle_ctx->multi)
+            if (multi)
                 nomul(0);
             if (thitu(9 + singleobj->spe, dmgval(singleobj, &youmonst),
                       &singleobj, (char *) 0))
@@ -2683,7 +2672,7 @@ register struct monst *mtmp;
             if (DEADMONSTER(mtmp))
                 trapkilled = TRUE;
             if (unconscious()) {
-                current_nle_ctx->multi = -1;
+                multi = -1;
                 nomovemsg = "The explosion awakens you!";
             }
             break;
@@ -2792,7 +2781,7 @@ boolean byplayer;
     if (cansee(mon->mx, mon->my))
         pline("%s turns to stone.", Monnam(mon));
     if (byplayer) {
-        current_nle_ctx->stoned = TRUE;
+        stoned = TRUE;
         xkilled(mon, XKILL_NOMSG);
     } else
         monstone(mon);
@@ -3517,23 +3506,11 @@ struct obj *obj;
 
 /* context for water_damage(), managed by water_damage_chain();
    when more than one stack of potions of acid explode while processing
-   a chain of objects, use alternate phrasing after the first message.
-   Migrated to per-env to stop multi-buffer race in
-   water_damage_chain at trap.c:3695 (segfault at offset 0x34 was
-   reading torn ctx_valid across pthreads). Struct defined here, storage
-   in nle_ctx_t->s_acid_ctx (declared as opaque void* in nle.h to keep
-   the type local). */
-struct h2o_ctx {
-    int dkn_boom, unk_boom;
+   a chain of objects, use alternate phrasing after the first message */
+static struct h2o_ctx {
+    int dkn_boom, unk_boom; /* track dknown, !dknown separately */
     boolean ctx_valid;
-};
-#define acid_ctx (*(struct h2o_ctx *)nle_get_acid_ctx())
-static void *nle_get_acid_ctx(void) {
-    if (!current_nle_ctx->s_acid_ctx) {
-        current_nle_ctx->s_acid_ctx = nle_arena_calloc(1, sizeof(struct h2o_ctx));
-    }
-    return current_nle_ctx->s_acid_ctx;
-}
+} acid_ctx = { 0, 0, FALSE };
 
 /* Get an object wet and damage it appropriately.
  *   "ostr", if present, is used instead of the object name in some
@@ -3833,7 +3810,7 @@ drown()
     if ((Teleportation || can_teleport(youmonst.data)) && !Unaware
         && (Teleport_control || rn2(3) < Luck + 2)) {
         You("attempt a teleport spell."); /* utcsri!carroll */
-        if (!level.lflags.noteleport) {
+        if (!level.flags.noteleport) {
             (void) dotele(FALSE);
             if (!is_pool(u.ux, u.uy))
                 return TRUE;
@@ -3856,7 +3833,7 @@ drown()
     if (is_fainted())
         reset_faint();
     /* can't crawl if unable to move (crawl_ok flag stays false) */
-    if (current_nle_ctx->multi < 0 || (Upolyd && !youmonst.data->mmove))
+    if (multi < 0 || (Upolyd && !youmonst.data->mmove))
         goto crawl;
     /* look around for a place to crawl to */
     for (i = 0; i < 100; i++) {
@@ -4223,7 +4200,7 @@ struct trap *ttmp;
 }
 
 /* getobj will filter down to cans of grease and known potions of oil */
-static const char oil[] = { ALL_CLASSES, TOOL_CLASS, POTION_CLASS,
+static NEARDATA const char oil[] = { ALL_CLASSES, TOOL_CLASS, POTION_CLASS,
                                      0 };
 
 /* it may not make much sense to use grease on floor boards, but so what? */
@@ -4429,7 +4406,7 @@ boolean force;
     here = (x == u.ux && y == u.uy); /* !u.dx && !u.dy */
 
     if (here) /* are there are one or more containers here? */
-        for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere)
+        for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
             if (Is_box(otmp)) {
                 if (++boxcnt > 1)
                     break;
@@ -4522,7 +4499,7 @@ boolean force;
         } /* end if */
 
         if (boxcnt) {
-            for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere)
+            for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
                 if (Is_box(otmp)) {
                     (void) safe_qbuf(qbuf, "There is ",
                                      " here.  Check it for traps?", otmp,
@@ -4900,7 +4877,7 @@ boolean disarm;
                                  && uball->ox == u.ux && uball->oy == u.uy)))
                 unpunish();
 
-            for (otmp = level.objs[u.ux][u.uy]; otmp; otmp = otmp2) {
+            for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp2) {
                 otmp2 = otmp->nexthere;
                 if (costly)
                     loss += stolen_value(otmp, otmp->ox, otmp->oy,
@@ -4968,7 +4945,7 @@ boolean disarm;
             if (!Free_action) {
                 pline("Suddenly you are frozen in place!");
                 nomul(-d(5, 6));
-                current_nle_ctx->multi_reason = "frozen by a trap";
+                multi_reason = "frozen by a trap";
                 exercise(A_DEX, FALSE);
                 nomovemsg = You_can_move_again;
             } else
@@ -5268,7 +5245,7 @@ boolean nocorpse;
 boolean
 unconscious()
 {
-    if (current_nle_ctx->multi >= 0)
+    if (multi >= 0)
         return FALSE;
 
     return (boolean) (u.usleep

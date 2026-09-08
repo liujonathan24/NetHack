@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 #include "lev.h" /* for checking save modes */
 
 STATIC_DCL void NDECL(stoned_dialogue);
@@ -100,7 +99,7 @@ const struct propname {
 };
 
 /* He is being petrified - dialogue by inmet!tower */
-static const char *const stoned_texts[] = {
+static NEARDATA const char *const stoned_texts[] = {
     "You are slowing down.",            /* 5 */
     "Your limbs are stiffening.",       /* 4 */
     "Your limbs have turned to stone.", /* 3 */
@@ -124,7 +123,7 @@ stoned_dialogue()
     switch ((int) i) {
     case 5: /* slowing down */
         HFast = 0L;
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 4: /* limbs stiffening */
@@ -132,13 +131,13 @@ stoned_dialogue()
            don't stop attempt to eat tin--might be lizard or acidic */
         if (!Popeye(STONED))
             stop_occupation();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 3: /* limbs turned to stone */
         stop_occupation();
         nomul(-3); /* can't move anymore */
-        current_nle_ctx->multi_reason = "getting current_nle_ctx->stoned";
+        multi_reason = "getting stoned";
         nomovemsg = You_can_move_again; /* not unconscious */
         /* "your limbs have turned to stone" so terminate wounded legs */
         if (Wounded_legs && !u.usteed)
@@ -160,7 +159,7 @@ stoned_dialogue()
 }
 
 /* hero is getting sicker and sicker prior to vomiting */
-static const char *const vomiting_texts[] = {
+static NEARDATA const char *const vomiting_texts[] = {
     "are feeling mildly nauseated.", /* 14 */
     "feel slightly confused.",       /* 11 */
     "can't seem to think straight.", /* 8 */
@@ -190,7 +189,7 @@ vomiting_dialogue()
     /*FALLTHRU*/
     case 9:
         make_confused((HConfusion & TIMEOUT) + (long) d(2, 4), FALSE);
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 8:
@@ -233,7 +232,7 @@ vomiting_dialogue()
     exercise(A_CON, FALSE);
 }
 
-static const char *const choke_texts[] = {
+static NEARDATA const char *const choke_texts[] = {
     "You find it hard to breathe.",
     "You're gasping for air.",
     "You can no longer breathe.",
@@ -241,7 +240,7 @@ static const char *const choke_texts[] = {
     "You suffocate."
 };
 
-static const char *const choke_texts2[] = {
+static NEARDATA const char *const choke_texts2[] = {
     "Your %s is becoming constricted.",
     "Your blood is having trouble reaching your brain.",
     "The pressure on your %s increases.",
@@ -269,7 +268,7 @@ choke_dialogue()
     exercise(A_STR, FALSE);
 }
 
-static const char *const levi_texts[] = {
+static NEARDATA const char *const levi_texts[] = {
     "You float slightly lower.",
     "You wobble unsteadily %s the %s."
 };
@@ -301,7 +300,7 @@ levitation_dialogue()
     }
 }
 
-static const char *const slime_texts[] = {
+static NEARDATA const char *const slime_texts[] = {
     "You are turning a little %s.",   /* 5 */
     "Your limbs are getting oozy.",   /* 4 */
     "Your skin begins to peel away.", /* 3 */
@@ -344,7 +343,7 @@ slime_dialogue()
         HFast = 0L; /* lose intrinsic speed */
         if (!Popeye(SLIMED))
             stop_occupation();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 2L: /* skin begins to peel */
@@ -442,7 +441,7 @@ struct kinfo *kptr;
    Message given is "you feel much slimmer" as a joke hint that you can
    move between things which are closely packed--like the substance of
    solid rock! */
-static const char *const phaze_texts[] = {
+static NEARDATA const char *const phaze_texts[] = {
     "You start to feel bloated.",
     "You are feeling rather flabby.",
 };
@@ -706,7 +705,7 @@ nh_timeout()
                 if (u.umoved && !Levitation) {
                     slip_or_trip();
                     nomul(-2);
-                    current_nle_ctx->multi_reason = "fumbling";
+                    multi_reason = "fumbling";
                     nomovemsg = "";
                     /* The more you are carrying the more likely you
                      * are to make noise when you fumble.  Adjustments
@@ -742,9 +741,9 @@ boolean wakeup_msg;
 {
     stop_occupation();
     nomul(how_long);
-    current_nle_ctx->multi_reason = "sleeping";
+    multi_reason = "sleeping";
     /* generally don't notice sounds while sleeping */
-    if (wakeup_msg && current_nle_ctx->multi == how_long) {
+    if (wakeup_msg && multi == how_long) {
         /* caller can follow with a direct call to Hear_again() if
            there's a need to override this when wakeup_msg is true */
         incr_itimeout(&HDeaf, how_long);
@@ -1617,7 +1616,7 @@ do_storms()
         if (!u.uinvulnerable) {
             stop_occupation();
             nomul(-3);
-            current_nle_ctx->multi_reason = "hiding from thunderstorm";
+            multi_reason = "hiding from thunderstorm";
             nomovemsg = 0;
         }
     } else
@@ -1693,12 +1692,9 @@ STATIC_DCL boolean FDECL(mon_is_local, (struct monst *));
 STATIC_DCL boolean FDECL(timer_is_local, (timer_element *));
 STATIC_DCL int FDECL(maybe_write_timer, (int, int, BOOLEAN_P));
 
-/* timer_base + timer_id moved to nle_ctx_t (per-env, not
- * per-thread). __thread was wrong for vecenv: env A's pending timers
- * leak into env B's run_timers and panic on "object lost" because the
- * object belongs to env A's level which is currently swapped out. */
-#define timer_base (*(timer_element **)&current_nle_ctx->s_timer_base)
-#define timer_id   (current_nle_ctx->s_timer_id)
+/* ordered timer list */
+static timer_element *timer_base; /* "active" */
+static unsigned long timer_id = 1;
 
 /* If defined, then include names when printing out the timer queue */
 #define VERBOSE_TIMER
@@ -2364,7 +2360,7 @@ int fd, mode, range;
 void
 restore_timers(fd, range, ghostly, adjust)
 int fd, range;
-boolean ghostly; /* current_nle_ctx->restoring from a ghost level */
+boolean ghostly; /* restoring from a ghost level */
 long adjust;     /* how much to adjust timeout */
 {
     int count;

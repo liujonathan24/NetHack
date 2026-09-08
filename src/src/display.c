@@ -122,32 +122,6 @@
  *                vertical.
  */
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env replacements for display.c file-statics.
- * `nul_gbuf` was a struct initializer with a function-macro call
- * (cmap_to_glyph(S_stone)) in its initializer list. It's effectively const
- * after first use, so we store the two fields on nle_ctx_t and reconstruct
- * the struct at the one use site. Initialized in init_nle (nle.c). */
-#define bad_count  (current_nle_ctx->s_bad_count)
-
-/* Function-local statics promoted to per-env ctx fields.
- * tmp_at() animation list head + cls()/flush_screen() recursion guards.
- * All calloc-zero initial (NULL/FALSE/0); no explicit init in init_nle. */
-#define tglyph          (current_nle_ctx->s_tmp_at_tglyph)
-#define in_cls          (current_nle_ctx->s_cls_in_cls)
-#define flushing        (current_nle_ctx->s_flush_screen_flushing)
-#define delay_flushing  (current_nle_ctx->s_flush_screen_delay_flushing)
-
-/* Function-local statics in swallowed()/under_water()/
- * under_ground() — per-env via nle_ctx_t. Names prefixed by function to
- * avoid collisions (each function had its own lastx/lasty/dela). */
-#define swallowed_lastx    (current_nle_ctx->s_swallowed_lastx)
-#define swallowed_lasty    (current_nle_ctx->s_swallowed_lasty)
-#define under_water_lastx  (current_nle_ctx->s_under_water_lastx)
-#define under_water_lasty  (current_nle_ctx->s_under_water_lasty)
-#define under_water_dela   (current_nle_ctx->s_under_water_dela)
-#define under_ground_dela  (current_nle_ctx->s_under_ground_dela)
 
 STATIC_DCL void FDECL(show_mon_or_warn, (int, int, int));
 STATIC_DCL void FDECL(display_monster,
@@ -201,7 +175,7 @@ int show;
         else if (lev->typ == CORR && glyph == cmap_to_glyph(S_litcorr))
             glyph = cmap_to_glyph(S_corr);
     }
-    if (level.lflags.hero_memory)
+    if (level.flags.hero_memory)
         lev->glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -237,7 +211,7 @@ register int show;
 {
     register int glyph = back_to_glyph(x, y);
 
-    if (level.lflags.hero_memory)
+    if (level.flags.hero_memory)
         levl[x][y].glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -257,7 +231,7 @@ register int show;
     register int x = trap->tx, y = trap->ty;
     register int glyph = trap_to_glyph(trap, newsym_rn2);
 
-    if (level.lflags.hero_memory)
+    if (level.flags.hero_memory)
         levl[x][y].glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -277,7 +251,7 @@ register int show;
     register int x = obj->ox, y = obj->oy;
     register int glyph = obj_to_glyph(obj, newsym_rn2);
 
-    if (level.lflags.hero_memory) {
+    if (level.flags.hero_memory) {
         /* MRKR: While hallucinating, statues are seen as random monsters */
         /*       but remembered as random objects.                        */
 
@@ -305,7 +279,7 @@ map_invisible(x, y)
 register xchar x, y;
 {
     if (x != u.ux || y != u.uy) { /* don't display I at hero's location */
-        if (level.lflags.hero_memory)
+        if (level.flags.hero_memory)
             levl[x][y].glyph = GLYPH_INVISIBLE;
         show_glyph(x, y, GLYPH_INVISIBLE);
     }
@@ -339,7 +313,7 @@ register int x, y;
 {
     register struct trap *trap;
 
-    if (!level.lflags.hero_memory)
+    if (!level.flags.hero_memory)
         return;
 
     if ((trap = t_at(x, y)) != 0 && trap->tseen && !covers_traps(x, y)) {
@@ -719,13 +693,13 @@ xchar x, y;
              * the wrong glyph.
              */
             if (uchain->ox == x && uchain->oy == y) {
-                if (level.objs[x][y] == uchain)
+                if (level.objects[x][y] == uchain)
                     u.bc_felt |= BC_CHAIN;
                 else
                     u.bc_felt &= ~BC_CHAIN; /* do not feel the chain */
             }
             if (!carried(uball) && uball->ox == x && uball->oy == y) {
-                if (level.objs[x][y] == uball)
+                if (level.objects[x][y] == uball)
                     u.bc_felt |= BC_BALL;
                 else
                     u.bc_felt &= ~BC_BALL; /* do not feel the ball */
@@ -767,7 +741,7 @@ register int x, y;
     if (in_mklev)
         return;
 #ifdef HANGUPHANDLING
-    if (current_nle_ctx->program_state.done_hup)
+    if (program_state.done_hup)
         return;
 #endif
 
@@ -979,37 +953,19 @@ int x, y;
 
 #define TMP_AT_MAX_GLYPHS (COLNO * 2)
 
-struct tmp_glyph {
+static struct tmp_glyph {
     coord saved[TMP_AT_MAX_GLYPHS]; /* previously updated positions */
     int sidx;                       /* index of next unused slot in saved[] */
     int style; /* either DISP_BEAM or DISP_FLASH or DISP_ALWAYS */
     int glyph; /* glyph to use when printing */
     struct tmp_glyph *prev;
-};
-
-/* Per-env display.c state. tgfirst (the first/base tmp_glyph slot)
- * bundled into one struct, lazily allocated via nle_display(). */
-struct nle_display_state {
-    struct tmp_glyph _tgfirst;
-};
-static struct nle_display_state *
-nle_display(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_display_state *s = (struct nle_display_state *) current_nle_ctx->s_display_state;
-    if (!s) {
-        s = (struct nle_display_state *) nle_arena_calloc(1, sizeof(struct nle_display_state));
-        current_nle_ctx->s_display_state = s;
-    }
-    return s;
-}
-#define tgfirst (nle_display()->_tgfirst)
+} tgfirst;
 
 void
 tmp_at(x, y)
 int x, y;
 {
-    /* Tglyph promoted to current_nle_ctx->s_tmp_at_tglyph */
+    static struct tmp_glyph *tglyph = (struct tmp_glyph *) 0;
     struct tmp_glyph *tmp;
 
     switch (x) {
@@ -1144,7 +1100,7 @@ int tg, rpt;
 
     rpt *= 2; /* two loop iterations per 'count' */
     glyph[0] = tg;
-    glyph[1] = (level.lflags.hero_memory) ? levl[x][y].glyph
+    glyph[1] = (level.flags.hero_memory) ? levl[x][y].glyph
                                          : back_to_glyph(x, y);
     /* even iteration count (guaranteed) ends with glyph[1] showing;
        caller might want to override that, but no newsym() calls here
@@ -1168,7 +1124,7 @@ void
 swallowed(first)
 int first;
 {
-    /* Lastx/lasty -> swallowed_lastx/swallowed_lasty (per-env). */
+    static xchar lastx, lasty; /* last swallowed position */
     int swallower, left_ok, rght_ok;
 
     if (first) {
@@ -1178,8 +1134,8 @@ int first;
         register int x, y;
 
         /* Clear old location */
-        for (y = swallowed_lasty - 1; y <= swallowed_lasty + 1; y++)
-            for (x = swallowed_lastx - 1; x <= swallowed_lastx + 1; x++)
+        for (y = lasty - 1; y <= lasty + 1; y++)
+            for (x = lastx - 1; x <= lastx + 1; x++)
                 if (isok(x, y))
                     show_glyph(x, y, cmap_to_glyph(S_stone));
     }
@@ -1218,8 +1174,8 @@ int first;
     }
 
     /* Update the swallowed position. */
-    swallowed_lastx = u.ux;
-    swallowed_lasty = u.uy;
+    lastx = u.ux;
+    lasty = u.uy;
 }
 
 /*
@@ -1232,7 +1188,8 @@ void
 under_water(mode)
 int mode;
 {
-    /* Lastx/lasty/dela -> under_water_* (per-env). */
+    static xchar lastx, lasty;
+    static boolean dela;
     register int x, y;
 
     /* swallowing has a higher precedence than under water */
@@ -1240,19 +1197,19 @@ int mode;
         return;
 
     /* full update */
-    if (mode == 1 || under_water_dela) {
+    if (mode == 1 || dela) {
         cls();
-        under_water_dela = FALSE;
+        dela = FALSE;
 
     /* delayed full update */
     } else if (mode == 2) {
-        under_water_dela = TRUE;
+        dela = TRUE;
         return;
 
     /* limited update */
     } else {
-        for (y = under_water_lasty - 1; y <= under_water_lasty + 1; y++)
-            for (x = under_water_lastx - 1; x <= under_water_lastx + 1; x++)
+        for (y = lasty - 1; y <= lasty + 1; y++)
+            for (x = lastx - 1; x <= lastx + 1; x++)
                 if (isok(x, y))
                     show_glyph(x, y, cmap_to_glyph(S_stone));
     }
@@ -1269,8 +1226,8 @@ int mode;
                 else
                     newsym(x, y);
             }
-    under_water_lastx = u.ux;
-    under_water_lasty = u.uy;
+    lastx = u.ux;
+    lasty = u.uy;
 }
 
 /*
@@ -1282,20 +1239,20 @@ void
 under_ground(mode)
 int mode;
 {
-    /* Dela -> under_ground_dela (per-env). */
+    static boolean dela;
 
     /* swallowing has a higher precedence than under ground */
     if (u.uswallow)
         return;
 
     /* full update */
-    if (mode == 1 || under_ground_dela) {
+    if (mode == 1 || dela) {
         cls();
-        under_ground_dela = FALSE;
+        dela = FALSE;
 
     /* delayed full update */
     } else if (mode == 2) {
-        under_ground_dela = TRUE;
+        dela = TRUE;
         return;
 
     /* limited update */
@@ -1326,7 +1283,7 @@ see_monsters()
     register struct monst *mon;
     int new_warn_obj_cnt = 0;
 
-    if (current_nle_ctx->defer_see_monsters)
+    if (defer_see_monsters)
         return;
 
     for (mon = fmon; mon; mon = mon->nmon) {
@@ -1341,9 +1298,9 @@ see_monsters()
     /*
      * Make Sting glow blue or stop glowing if required.
      */
-    if (new_warn_obj_cnt != current_nle_ctx->warn_obj_cnt) {
+    if (new_warn_obj_cnt != warn_obj_cnt) {
         Sting_effects(new_warn_obj_cnt);
-        current_nle_ctx->warn_obj_cnt = new_warn_obj_cnt;
+        warn_obj_cnt = new_warn_obj_cnt;
     }
 
     /* when mounted, hero's location gets caught by monster loop */
@@ -1484,10 +1441,10 @@ redraw_map()
      * used to get much too involved with each dungeon level as it was
      * read and written.
      *
-     * !u.ux: display isn't ready yet; (current_nle_ctx->restoring || !on_level()): was part
+     * !u.ux: display isn't ready yet; (restoring || !on_level()): was part
      * of cliparound() but interface shouldn't access this much internals
      */
-    if (!u.ux || current_nle_ctx->restoring || !on_level(&u.uz0, &u.uz))
+    if (!u.ux || restoring || !on_level(&u.uz0, &u.uz))
         return;
 
     /*
@@ -1511,11 +1468,9 @@ typedef struct {
     int glyph;
 } gbuf_entry;
 
-/* gbuf — per-env display buffer migrated to nle_ctx_t.
- * ROWNO*COLNO entries; macro casts the flat allocation to a 2D pointer. */
-#define gbuf       ((gbuf_entry (*)[COLNO]) current_nle_ctx->s_gbuf_p)
-#define gbuf_start (current_nle_ctx->s_gbuf_start)
-#define gbuf_stop  (current_nle_ctx->s_gbuf_stop)
+static gbuf_entry gbuf[ROWNO][COLNO];
+static char gbuf_start[ROWNO];
+static char gbuf_stop[ROWNO];
 
 /* FIXME: This is a dirty hack, because newsym() doesn't distinguish
  * between object piles and single objects, it doesn't mark the location
@@ -1629,10 +1584,7 @@ int x, y, glyph;
         }                              \
     }
 
-/* nul_gbuf moved into nle_ctx_t.{s_nul_gbuf_new,s_nul_gbuf_glyph}.
- * Initialized in init_nle (nle.c) since
- * cmap_to_glyph(S_stone) is a constant expression but requires display.h
- * macros, which init_nle has via hack.h. */
+static gbuf_entry nul_gbuf = { 0, cmap_to_glyph(S_stone) };
 /*
  * Turn the 3rd screen into stone.
  */
@@ -1641,15 +1593,7 @@ clear_glyph_buffer()
 {
     register int x, y;
     register gbuf_entry *gptr;
-    gbuf_entry nul_gbuf;
 
-    /* Lazy init for the per-env nul_gbuf payload.
-     * Original was a static struct initializer using cmap_to_glyph(S_stone).
-     * GLYPH_CMAP_OFF is always nonzero, so a 0 glyph means uninitialized. */
-    if (current_nle_ctx->s_nul_gbuf_glyph == 0)
-        current_nle_ctx->s_nul_gbuf_glyph = cmap_to_glyph(S_stone);
-    nul_gbuf.new = (xchar) current_nle_ctx->s_nul_gbuf_new;
-    nul_gbuf.glyph = current_nle_ctx->s_nul_gbuf_glyph;
     for (y = 0; y < ROWNO; y++) {
         gptr = &gbuf[y][0];
         for (x = COLNO; x; x--) {
@@ -1676,7 +1620,7 @@ int start, stop, y;
 void
 cls()
 {
-    /* In_cls promoted to current_nle_ctx->s_cls_in_cls */
+    static boolean in_cls = 0;
 
     if (in_cls)
         return;
@@ -1699,7 +1643,8 @@ int cursor_on_u;
     /* Prevent infinite loops on errors:
      *      flush_screen->print_glyph->impossible->pline->flush_screen
      */
-    /* Flushing/delay_flushing promoted to ctx fields */
+    static int flushing = 0;
+    static int delay_flushing = 0;
     register int x, y;
 
     if (cursor_on_u == -1)
@@ -1710,7 +1655,7 @@ int cursor_on_u;
         return; /* if already flushing then return */
     flushing = 1;
 #ifdef HANGUPHANDLING
-    if (current_nle_ctx->program_state.done_hup)
+    if (program_state.done_hup)
         return;
 #endif
 
@@ -1762,7 +1707,7 @@ xchar x, y;
     switch (ptr->typ) {
     case SCORR:
     case STONE:
-        idx = level.lflags.arboreal ? S_tree : S_stone;
+        idx = level.flags.arboreal ? S_tree : S_stone;
         break;
     case ROOM:
         idx = S_room;
@@ -1962,7 +1907,7 @@ xchar x, y;
         switch (lev->typ) {
         case SCORR:
         case STONE:
-            idx = level.lflags.arboreal ? S_tree : S_stone;
+            idx = level.flags.arboreal ? S_tree : S_stone;
             break;
         case ROOM:
            idx = S_room;
@@ -2017,10 +1962,7 @@ xchar x, y;
 static const char *FDECL(type_to_name, (int));
 static void FDECL(error4, (int, int, int, int, int, int));
 
-/* bad_count moved into nle_ctx_t.s_bad_count[36].
- * MAX_TYPE == 36 enforced below; macro above redirects to current_nle_ctx. */
-_Static_assert(MAX_TYPE == 36,
-               "nle_ctx_t.s_bad_count size must match MAX_TYPE");
+static int bad_count[MAX_TYPE]; /* count of positions flagged as bad */
 static const char *type_names[MAX_TYPE] = {
     "STONE", "VWALL", "HWALL", "TLCORNER", "TRCORNER", "BLCORNER", "BRCORNER",
     "CROSSWALL", "TUWALL", "TDWALL", "TLWALL", "TRWALL", "DBWALL", "TREE",

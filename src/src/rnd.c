@@ -3,20 +3,25 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx access for both RNG paths. */
 
 #ifdef USE_ISAAC64
 #include "isaac64.h"
 
-/* nle_state refactor stage 1: RNG state moved out of static storage and
- * into per-instance nle_ctx_t. The (constant) function-pointer side of
- * each entry stays static because it's the same across all instances. */
+#if 0
+static isaac64_ctx rng_state;
+#endif
+
+struct rnglist_t {
+    int FDECL((*fn), (int));
+    boolean init;
+    isaac64_ctx rng_state;
+};
 
 enum { CORE = 0, DISP = 1 };
 
-static int FDECL((*rnglist_fn[2]), (int)) = {
-    rn2,                  /* CORE */
-    rn2_on_display_rng,   /* DISP */
+static struct rnglist_t rnglist[] = {
+    { rn2, FALSE, { 0 } },                      /* CORE */
+    { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };
 
 int
@@ -25,8 +30,8 @@ int FDECL((*fn), (int));
 {
     int i;
 
-    for (i = 0; i < 2; ++i)
-        if (rnglist_fn[i] == fn)
+    for (i = 0; i < SIZE(rnglist); ++i)
+        if (rnglist[i].fn == fn)
             return i;
     return -1;
 }
@@ -47,14 +52,14 @@ int FDECL((*fn), (int));
         new_rng_state[i] = (unsigned char) (seed & 0xFF);
         seed >>= 8;
     }
-    isaac64_init(nle_rng_state(rngindx), new_rng_state,
+    isaac64_init(&rnglist[rngindx].rng_state, new_rng_state,
                  (int) sizeof seed);
 }
 
 static int
 RND(int x)
 {
-    return (isaac64_next_uint64(nle_rng_state(CORE)) % x);
+    return (isaac64_next_uint64(&rnglist[CORE].rng_state) % x);
 }
 
 /* 0 <= rn2(x) < x, but on a different sequence from the "main" rn2;
@@ -64,7 +69,7 @@ int
 rn2_on_display_rng(x)
 register int x;
 {
-    return (isaac64_next_uint64(nle_rng_state(DISP)) % x);
+    return (isaac64_next_uint64(&rnglist[DISP].rng_state) % x);
 }
 
 #else   /* USE_ISAAC64 */
@@ -85,12 +90,9 @@ int
 rn2_on_display_rng(x)
 register int x;
 {
-    /* Function-local `static unsigned seed = 1;` migrated
-     * to current_nle_ctx->s_rn2disprng_seed (initialized to 1 in init_nle).
-     * Direct access here rather than a #define seed macro because `seed`
-     * collides with init_isaac64's parameter name above. */
-    current_nle_ctx->s_rn2disprng_seed *= 2739110765;
-    return (int)((current_nle_ctx->s_rn2disprng_seed >> 16) % (unsigned)x);
+    static unsigned seed = 1;
+    seed *= 2739110765;
+    return (int)((seed >> 16) % (unsigned)x);
 }
 #endif  /* USE_ISAAC64 */
 

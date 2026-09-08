@@ -6,7 +6,6 @@
 /* shknam.c -- initialize a shop */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 STATIC_DCL boolean FDECL(stock_room_goodpos, (struct mkroom *, int, int, int, int));
 STATIC_DCL boolean FDECL(veggy_item, (struct obj * obj, int));
@@ -500,13 +499,13 @@ const char *const *nlp;
     s_level *sptr;
 
     if (nlp == shkfoods && In_mines(&u.uz) && Role_if(PM_MONK)
-        && (sptr = Is_special(&u.uz)) != 0 && sptr->dflags.town) {
+        && (sptr = Is_special(&u.uz)) != 0 && sptr->flags.town) {
         /* special-case override for minetown food store for monks */
         nlp = shkhealthfoods;
     }
 
     if (nlp == shklight && In_mines(&u.uz) && (sptr = Is_special(&u.uz)) != 0
-        && sptr->dflags.town) {
+        && sptr->flags.town) {
         /* special-case minetown lighting shk */
         shname = "+Izchak";
         shk->female = FALSE;
@@ -775,7 +774,7 @@ register struct mkroom *sroom;
      * monsters will sit on top of objects and not the other way around.
      */
 
-    level.lflags.has_shop = TRUE;
+    level.flags.has_shop = TRUE;
 }
 
 /* does shkp's shop stock this item type? */
@@ -852,7 +851,7 @@ struct monst *mtmp;
     } else {
         const char *shknm = ESHK(mtmp)->shknam;
 
-        if (Hallucination && !current_nle_ctx->program_state.gameover) {
+        if (Hallucination && !program_state.gameover) {
             const char *const *nlp;
             int num;
 
@@ -882,14 +881,6 @@ boolean
 shkname_is_pname(mtmp)
 struct monst *mtmp;
 {
-    /* Defensive guard. dealloc_mextra() can leave mtmp->isshk
-     * set with mtmp->mextra == NULL; callers should has_eshk(mtmp) first
-     * but this is a leaf utility called from many paths and a NULL deref
-     * here is a process-killing segfault. Treat missing eshk as "no
-     * pname" (the function's return is only used to choose a Mr./Ms.
-     * honorific in death-message text, so the false branch is benign). */
-    if (!has_eshk(mtmp))
-        return FALSE;
     const char *shknm = ESHK(mtmp)->shknam;
 
     return (boolean) (*shknm == '-' || *shknm == '+' || *shknm == '=');

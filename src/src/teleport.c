@@ -4,17 +4,15 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* File-static migrated to nle_ctx_t.
- * non-null when teleporting via having read this scroll. */
-#define telescroll (current_nle_ctx->s_telescroll)
 
 STATIC_DCL boolean FDECL(tele_jump_ok, (int, int, int, int));
 STATIC_DCL boolean FDECL(teleok, (int, int, BOOLEAN_P));
 STATIC_DCL void NDECL(vault_tele);
 STATIC_DCL boolean FDECL(rloc_pos_ok, (int, int, struct monst *));
 STATIC_DCL void FDECL(mvault_tele, (struct monst *));
+
+/* non-null when teleporting via having read this scroll */
+STATIC_VAR struct obj *telescroll = 0;
 
 /*
  * Is (x,y) a good position of mtmp?  If mtmp is NULL, then is (x,y) good
@@ -493,7 +491,7 @@ struct obj *scroll;
     boolean result = FALSE; /* don't learn scroll */
 
     /* Disable teleportation in stronghold && Vlad's Tower */
-    if (level.lflags.noteleport) {
+    if (level.flags.noteleport) {
         if (!wizard) {
             pline("A mysterious force prevents you from teleporting!");
             return TRUE;
@@ -1295,7 +1293,7 @@ boolean
 tele_restrict(mon)
 struct monst *mon;
 {
-    if (level.lflags.noteleport) {
+    if (level.flags.noteleport) {
         if (canseemon(mon))
             pline("A mysterious force prevents %s from teleporting!",
                   mon_nam(mon));
@@ -1570,7 +1568,7 @@ boolean give_feedback;
         if (give_feedback)
             pline("%s resists your magic!", Monnam(mtmp));
         return FALSE;
-    } else if (level.lflags.noteleport && u.uswallow && mtmp == u.ustuck) {
+    } else if (level.flags.noteleport && u.uswallow && mtmp == u.ustuck) {
         if (give_feedback)
             You("are no longer inside %s!", mon_nam(mtmp));
         unstuck(mtmp);

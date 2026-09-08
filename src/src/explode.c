@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* Note: Arrays are column first, while the screen is row first */
 static int explosion[3][3] = { { S_explode1, S_explode4, S_explode7 },
@@ -621,7 +620,7 @@ struct obj *obj; /* only scatter this obj        */
         impossible("scattered object <%d,%d> not at scatter site <%d,%d>",
                    obj->ox, obj->oy, sx, sy);
 
-    while ((otmp = (individual_object ? obj : level.objs[sx][sy])) != 0) {
+    while ((otmp = (individual_object ? obj : level.objects[sx][sy])) != 0) {
         if (otmp == uball || otmp == uchain) {
             boolean waschain = (otmp == uchain);
             pline_The("chain shatters!");
@@ -731,7 +730,7 @@ struct obj *obj; /* only scatter this obj        */
                     if (scflags & MAY_HITYOU) {
                         int hitvalu, hitu;
 
-                        if (current_nle_ctx->multi)
+                        if (multi)
                             nomul(0);
                         hitvalu = 8 + stmp->obj->spe;
                         if (bigmonst(youmonst.data))

@@ -3,38 +3,18 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 #define is_bigfoot(x) ((x) == &mons[PM_SASQUATCH])
 #define martial()                                 \
     (martial_bonus() || is_bigfoot(youmonst.data) \
      || (uarmf && uarmf->otyp == KICKING_BOOTS))
 
-/* Per-env dokick.c state. maploc / nowhere / gate_str bundled into one struct. */
-struct nle_dokick_state {
-    struct rm *_maploc;
-    struct rm  _nowhere;
-    const char *_gate_str;
-};
-static struct nle_dokick_state *
-nle_dokick(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_dokick_state *s = (struct nle_dokick_state *) current_nle_ctx->s_dokick_state;
-    if (!s) {
-        s = (struct nle_dokick_state *) nle_arena_calloc(1, sizeof(struct nle_dokick_state));
-        current_nle_ctx->s_dokick_state = s;
-    }
-    return s;
-}
-#define maploc   (nle_dokick()->_maploc)
-#define nowhere  (nle_dokick()->_nowhere)
-#define gate_str (nle_dokick()->_gate_str)
+static NEARDATA struct rm *maploc, nowhere;
+static NEARDATA const char *gate_str;
 
 /* kickedobj (decl.c) tracks a kicked object until placed or destroyed */
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+extern boolean notonhead; /* for long worms */
 
 STATIC_DCL void FDECL(kickdmg, (struct monst *, BOOLEAN_P));
 STATIC_DCL boolean FDECL(maybe_kick_monster, (struct monst *,
@@ -214,7 +194,7 @@ xchar x, y;
         for (i = 0; i < NATTK; i++) {
             /* first of two kicks might have provoked counterattack
                that has incapacitated the hero (ie, floating eye) */
-            if (current_nle_ctx->multi < 0)
+            if (multi < 0)
                 break;
 
             uattk = &youmonst.data->mattk[i];
@@ -283,7 +263,7 @@ xchar x, y;
             if (mon->mx != x || mon->my != y) {
                 (void) unmap_invisible(x, y);
                 pline("%s %s, %s evading your %skick.", Monnam(mon),
-                      (!level.lflags.noteleport && can_teleport(mon->data))
+                      (!level.flags.noteleport && can_teleport(mon->data))
                           ? "teleports"
                           : is_floater(mon->data)
                                 ? "floats"
@@ -487,7 +467,7 @@ char *kickobjnam;
 
     *kickobjnam = '\0';
     /* if a pile, the "top" object gets kicked */
-    kickedobj = level.objs[x][y];
+    kickedobj = level.objects[x][y];
     if (kickedobj) {
         /* kick object; if doing is fatal, done() will clean up kickedobj */
         Strcpy(kickobjnam, killer_xname(kickedobj)); /* matters iff res==0 */
@@ -675,7 +655,7 @@ xchar x, y;
             kickedobj = splitobj(kickedobj, 1L);
         } else {
             if (rn2(20)) {
-                static const char *const flyingcoinmsg[] = {
+                static NEARDATA const char *const flyingcoinmsg[] = {
                     "scatter the coins", "knock coins all over the place",
                     "send coins flying in all directions",
                 };
@@ -1438,7 +1418,7 @@ xchar dlev;          /* if !0 send to dlev near player */
 
     isrock = (missile && missile->otyp == ROCK);
     oct = dct = 0L;
-    for (obj = level.objs[x][y]; obj; obj = obj2) {
+    for (obj = level.objects[x][y]; obj; obj = obj2) {
         obj2 = obj->nexthere;
         if (obj == missile)
             continue;
@@ -1548,7 +1528,7 @@ boolean shop_floor_obj;
     unpaid = is_unpaid(otmp);
 
     if (OBJ_AT(x, y)) {
-        for (obj = level.objs[x][y]; obj; obj = obj->nexthere)
+        for (obj = level.objects[x][y]; obj; obj = obj->nexthere)
             if (obj != otmp)
                 n += obj->quan;
         if (n)

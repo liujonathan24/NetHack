@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* monster mage spells */
 enum mcast_mage_spells {
@@ -671,18 +670,18 @@ int spellnum;
     case CLC_PARALYZE:
         if (Antimagic || Free_action) {
             shieldeff(u.ux, u.uy);
-            if (current_nle_ctx->multi >= 0)
+            if (multi >= 0)
                 You("stiffen briefly.");
             nomul(-1);
-            current_nle_ctx->multi_reason = "paralyzed by a monster";
+            multi_reason = "paralyzed by a monster";
         } else {
-            if (current_nle_ctx->multi >= 0)
+            if (multi >= 0)
                 You("are frozen in place!");
             dmg = 4 + (int) mtmp->m_lev;
             if (Half_spell_damage)
                 dmg = (dmg + 1) / 2;
             nomul(-dmg);
-            current_nle_ctx->multi_reason = "paralyzed by a monster";
+            multi_reason = "paralyzed by a monster";
         }
         nomovemsg = 0;
         dmg = 0;
@@ -859,7 +858,7 @@ register struct attack *mattk;
                 pline("%s zaps you with a %s!", Monnam(mtmp),
                       flash_types[ad_to_typ(mattk->adtyp)]);
             buzz(-ad_to_typ(mattk->adtyp), (int) mattk->damn, mtmp->mx,
-                 mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby));
+                 mtmp->my, sgn(tbx), sgn(tby));
         } else
             impossible("Monster spell %d cast", mattk->adtyp - 1);
     }

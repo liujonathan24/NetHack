@@ -4,15 +4,9 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "lev.h"
 
-/* The legacy `extern char bones[]` (defined in files.c) is
- * now per-env at current_nle_ctx->s_bones. We can't `#define bones ...`
- * here because flag.h declares `struct flag { ... boolean bones; ... }`
- * and the macro would clobber `flags.bones`. The two buffer references
- * in this file (validate(fd, bones), freediskspace(bones)) are rewritten
- * to use current_nle_ctx->s_bones directly. */
+extern char bones[]; /* from files.c */
 #ifdef MFLOPPY
 extern long bytes_counted;
 #endif
@@ -22,13 +16,11 @@ STATIC_DCL void FDECL(goodfruit, (int));
 STATIC_DCL void FDECL(resetobjs, (struct obj *, BOOLEAN_P));
 STATIC_DCL boolean FDECL(fixuporacle, (struct monst *));
 
-/* save_dlevel — migrated to nle_ctx_t (do.c). */
-#define save_dlevel (*(d_level *)&current_nle_ctx->save_dlevel_dnum)
-
 STATIC_OVL boolean
 no_bones_level(lev)
 d_level *lev;
 {
+    extern d_level save_dlevel; /* in do.c */
     s_level *sptr;
 
     if (ledger_no(&save_dlevel))
@@ -129,7 +121,7 @@ boolean restore;
                presumably in case they came from score file.
                [TODO: this ought to be done differently--names
                which came from such a source or came from any
-               current_nle_ctx->stoned or killed monster should be flagged in
+               stoned or killed monster should be flagged in
                some manner; then we could just check the flag
                here and keep "real" names (dead pets, &c) while
                discarding player notes attached to statues.] */
@@ -526,7 +518,7 @@ struct obj *corpse;
        they might already be flagged as such, even when we're playing
        in normal mode, if this level came from a previous bones file */
     if (wizard)
-        level.lflags.wizard_bones = 1;
+        level.flags.wizard_bones = 1;
 
     fd = create_bonesfile(&u.uz, &bonesid, whynot);
     if (fd < 0) {
@@ -559,7 +551,7 @@ struct obj *corpse;
         bwrite(fd, (genericptr_t) bonesid, (unsigned) c); /* DD.nnn */
         savefruitchn(fd, COUNT_SAVE);
         bflush(fd);
-        if (bytes_counted > freediskspace(current_nle_ctx->s_bones)) { /* per-env bones path; not enough room */
+        if (bytes_counted > freediskspace(bones)) { /* not enough room */
             if (wizard)
                 pline("Insufficient space to create bones file.");
             (void) nhclose(fd);
@@ -604,7 +596,7 @@ getbones()
     if (fd < 0)
         return 0;
 
-    if (validate(fd, current_nle_ctx->s_bones) != 0) { /* per-env bones path */
+    if (validate(fd, bones) != 0) {
         if (!wizard)
             pline("Discarding unusable bones; no need to panic...");
         ok = FALSE;

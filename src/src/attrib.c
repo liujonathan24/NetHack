@@ -5,11 +5,6 @@
 /*  attribute modification routines. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffer (renamed from `buf` to avoid collisions
- * with the many local `buf` variables elsewhere in this TU). */
-#define from_what_buf (current_nle_ctx->s_attrib_from_what_buf)
 #include <ctype.h>
 
 /* part of the output on gain or loss of attribute */
@@ -24,105 +19,89 @@ const char
     *const attrname[] = { "strength", "intelligence", "wisdom",
                           "dexterity", "constitution", "charisma" };
 
-/* Refactor stage 4: was `long *ability` pointing into u.uprops[X].intrinsic.
- * Since `u` is now per-instance (heap), &u.uprops[X].intrinsic is a runtime
- * address — can't be used in static initializers. Instead store the
- * property index; consumers compute the address at runtime via
- * &u.uprops[idx].intrinsic. Sentinel for table-end is prop_idx == -1. */
 static const struct innate {
     schar ulevel;
-    int prop_idx;
+    long *ability;
     const char *gainstr, *losestr;
-} arc_abil[] = { { 1, STEALTH, "", "" },
-                 { 1, FAST, "", "" },
-                 { 10, SEARCHING, "perceptive", "" },
-                 { 0, -1, 0, 0 } },
+} arc_abil[] = { { 1, &(HStealth), "", "" },
+                 { 1, &(HFast), "", "" },
+                 { 10, &(HSearching), "perceptive", "" },
+                 { 0, 0, 0, 0 } },
 
-  bar_abil[] = { { 1, POISON_RES, "", "" },
-                 { 7, FAST, "quick", "slow" },
-                 { 15, STEALTH, "stealthy", "" },
-                 { 0, -1, 0, 0 } },
+  bar_abil[] = { { 1, &(HPoison_resistance), "", "" },
+                 { 7, &(HFast), "quick", "slow" },
+                 { 15, &(HStealth), "stealthy", "" },
+                 { 0, 0, 0, 0 } },
 
-  cav_abil[] = { { 7, FAST, "quick", "slow" },
-                 { 15, WARNING, "sensitive", "" },
-                 { 0, -1, 0, 0 } },
+  cav_abil[] = { { 7, &(HFast), "quick", "slow" },
+                 { 15, &(HWarning), "sensitive", "" },
+                 { 0, 0, 0, 0 } },
 
-  hea_abil[] = { { 1, POISON_RES, "", "" },
-                 { 15, WARNING, "sensitive", "" },
-                 { 0, -1, 0, 0 } },
+  hea_abil[] = { { 1, &(HPoison_resistance), "", "" },
+                 { 15, &(HWarning), "sensitive", "" },
+                 { 0, 0, 0, 0 } },
 
-  kni_abil[] = { { 7, FAST, "quick", "slow" }, { 0, -1, 0, 0 } },
+  kni_abil[] = { { 7, &(HFast), "quick", "slow" }, { 0, 0, 0, 0 } },
 
-  mon_abil[] = { { 1, FAST, "", "" },
-                 { 1, SLEEP_RES, "", "" },
-                 { 1, SEE_INVIS, "", "" },
-                 { 3, POISON_RES, "healthy", "" },
-                 { 5, STEALTH, "stealthy", "" },
-                 { 7, WARNING, "sensitive", "" },
-                 { 9, SEARCHING, "perceptive", "unaware" },
-                 { 11, FIRE_RES, "cool", "warmer" },
-                 { 13, COLD_RES, "warm", "cooler" },
-                 { 15, SHOCK_RES, "insulated", "conductive" },
-                 { 17, TELEPORT_CONTROL, "controlled", "uncontrolled" },
-                 { 0, -1, 0, 0 } },
+  mon_abil[] = { { 1, &(HFast), "", "" },
+                 { 1, &(HSleep_resistance), "", "" },
+                 { 1, &(HSee_invisible), "", "" },
+                 { 3, &(HPoison_resistance), "healthy", "" },
+                 { 5, &(HStealth), "stealthy", "" },
+                 { 7, &(HWarning), "sensitive", "" },
+                 { 9, &(HSearching), "perceptive", "unaware" },
+                 { 11, &(HFire_resistance), "cool", "warmer" },
+                 { 13, &(HCold_resistance), "warm", "cooler" },
+                 { 15, &(HShock_resistance), "insulated", "conductive" },
+                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
+                 { 0, 0, 0, 0 } },
 
-  pri_abil[] = { { 15, WARNING, "sensitive", "" },
-                 { 20, FIRE_RES, "cool", "warmer" },
-                 { 0, -1, 0, 0 } },
+  pri_abil[] = { { 15, &(HWarning), "sensitive", "" },
+                 { 20, &(HFire_resistance), "cool", "warmer" },
+                 { 0, 0, 0, 0 } },
 
-  ran_abil[] = { { 1, SEARCHING, "", "" },
-                 { 7, STEALTH, "stealthy", "" },
-                 { 15, SEE_INVIS, "", "" },
-                 { 0, -1, 0, 0 } },
+  ran_abil[] = { { 1, &(HSearching), "", "" },
+                 { 7, &(HStealth), "stealthy", "" },
+                 { 15, &(HSee_invisible), "", "" },
+                 { 0, 0, 0, 0 } },
 
-  rog_abil[] = { { 1, STEALTH, "", "" },
-                 { 10, SEARCHING, "perceptive", "" },
-                 { 0, -1, 0, 0 } },
+  rog_abil[] = { { 1, &(HStealth), "", "" },
+                 { 10, &(HSearching), "perceptive", "" },
+                 { 0, 0, 0, 0 } },
 
-  sam_abil[] = { { 1, FAST, "", "" },
-                 { 15, STEALTH, "stealthy", "" },
-                 { 0, -1, 0, 0 } },
+  sam_abil[] = { { 1, &(HFast), "", "" },
+                 { 15, &(HStealth), "stealthy", "" },
+                 { 0, 0, 0, 0 } },
 
-  tou_abil[] = { { 10, SEARCHING, "perceptive", "" },
-                 { 20, POISON_RES, "hardy", "" },
-                 { 0, -1, 0, 0 } },
+  tou_abil[] = { { 10, &(HSearching), "perceptive", "" },
+                 { 20, &(HPoison_resistance), "hardy", "" },
+                 { 0, 0, 0, 0 } },
 
-  val_abil[] = { { 1, COLD_RES, "", "" },
-                 { 1, STEALTH, "", "" },
-                 { 7, FAST, "quick", "slow" },
-                 { 0, -1, 0, 0 } },
+  val_abil[] = { { 1, &(HCold_resistance), "", "" },
+                 { 1, &(HStealth), "", "" },
+                 { 7, &(HFast), "quick", "slow" },
+                 { 0, 0, 0, 0 } },
 
-  wiz_abil[] = { { 15, WARNING, "sensitive", "" },
-                 { 17, TELEPORT_CONTROL, "controlled", "uncontrolled" },
-                 { 0, -1, 0, 0 } },
+  wiz_abil[] = { { 15, &(HWarning), "sensitive", "" },
+                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
+                 { 0, 0, 0, 0 } },
 
   /* Intrinsics conferred by race */
-  dwa_abil[] = { { 1, INFRAVISION, "", "" },
-                 { 0, -1, 0, 0 } },
+  dwa_abil[] = { { 1, &HInfravision, "", "" },
+                 { 0, 0, 0, 0 } },
 
-  elf_abil[] = { { 1, INFRAVISION, "", "" },
-                 { 4, SLEEP_RES, "awake", "tired" },
-                 { 0, -1, 0, 0 } },
+  elf_abil[] = { { 1, &HInfravision, "", "" },
+                 { 4, &HSleep_resistance, "awake", "tired" },
+                 { 0, 0, 0, 0 } },
 
-  gno_abil[] = { { 1, INFRAVISION, "", "" },
-                 { 0, -1, 0, 0 } },
+  gno_abil[] = { { 1, &HInfravision, "", "" },
+                 { 0, 0, 0, 0 } },
 
-  orc_abil[] = { { 1, INFRAVISION, "", "" },
-                 { 1, POISON_RES, "", "" },
-                 { 0, -1, 0, 0 } },
+  orc_abil[] = { { 1, &HInfravision, "", "" },
+                 { 1, &HPoison_resistance, "", "" },
+                 { 0, 0, 0, 0 } },
 
-  hum_abil[] = { { 0, -1, 0, 0 } };
-
-/* Helper: compute the runtime address of an intrinsic flag for a given
- * property index. Used by check_innate_abil to bridge between the static
- * table (which holds indices) and the existing 'long *ability' API. */
-static long *
-innate_prop_addr(int prop_idx)
-{
-    if (prop_idx < 0)
-        return (long *) 0;
-    return &u.uprops[prop_idx].intrinsic;
-}
+  hum_abil[] = { { 0, 0, 0, 0 } };
 
 STATIC_DCL void NDECL(exerper);
 STATIC_DCL void FDECL(postadjabil, (long *));
@@ -207,7 +186,7 @@ int msgflg; /* positive => no message, zero => message, and */
     if (msgflg <= 0)
         You_feel("%s%s!", (incr > 1 || incr < -1) ? "very " : "", attrstr);
     context.botl = TRUE;
-    if (current_nle_ctx->program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
+    if (program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
         (void) encumber_msg();
     return TRUE;
 }
@@ -535,7 +514,7 @@ exerper()
 
 /* exercise/abuse text (must be in attribute order, not botl order);
    phrased as "You must have been [][0]." or "You haven't been [][1]." */
-static const char *const exertext[A_MAX][2] = {
+static NEARDATA const char *const exertext[A_MAX][2] = {
     { "exercising diligently", "exercising properly" },           /* Str */
     { 0, 0 },                                                     /* Int */
     { "very observant", "paying attention" },                     /* Wis */
@@ -553,10 +532,10 @@ exerchk()
     exerper();
 
     if (moves >= context.next_attrib_check) {
-        debugpline1("exerchk: ready to test. current_nle_ctx->multi = %d.", current_nle_ctx->multi);
+        debugpline1("exerchk: ready to test. multi = %d.", multi);
     }
     /*  Are we ready for a test? */
-    if (moves >= context.next_attrib_check && !current_nle_ctx->multi) {
+    if (moves >= context.next_attrib_check && !multi) {
         debugpline0("exerchk: testing.");
         /*
          *      Law of diminishing returns (Part II):
@@ -775,9 +754,8 @@ long frommask;
             break;
         }
 
-    while (abil && abil->prop_idx >= 0) {
-        if ((innate_prop_addr(abil->prop_idx) == ability)
-            && (u.ulevel >= abil->ulevel))
+    while (abil && abil->ability) {
+        if ((abil->ability == ability) && (u.ulevel >= abil->ulevel))
             return abil;
         abil++;
     }
@@ -838,14 +816,14 @@ char *
 from_what(propidx)
 int propidx; /* special cases can have negative values */
 {
-    /* From_what_buf (was `buf`) migrated to nle_ctx_t */
+    static char buf[BUFSZ];
 
-    from_what_buf[0] = '\0';
+    buf[0] = '\0';
     /*
      * Restrict the source of the attributes just to debug mode for now
      */
     if (wizard) {
-        static const char because_of[] = " because of %s";
+        static NEARDATA const char because_of[] = " because of %s";
 
         if (propidx >= 0) {
             char *p;
@@ -867,19 +845,19 @@ int propidx; /* special cases can have negative values */
              * takes priority over knight's innate but limited jumping.
              */
             if (propidx == BLINDED && u.uroleplay.blind)
-                Sprintf(from_what_buf, " from birth");
+                Sprintf(buf, " from birth");
             else if (innateness == FROM_ROLE || innateness == FROM_RACE)
-                Strcpy(from_what_buf, " innately");
+                Strcpy(buf, " innately");
             else if (innateness == FROM_INTR) /* [].intrinsic & FROMOUTSIDE */
-                Strcpy(from_what_buf, " intrinsically");
+                Strcpy(buf, " intrinsically");
             else if (innateness == FROM_EXP)
-                Strcpy(from_what_buf, " because of your experience");
+                Strcpy(buf, " because of your experience");
             else if (innateness == FROM_LYCN)
-                Strcpy(from_what_buf, " due to your lycanthropy");
+                Strcpy(buf, " due to your lycanthropy");
             else if (innateness == FROM_FORM)
-                Strcpy(from_what_buf, " from current creature form");
+                Strcpy(buf, " from current creature form");
             else if (propidx == FAST && Very_fast)
-                Sprintf(from_what_buf, because_of,
+                Sprintf(buf, because_of,
                         ((HFast & TIMEOUT) != 0L) ? "a potion or spell"
                           : ((EFast & W_ARMF) != 0L && uarmf->dknown
                              && objects[uarmf->otyp].oc_name_known)
@@ -888,17 +866,17 @@ int propidx; /* special cases can have negative values */
                                   : something);
             else if (wizard
                      && (obj = what_gives(&u.uprops[propidx].extrinsic)) != 0)
-                Sprintf(from_what_buf, because_of, obj->oartifact
+                Sprintf(buf, because_of, obj->oartifact
                                              ? bare_artifactname(obj)
                                              : ysimple_name(obj));
             else if (propidx == BLINDED && Blindfolded_only)
-                Sprintf(from_what_buf, because_of, ysimple_name(ublindf));
+                Sprintf(buf, because_of, ysimple_name(ublindf));
 
             /* remove some verbosity and/or redundancy */
-            if ((p = strstri(from_what_buf, " pair of ")) != 0)
+            if ((p = strstri(buf, " pair of ")) != 0)
                 copynchars(p + 1, p + 9, BUFSZ); /* overlapping buffers ok */
             else if (propidx == STRANGLED
-                     && (p = strstri(from_what_buf, " of strangulation")) != 0)
+                     && (p = strstri(buf, " of strangulation")) != 0)
                 *p = '\0';
 
         } else { /* negative property index */
@@ -908,23 +886,23 @@ int propidx; /* special cases can have negative values */
             case BLINDED:
                 if (ublindf
                     && ublindf->oartifact == ART_EYES_OF_THE_OVERWORLD)
-                    Sprintf(from_what_buf, because_of, bare_artifactname(ublindf));
+                    Sprintf(buf, because_of, bare_artifactname(ublindf));
                 break;
             case INVIS:
                 if (u.uprops[INVIS].blocked & W_ARMC)
-                    Sprintf(from_what_buf, because_of,
+                    Sprintf(buf, because_of,
                             ysimple_name(uarmc)); /* mummy wrapping */
                 break;
             case CLAIRVOYANT:
                 if (wizard && (u.uprops[CLAIRVOYANT].blocked & W_ARMH))
-                    Sprintf(from_what_buf, because_of,
+                    Sprintf(buf, because_of,
                             ysimple_name(uarmh)); /* cornuthaum */
                 break;
             }
         }
 
     } /*wizard*/
-    return from_what_buf;
+    return buf;
 }
 
 void
@@ -952,18 +930,16 @@ int oldlevel, newlevel;
     }
 
     while (abil || rabil) {
-        long *abil_ptr;
         /* Have we finished with the intrinsics list? */
-        if (!abil || abil->prop_idx < 0) {
+        if (!abil || !abil->ability) {
             /* Try the race intrinsics */
-            if (!rabil || rabil->prop_idx < 0)
+            if (!rabil || !rabil->ability)
                 break;
             abil = rabil;
             rabil = 0;
             mask = FROMRACE;
         }
-        abil_ptr = innate_prop_addr(abil->prop_idx);
-        prevabil = *abil_ptr;
+        prevabil = *(abil->ability);
         if (oldlevel < abil->ulevel && newlevel >= abil->ulevel) {
             /* Abilities gained at level 1 can never be lost
              * via level loss, only via means that remove _any_
@@ -972,24 +948,24 @@ int oldlevel, newlevel;
              * FROMOUTSIDE to avoid such gains.
              */
             if (abil->ulevel == 1)
-                *abil_ptr |= (mask | FROMOUTSIDE);
+                *(abil->ability) |= (mask | FROMOUTSIDE);
             else
-                *abil_ptr |= mask;
-            if (!(*abil_ptr & INTRINSIC & ~mask)) {
+                *(abil->ability) |= mask;
+            if (!(*(abil->ability) & INTRINSIC & ~mask)) {
                 if (*(abil->gainstr))
                     You_feel("%s!", abil->gainstr);
             }
         } else if (oldlevel >= abil->ulevel && newlevel < abil->ulevel) {
-            *abil_ptr &= ~mask;
-            if (!(*abil_ptr & INTRINSIC)) {
+            *(abil->ability) &= ~mask;
+            if (!(*(abil->ability) & INTRINSIC)) {
                 if (*(abil->losestr))
                     You_feel("%s!", abil->losestr);
                 else if (*(abil->gainstr))
                     You_feel("less %s!", abil->gainstr);
             }
         }
-        if (prevabil != *abil_ptr) /* it changed */
-            postadjabil(abil_ptr);
+        if (prevabil != *(abil->ability)) /* it changed */
+            postadjabil(abil->ability);
         abil++;
     }
 
@@ -1049,10 +1025,6 @@ newhp()
             conplus = 4;
         hp += conplus;
     }
-    /* player_hp_scale knob: scale HP gained per level (and the initial roll,
-     * though that is computed before the knob can be set via the binding). */
-    if (nle_tuning.player_hp_scale != 1.0)
-        hp = (int) ((double) hp * nle_tuning.player_hp_scale + 0.5);
     if (hp <= 0)
         hp = 1;
     if (u.ulevel < MAXULEV)

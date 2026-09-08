@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "tcap.h"
 
 /* Relevant header information in rm.h, objclass.h, and monsym.h. */
@@ -20,9 +19,7 @@
 
 struct symsetentry symset[NUM_GRAPHICS];
 
-#ifdef NLE_OBJECTS_GLOBAL
 int currentgraphics = 0;
-#endif
 
 nhsym showsyms[SYM_MAX] = DUMMY; /* symbols to be displayed */
 nhsym primary_syms[SYM_MAX] = DUMMY;   /* primary symbols          */
@@ -635,7 +632,7 @@ const char *known_restrictions[] = {
     "primary", "rogue", (const char *) 0,
 };
 
-const struct symparse loadsyms[] = {
+struct symparse loadsyms[] = {
     { SYM_CONTROL, 0, "start" },
     { SYM_CONTROL, 0, "begin" },
     { SYM_CONTROL, 1, "finish" },

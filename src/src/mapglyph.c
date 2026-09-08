@@ -3,10 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
-
-/* Per-env return buffer */
-#define encbuf (current_nle_ctx->s_mapglyph_encbuf)
 #if defined(TTY_GRAPHICS)
 #include "wintty.h" /* for prototype of has_color() only */
 #endif
@@ -58,8 +54,8 @@ static const int explcolors[] = {
     (currentgraphics == ROGUESET && SYMHANDLING(H_IBM))
 #endif
 
-#define is_objpile(x,y) (!Hallucination && level.objs[(x)][(y)] \
-                         && level.objs[(x)][(y)]->nexthere)
+#define is_objpile(x,y) (!Hallucination && level.objects[(x)][(y)] \
+                         && level.objects[(x)][(y)]->nexthere)
 
 /*ARGSUSED*/
 int
@@ -261,7 +257,7 @@ char *
 encglyph(glyph)
 int glyph;
 {
-    /* Encbuf migrated to nle_ctx_t */
+    static char encbuf[20]; /* 10+1 would suffice */
 
     Sprintf(encbuf, "\\G%04X%04X", context.rndencode, glyph);
     return encbuf;

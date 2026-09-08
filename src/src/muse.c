@@ -7,14 +7,8 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
-/* Combat tick per-env (muse.c statics). */
-#define zap_oseen (current_nle_ctx->s_zap_oseen)
-
-/* M_using per-env (was NON-static cross-TU boolean,
- * extern in zap.c). nle_ctx_t-zeroed field defaults to FALSE. */
-#define m_using (current_nle_ctx->s_m_using)
+boolean m_using = FALSE;
 
 /* Let monsters use magic items.  Arbitrary assumptions: Monsters only use
  * scrolls when they can see, monsters know when wands have 0 charges,
@@ -44,13 +38,7 @@ STATIC_DCL boolean FDECL(muse_unslime, (struct monst *, struct obj *,
 STATIC_DCL int FDECL(cures_sliming, (struct monst *, struct obj *));
 STATIC_DCL boolean FDECL(green_mon, (struct monst *));
 
-/* Musable / trapx / trapy migrated to nle_ctx_t to remove
- * the last per-monster-turn process-global writes in muse.c. The
- * `struct musable` type stays file-local; its storage lives in
- * `current_nle_ctx->s_muse_m_p` (allocated in init_nle below — registered
- * via the helper `nle_muse_alloc` in nle.c). Macros below rewrite every
- * bare `m`, `trapx`, `trapy` reference in this file to the per-env slot. */
-struct musable {
+static struct musable {
     struct obj *offensive;
     struct obj *defensive;
     struct obj *misc;
@@ -58,18 +46,14 @@ struct musable {
     /* =0, no capability; otherwise, different numbers.
      * If it's an object, the object is also set (it's 0 otherwise).
      */
-};
-
-#define m     (*(struct musable *) current_nle_ctx->s_muse_m_p)
-#define trapx (current_nle_ctx->s_muse_trapx)
-#define trapy (current_nle_ctx->s_muse_trapy)
-/* (zap_oseen migrated to current_nle_ctx->s_zap_oseen
- * via macro at top of file; original `static boolean zap_oseen;` removed.
- * Comment retained for context:)
- * for wands which use mbhitm and are zapped at players.  We usually want
- * an oseen local to the function, but this is impossible since the
- * function mbhitm has to be compatible with the normal zap routines,
- * and those routines don't remember who zapped the wand. */
+} m;
+static int trapx, trapy;
+static boolean zap_oseen; /* for wands which use mbhitm and are zapped at
+                           * players.  We usually want an oseen local to
+                           * the function, but this is impossible since the
+                           * function mbhitm has to be compatible with the
+                           * normal zap routines, and those routines don't
+                           * remember who zapped the wand. */
 
 /* Any preliminary checks which may result in the monster being unable to use
  * the item.  Returns 0 if nothing happened, 2 if the monster can't do
@@ -572,7 +556,7 @@ struct monst *mtmp;
              * mean if the monster leaves the level, they'll know
              * about teleport traps.
              */
-            if (!level.lflags.noteleport
+            if (!level.flags.noteleport
                 || !(mtmp->mtrapseen & (1 << (TELEP_TRAP - 1)))) {
                 m.defensive = obj;
                 m.has_defense = (mon_has_amulet(mtmp))
@@ -586,7 +570,7 @@ struct monst *mtmp;
             && (!obj->cursed || (!(mtmp->isshk && inhishop(mtmp))
                                  && !mtmp->isgd && !mtmp->ispriest))) {
             /* see WAN_TELEPORTATION case above */
-            if (!level.lflags.noteleport
+            if (!level.flags.noteleport
                 || !(mtmp->mtrapseen & (1 << (TELEP_TRAP - 1)))) {
                 m.defensive = obj;
                 m.has_defense = MUSE_SCR_TELEPORTATION;
@@ -699,7 +683,7 @@ struct monst *mtmp;
             if (vismon && how)     /* mentions 'teleport' */
                 makeknown(how);
             /* monster learns that teleportation isn't useful here */
-            if (level.lflags.noteleport)
+            if (level.flags.noteleport)
                 mtmp->mtrapseen |= (1 << (TELEP_TRAP - 1));
             return 2;
         }
@@ -718,7 +702,7 @@ struct monst *mtmp;
         m_using = TRUE;
         mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp);
         /* monster learns that teleportation isn't useful here */
-        if (level.lflags.noteleport)
+        if (level.flags.noteleport)
             mtmp->mtrapseen |= (1 << (TELEP_TRAP - 1));
         m_using = FALSE;
         return 2;
@@ -1042,7 +1026,7 @@ struct monst *mtmp;
     switch (rn2(8 + (difficulty > 3) + (difficulty > 6) + (difficulty > 8))) {
     case 6:
     case 9:
-        if (level.lflags.noteleport && ++trycnt < 2)
+        if (level.flags.noteleport && ++trycnt < 2)
             goto try_again;
         if (!rn2(3))
             return WAN_TELEPORTATION;
@@ -1130,7 +1114,7 @@ struct monst *mtmp;
                 m.has_offense = MUSE_WAN_DEATH;
             }
             nomore(MUSE_WAN_SLEEP);
-            if (obj->otyp == WAN_SLEEP && obj->spe > 0 && current_nle_ctx->multi >= 0) {
+            if (obj->otyp == WAN_SLEEP && obj->spe > 0 && multi >= 0) {
                 m.offensive = obj;
                 m.has_offense = MUSE_WAN_SLEEP;
             }
@@ -1189,7 +1173,7 @@ struct monst *mtmp;
         }
 #endif
         nomore(MUSE_POT_PARALYSIS);
-        if (obj->otyp == POT_PARALYSIS && current_nle_ctx->multi >= 0) {
+        if (obj->otyp == POT_PARALYSIS && multi >= 0) {
             m.offensive = obj;
             m.has_offense = MUSE_POT_PARALYSIS;
         }
@@ -1376,7 +1360,7 @@ struct obj *obj;                     /* 2nd arg to fhitm/fhito */
             int hitanything = 0;
             register struct obj *next_obj;
 
-            for (otmp = level.objs[bhitpos.x][bhitpos.y]; otmp;
+            for (otmp = level.objects[bhitpos.x][bhitpos.y]; otmp;
                  otmp = next_obj) {
                 /* Fix for polymorph bug, Tim Wright */
                 next_obj = otmp->nexthere;
@@ -2015,7 +1999,7 @@ struct monst *mtmp;
     display_nhwindow(WIN_MAP, TRUE);
     docrt();
     if (unconscious()) {
-        current_nle_ctx->multi = -1;
+        multi = -1;
         nomovemsg = "Aggravated, you are jolted into full consciousness.";
     }
     newsym(mtmp->mx, mtmp->my);
@@ -2618,16 +2602,6 @@ struct monst *mon;
         break;
     }
     return FALSE;
-}
-
-/* Per-env allocator for muse.c `struct musable`. Called from
- * init_nle (nle.c) at env-create time. The struct type is local to this
- * file; we expose only this helper to keep the include graph tight. */
-void
-nle_muse_alloc(void **slot)
-{
-    if (!slot) return;
-    *slot = nle_arena_calloc(1, sizeof(struct musable));
 }
 
 /*muse.c*/

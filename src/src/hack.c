@@ -4,34 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
-
-/* Per-env return buffer for in_rooms() (renamed from `buf` so
- * the file-level macro doesn't collide with the dozens of other `buf`
- * locals in this TU). */
-#define in_rooms_buf (current_nle_ctx->s_hack_in_rooms_buf)
-
-/* Per-env replacements for two hack.c file-statics.
- * tmp_anything is heap-allocated (forward-decl'd as `union any` in nle.h);
- * the helper below allocates on first use and is idempotent per env. */
-static union any *
-nle_get_tmp_anything(void)
-{
-    if (!current_nle_ctx->s_tmp_anything)
-        current_nle_ctx->s_tmp_anything =
-            (union any *) calloc(1, sizeof(anything));
-    return current_nle_ctx->s_tmp_anything;
-}
-#define tmp_anything  (*nle_get_tmp_anything())
-#define wc            (current_nle_ctx->s_wc)
-/* Function-local statics promoted to nle_ctx_t fields. */
-#define lastmovetime    (current_nle_ctx->s_moverock_lastmovetime)
-#define skates          (current_nle_ctx->s_domove_skates)
-#define spotloc_x       (current_nle_ctx->s_spoteffects_spotloc_x)
-#define spotloc_y       (current_nle_ctx->s_spoteffects_spotloc_y)
-#define spotterrain     (current_nle_ctx->s_spoteffects_spotterrain)
-#define spottrap        (current_nle_ctx->s_spoteffects_spottrap)
-#define spottraptyp     (current_nle_ctx->s_spoteffects_spottraptyp)
 
 /* #define DEBUG */ /* uncomment for debugging */
 
@@ -54,7 +26,7 @@ STATIC_DCL void NDECL(domove_core);
 #define TRAVP_GUESS  1
 #define TRAVP_VALID  2
 
-/* tmp_anything moved into nle_ctx_t — macro above. */
+static anything tmp_anything;
 
 anything *
 uint_to_any(ui)
@@ -102,7 +74,7 @@ const char *msg;
     coord cc;
     boolean revived = FALSE;
 
-    for (otmp = level.objs[x][y]; otmp; otmp = otmp2) {
+    for (otmp = level.objects[x][y]; otmp; otmp = otmp2) {
         otmp2 = otmp->nexthere;
         if (otmp->otyp == CORPSE
             && (is_rider(&mons[otmp->corpsenm])
@@ -140,7 +112,7 @@ moverock()
     sx = u.ux + u.dx, sy = u.uy + u.dy; /* boulder starting position */
     while ((otmp = sobj_at(BOULDER, sx, sy)) != 0) {
         /* make sure that this boulder is visible as the top object */
-        if (otmp != level.objs[sx][sy])
+        if (otmp != level.objects[sx][sy])
             movobj(otmp, sx, sy);
 
         rx = u.ux + 2 * u.dx; /* boulder destination position */
@@ -320,8 +292,13 @@ moverock()
             }
 
             {
-                /* Lastmovetime moved to nle_ctx_t
-                 * (s_moverock_lastmovetime). See macro at top of file. */
+#ifdef LINT /* static long lastmovetime; */
+                long lastmovetime;
+                lastmovetime = 0;
+#else
+                /* note: reset to zero after save/restore cycle */
+                static NEARDATA long lastmovetime;
+#endif
  dopush:
                 if (!u.usteed) {
                     if (moves > lastmovetime + 2 || moves < lastmovetime)
@@ -434,13 +411,13 @@ xchar x, y;
         nomul(0);
         return 1;
     } else if (context.digging.pos.x != x || context.digging.pos.y != y
-               || !on_level(&context.digging.dlvl, &u.uz)) {
+               || !on_level(&context.digging.level, &u.uz)) {
         context.digging.down = FALSE;
         context.digging.chew = TRUE;
         context.digging.warned = FALSE;
         context.digging.pos.x = x;
         context.digging.pos.y = y;
-        assign_level(&context.digging.dlvl, &u.uz);
+        assign_level(&context.digging.level, &u.uz);
         /* solid rock takes more work & time to dig through */
         context.digging.effort =
             (IS_ROCK(lev->typ) && !IS_TREE(lev->typ) ? 30 : 60) + u.udaminc;
@@ -507,9 +484,9 @@ xchar x, y;
             dmgtxt = "damage";
         }
         digtxt = "chew a hole in the wall.";
-        if (level.lflags.is_maze_lev) {
+        if (level.flags.is_maze_lev) {
             lev->typ = ROOM;
-        } else if (level.lflags.is_cavernous_lev && !in_town(x, y)) {
+        } else if (level.flags.is_cavernous_lev && !in_town(x, y)) {
             lev->typ = CORR;
         } else {
             lev->typ = DOOR;
@@ -572,7 +549,7 @@ register xchar ox, oy;
     newsym(ox, oy);
 }
 
-static const char fell_on_sink[] = "fell onto a sink";
+static NEARDATA const char fell_on_sink[] = "fell onto a sink";
 
 STATIC_OVL void
 dosinkfall()
@@ -605,7 +582,7 @@ dosinkfall()
         losehp(Maybe_Half_Phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
         exercise(A_DEX, FALSE);
         selftouch("Falling, you");
-        for (obj = level.objs[u.ux][u.uy]; obj; obj = obj->nexthere)
+        for (obj = level.objects[u.ux][u.uy]; obj; obj = obj->nexthere)
             if (obj->oclass == WEAPON_CLASS || is_weptool(obj)) {
                 You("fell on %s.", doname(obj));
                 losehp(Maybe_Half_Phys(rnd(3)), fell_on_sink,
@@ -617,10 +594,10 @@ dosinkfall()
     }
 
     /*
-     * Interrupt current_nle_ctx->multi-turn putting on/taking off of armor (in which
+     * Interrupt multi-turn putting on/taking off of armor (in which
      * case we reached the sink due to being teleported while busy;
      * in 3.4.3, Boots_on()/Boots_off() [called via (*afternmv)() when
-     * 'current_nle_ctx->multi' reaches 0] triggered a crash if we were donning/doffing
+     * 'multi' reaches 0] triggered a crash if we were donning/doffing
      * levitation boots [because the Boots_off() below causes 'uarmf'
      * to be null by the time 'afternmv' gets called]).
      *
@@ -1444,8 +1421,7 @@ domove_core()
         /* check slippery ice */
         on_ice = !Levitation && is_ice(u.ux, u.uy);
         if (on_ice) {
-            /* Skates moved to nle_ctx_t (s_domove_skates).
-             * See macro at top of file. */
+            static int skates = 0;
 
             if (!skates)
                 skates = find_skates();
@@ -1893,7 +1869,7 @@ domove_core()
                        killed() so we duplicate some of the latter here */
                     int tmp, mndx;
 
-                    u.uconduct.killcount++;
+                    u.uconduct.killer++;
                     mndx = monsndx(mtmp->data);
                     tmp = experience(mtmp, (int) mvitals[mndx].died);
                     more_experienced(tmp, 0);
@@ -1961,7 +1937,7 @@ domove_core()
     /* must come after we finished picking up, in spoteffects() */
     if (cause_delay) {
         nomul(-2);
-        current_nle_ctx->multi_reason = "dragging an iron ball";
+        multi_reason = "dragging an iron ball";
         nomovemsg = "";
     }
 
@@ -2016,7 +1992,7 @@ overexertion()
             fall_asleep(-10, FALSE);
         }
     }
-    return (boolean) (current_nle_ctx->multi < 0); /* might have fainted (forced to sleep) */
+    return (boolean) (multi < 0); /* might have fainted (forced to sleep) */
 }
 
 void
@@ -2170,12 +2146,11 @@ void
 spoteffects(pick)
 boolean pick;
 {
-    /* Inspoteffects was a process-wide recursion guard
-     * (function-local static); moved to nle_ctx_t. */
-    #define inspoteffects (current_nle_ctx->s_inspoteffects)
-    /* Spotloc/spotterrain/spottrap/spottraptyp moved
-     * to nle_ctx_t. See macros at top of file. spotloc was 'coord' (x,y);
-     * accessed as spotloc_x / spotloc_y per-component. */
+    static int inspoteffects = 0;
+    static coord spotloc;
+    static int spotterrain;
+    static struct trap *spottrap = (struct trap *) 0;
+    static unsigned spottraptyp = NO_TRAP;
 
     struct monst *mtmp;
     struct trap *trap = t_at(u.ux, u.uy);
@@ -2184,7 +2159,7 @@ boolean pick;
     /* prevent recursion from affecting the hero all over again
        [hero poly'd to iron golem enters water here, drown() inflicts
        damage that triggers rehumanize() which calls spoteffects()...] */
-    if (inspoteffects && u.ux == spotloc_x && u.uy == spotloc_y
+    if (inspoteffects && u.ux == spotloc.x && u.uy == spotloc.y
         /* except when reason is transformed terrain (ice -> water) */
         && spotterrain == levl[u.ux][u.uy].typ
         /* or transformed trap (land mine -> pit) */
@@ -2193,7 +2168,7 @@ boolean pick;
 
     ++inspoteffects;
     spotterrain = levl[u.ux][u.uy].typ;
-    spotloc_x = u.ux, spotloc_y = u.uy;
+    spotloc.x = u.ux, spotloc.y = u.uy;
 
     /* moving onto different terrain might cause Lev or Fly to toggle */
     if (spotterrain != levl[u.ux0][u.uy0].typ || !on_level(&u.uz, &u.uz0))
@@ -2205,7 +2180,7 @@ boolean pick;
     check_special_room(FALSE);
     if (IS_SINK(levl[u.ux][u.uy].typ) && Levitation)
         dosinkfall();
-    if (!current_nle_ctx->in_steed_dismounting) { /* if dismounting, we'll check again later */
+    if (!in_steed_dismounting) { /* if dismounting, we'll check again later */
         boolean pit;
 
         /* if levitation is due to time out at the end of this
@@ -2309,7 +2284,7 @@ boolean pick;
  spotdone:
     if (!--inspoteffects) {
         spotterrain = STONE; /* 0 */
-        spotloc_x = spotloc_y = 0;
+        spotloc.x = spotloc.y = 0;
     }
     return;
 }
@@ -2337,8 +2312,8 @@ in_rooms(x, y, typewanted)
 register xchar x, y;
 register int typewanted;
 {
-    /* In_rooms_buf (was `buf`) migrated to nle_ctx_t */
-    char rno, *ptr = &in_rooms_buf[4];
+    static char buf[5];
+    char rno, *ptr = &buf[4];
     int typefound, min_x, min_y, max_x, max_y_offset, step;
     register struct rm *lev;
 
@@ -2408,7 +2383,7 @@ register int x, y;
     register struct mkroom *sroom;
     boolean has_subrooms = FALSE;
 
-    if (!slev || !slev->dflags.town)
+    if (!slev || !slev->flags.town)
         return FALSE;
 
     /*
@@ -2562,25 +2537,25 @@ register boolean newlev;
                 /* No more room of that type */
                 switch (rt) {
                 case COURT:
-                    level.lflags.has_court = 0;
+                    level.flags.has_court = 0;
                     break;
                 case SWAMP:
-                    level.lflags.has_swamp = 0;
+                    level.flags.has_swamp = 0;
                     break;
                 case MORGUE:
-                    level.lflags.has_morgue = 0;
+                    level.flags.has_morgue = 0;
                     break;
                 case ZOO:
-                    level.lflags.has_zoo = 0;
+                    level.flags.has_zoo = 0;
                     break;
                 case BARRACKS:
-                    level.lflags.has_barracks = 0;
+                    level.flags.has_barracks = 0;
                     break;
                 case TEMPLE:
-                    level.lflags.has_temple = 0;
+                    level.flags.has_temple = 0;
                     break;
                 case BEEHIVE:
-                    level.lflags.has_beehive = 0;
+                    level.flags.has_beehive = 0;
                     break;
                 }
             }
@@ -2686,9 +2661,9 @@ dopickup(VOID_ARGS)
     int count, tmpcount, ret;
 
     /* awful kludge to work around parse()'s pre-decrement */
-    count = (current_nle_ctx->multi || (save_cm && *save_cm == cmd_from_func(dopickup)))
-              ? current_nle_ctx->multi + 1 : 0;
-    current_nle_ctx->multi = 0; /* always reset */
+    count = (multi || (save_cm && *save_cm == cmd_from_func(dopickup)))
+              ? multi + 1 : 0;
+    multi = 0; /* always reset */
 
     if ((ret = pickup_checks()) >= 0) {
         return ret;
@@ -2930,22 +2905,22 @@ void
 nomul(nval)
 register int nval;
 {
-    if (current_nle_ctx->multi < nval)
+    if (multi < nval)
         return;              /* This is a bug fix by ab@unido */
     u.uinvulnerable = FALSE; /* Kludge to avoid ctrl-C bug -dlc */
     u.usleep = 0;
-    current_nle_ctx->multi = nval;
+    multi = nval;
     if (nval == 0)
-        current_nle_ctx->multi_reason = NULL;
+        multi_reason = NULL;
     context.travel = context.travel1 = context.mv = context.run = 0;
 }
 
-/* called when a non-movement, current_nle_ctx->multi-turn action has completed */
+/* called when a non-movement, multi-turn action has completed */
 void
 unmul(msg_override)
 const char *msg_override;
 {
-    current_nle_ctx->multi = 0; /* caller will usually have done this already */
+    multi = 0; /* caller will usually have done this already */
     if (msg_override)
         nomovemsg = msg_override;
     else if (!nomovemsg)
@@ -2962,7 +2937,7 @@ const char *msg_override;
     }
     nomovemsg = 0;
     u.usleep = 0;
-    current_nle_ctx->multi_reason = NULL;
+    multi_reason = NULL;
     if (afternmv) {
         int NDECL((*f)) = afternmv;
 
@@ -3099,8 +3074,7 @@ weight_cap()
     return (int) carrcap;
 }
 
-/* wc moved into nle_ctx_t — macro above.
- * inv_weight()'s last weight_cap() value; valid after call to inv_weight(). */
+static int wc; /* current weight_cap(); valid after call to inv_weight() */
 
 /* returns how far beyond the normal capacity the player is currently. */
 /* inv_weight() is negative if the player is below normal capacity. */

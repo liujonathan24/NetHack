@@ -5,17 +5,13 @@
 
 #define NEED_VARARGS /* Uses ... */ /* comment line for pre-compiled headers */
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 #define BIGBUFSZ (5 * BUFSZ) /* big enough to format a 4*BUFSZ string (from
                               * config file parsing) with modest decoration;
                               * result will then be truncated to BUFSZ-1 */
 
-/* TLS — per-thread message state. */
-/* Per-env (was __thread). pline modifier bitfield. */
-#define pline_flags (current_nle_ctx->s_pline_flags)
-/* prevmsg — per-env message-repeat suppression buffer. */
-#define prevmsg (current_nle_ctx->s_prevmsg)
+static unsigned pline_flags = 0;
+static char prevmsg[BUFSZ];
 
 static void FDECL(putmesg, (const char *));
 static char *FDECL(You_buf, (int));
@@ -125,10 +121,7 @@ pline
 VA_DECL(const char *, line)
 #endif /* USE_STDARG | USE_VARARG */
 {       /* start of vpline() or of nested block in USE_OLDARG's pline() */
-    /* Was process-shared function-local static — env A would
-     * leak in_pline=1 across yields into env B's pline, suppressing
-     * legitimate output. Per-env now. */
-    #define in_pline (current_nle_ctx->s_pline_in_pline)
+    static int in_pline = 0;
     char pbuf[BIGBUFSZ]; /* will get chopped down to BUFSZ-1 if longer */
     int ln;
     int msgtyp;
@@ -141,10 +134,10 @@ VA_DECL(const char *, line)
     if (!line || !*line)
         return;
 #ifdef HANGUPHANDLING
-    if (current_nle_ctx->program_state.done_hup)
+    if (program_state.done_hup)
         return;
 #endif
-    if (current_nle_ctx->program_state.wizkit_wishing)
+    if (program_state.wizkit_wishing)
         return;
 
     if (index(line, '%')) {
@@ -267,35 +260,9 @@ VA_DECL(const char *, line)
     return;
 }
 
-/* Per-env work buffer for You(), &c and verbalize().
- * Was `static char *you_buf` + `int you_buf_siz`. Across envs
- * sharing a pthread, env A's heap pointer survived in TLS and env B's
- * You_buf() could free env A's buffer. Now stored per-env. */
-struct nle_pline_state {
-    char *_you_buf;
-    int   _you_buf_siz;
-};
-static struct nle_pline_state *
-nle_pline(void)
-{
-    if (!current_nle_ctx)
-        return NULL;
-    struct nle_pline_state *s = (struct nle_pline_state *) current_nle_ctx->s_pline_state;
-    if (!s) {
-        /* Arena-allocate (not libc calloc): this struct holds `_you_buf`, an
-         * arena pointer. If the struct lived on the libc heap it would NOT be
-         * captured by nle_fr_snapshot, so after a restore (which rewinds the
-         * arena) `_you_buf` would dangle into a reused arena offset and the
-         * next You_hear/pline would write its message over whatever now lives
-         * there (e.g. a live monster's struct) -> corruption/SIGSEGV. */
-        s = (struct nle_pline_state *) nle_arena_calloc(
-            1, sizeof(struct nle_pline_state));
-        current_nle_ctx->s_pline_state = s;
-    }
-    return s;
-}
-#define you_buf     (nle_pline()->_you_buf)
-#define you_buf_siz (nle_pline()->_you_buf_siz)
+/* work buffer for You(), &c and verbalize() */
+static char *you_buf = 0;
+static int you_buf_siz = 0;
 
 static char *
 You_buf(siz)
@@ -526,10 +493,10 @@ VA_DECL(const char *, s)
 
     VA_START(s);
     VA_INIT(s, const char *);
-    if (current_nle_ctx->program_state.in_impossible)
+    if (program_state.in_impossible)
         panic("impossible called impossible");
 
-    current_nle_ctx->program_state.in_impossible = 1;
+    program_state.in_impossible = 1;
 #if !defined(NO_VSNPRINTF)
     (void) vsnprintf(pbuf, sizeof pbuf, s, VA_ARGS);
 #else
@@ -542,11 +509,11 @@ VA_DECL(const char *, s)
     pline("%s", VA_PASS1(pbuf));
     /* reuse pbuf[] */
     Strcpy(pbuf, "Program in disorder!");
-    if (current_nle_ctx->program_state.something_worth_saving)
+    if (program_state.something_worth_saving)
         Strcat(pbuf, "  (Saving and reloading may fix this problem.)");
     pline("%s", VA_PASS1(pbuf));
 
-    current_nle_ctx->program_state.in_impossible = 0;
+    program_state.in_impossible = 0;
     VA_END();
 }
 

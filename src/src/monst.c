@@ -101,17 +101,7 @@ void NDECL(monst_init);
  */
 
 #ifndef SPLITMON_2
-/* mons[] table. role_init() writes to a few entries per game (quest
- * leader/guardian/nemesis), so this is per-game-mutable. Non-const +
- * non-NEARDATA: single process-shared symbol. For vecenv (multiple
- * envs in one libnethack instance) this still races on the per-game
- * fields; finishing that requires migrating just those quest fields
- * to nle_ctx_t. */
-/* mons[] is const after process init. role_init no longer mutates it
- * (see role.c). With const + designated initializers the linker places
- * mons[] in .data.rel.ro, mprotected read-only after dynamic linking —
- * shared-safe across all envs in a single libnethack. */
-const struct permonst mons[] = {
+NEARDATA struct permonst mons[] = {
     /*
      * ants
      */

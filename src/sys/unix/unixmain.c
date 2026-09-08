@@ -7,7 +7,6 @@
 
 #include "hack.h"
 #include "dlb.h"
-#include "nle.h" /* current_nle_ctx for migrated has_strong_rngseed */
 
 #include <ctype.h>
 #include <sys/stat.h>
@@ -94,7 +93,7 @@ char *argv[];
 #endif
 
     hname = argv[0];
-    current_nle_ctx->hackpid = getpid();
+    hackpid = getpid();
     /* (void) umask(0777 & ~FCMASK); */
 
     choose_windows(DEFAULT_WINDOW_SYS);
@@ -201,7 +200,7 @@ char *argv[];
      * It seems you really want to play.
      */
     u.uhp = 1; /* prevent RIP on early quits */
-    current_nle_ctx->program_state.preserve_locks = 1;
+    program_state.preserve_locks = 1;
 #ifndef NO_SIGNAL
     sethanguphandler((SIG_RET_TYPE) hangup);
 #endif
@@ -251,7 +250,7 @@ char *argv[];
 
     if (wizard) {
         /* use character name rather than lock letter for file names */
-        current_nle_ctx->locknum = 0;
+        locknum = 0;
     } else {
         /* suppress interrupts while processing lock file */
 #ifndef NO_SIGNAL
@@ -279,18 +278,18 @@ char *argv[];
 
     /*
      * getlock() complains and quits if there is already a game
-     * in progress for current character name (when current_nle_ctx->locknum == 0)
-     * or if there are too many active games (when current_nle_ctx->locknum > 0).
+     * in progress for current character name (when locknum == 0)
+     * or if there are too many active games (when locknum > 0).
      * When proceeding, it creates an empty <lockname>.0 file to
      * designate the current game.
      * getlock() constructs <lockname> based on the character
-     * name (for !current_nle_ctx->locknum) or on first available of alock, block,
+     * name (for !locknum) or on first available of alock, block,
      * clock, &c not currently in use in the playground directory
-     * (for current_nle_ctx->locknum > 0).
+     * (for locknum > 0).
      */
     if (*plname) {
         getlock();
-        current_nle_ctx->program_state.preserve_locks = 0; /* after getlock() */
+        program_state.preserve_locks = 0; /* after getlock() */
     }
 
     if (*plname && (fd = restore_saved_game()) >= 0) {
@@ -340,7 +339,7 @@ char *argv[];
                    if locking alphabetically, the existing lock file
                    can still be used; otherwise, discard current one
                    and create another for the new character name */
-                if (!current_nle_ctx->locknum) {
+                if (!locknum) {
                     delete_levelfile(0); /* remove empty lock file */
                     getlock();
                 }
@@ -465,17 +464,17 @@ char *argv[];
 #else
     /* XXX This is deprecated in favor of SYSCF with MAXPLAYERS */
     if (argc > 1)
-        current_nle_ctx->locknum = atoi(argv[1]);
+        locknum = atoi(argv[1]);
 #endif
 #ifdef MAX_NR_OF_PLAYERS
     /* limit to compile-time limit */
-    if (!current_nle_ctx->locknum || current_nle_ctx->locknum > MAX_NR_OF_PLAYERS)
-        current_nle_ctx->locknum = MAX_NR_OF_PLAYERS;
+    if (!locknum || locknum > MAX_NR_OF_PLAYERS)
+        locknum = MAX_NR_OF_PLAYERS;
 #endif
 #ifdef SYSCF
     /* let syscf override compile-time limit */
-    if (!current_nle_ctx->locknum || (sysopt.maxplayers && current_nle_ctx->locknum > sysopt.maxplayers))
-        current_nle_ctx->locknum = sysopt.maxplayers;
+    if (!locknum || (sysopt.maxplayers && locknum > sysopt.maxplayers))
+        locknum = sysopt.maxplayers;
 #endif
 }
 
@@ -791,7 +790,7 @@ sys_random_seed()
     fptr = fopen(DEV_RANDOM, "r");
     if (fptr) {
         fread(&seed, sizeof (long), 1, fptr);
-        current_nle_ctx->has_strong_rngseed = TRUE;  /* was decl.c */
+        has_strong_rngseed = TRUE;  /* decl.c */
         no_seed = FALSE;
         (void) fclose(fptr);
     } else {

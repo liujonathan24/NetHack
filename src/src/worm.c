@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "lev.h"
 
 #define newseg() (struct wseg *) alloc(sizeof (struct wseg))
@@ -68,10 +67,8 @@ STATIC_DCL struct wseg *FDECL(create_worm_tail, (int));
  *  segment, and remove hit points from the worm.
  */
 
-/* Per-env worm tables migrated to nle_ctx_t. */
-#define wheads    ((struct wseg **) current_nle_ctx->s_wheads_p)
-#define wtails    ((struct wseg **) current_nle_ctx->s_wtails_p)
-#define wgrowtime ((long *) current_nle_ctx->s_wgrowtime_p)
+struct wseg *wheads[MAX_NUM_WORMS] = DUMMY, *wtails[MAX_NUM_WORMS] = DUMMY;
+long wgrowtime[MAX_NUM_WORMS] = DUMMY;
 
 /*
  *  get_wormno()

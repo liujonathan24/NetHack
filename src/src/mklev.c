@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* for UNIX, Rand #def'd to (long)lrand48() or (long)random() */
 /* croom->lx etc are schar (width <= int), so % arith ensures that */
@@ -39,12 +38,8 @@ STATIC_DCL void FDECL(mk_knox_portal, (XCHAR_P, XCHAR_P));
 #define create_vault() create_room(-1, -1, 2, 2, -1, -1, VAULT, TRUE)
 #define init_vault() vault_x = -1
 #define do_vault() (vault_x != -1)
-/* Per-env (was static file-scope). mklev() yields through
- * pline/menu prompts; with N envs running in one process, env A's value
- * was visible to env B's continuation. */
-#define vault_x     (*(xchar *)&current_nle_ctx->s_vault_x)
-#define vault_y     (*(xchar *)&current_nle_ctx->s_vault_y)
-#define made_branch (*(boolean *)&current_nle_ctx->s_made_branch)
+static xchar vault_x, vault_y;
+static boolean made_branch; /* used only during level creation */
 
 /* Args must be (const genericptr) so that qsort will always be happy. */
 
@@ -228,22 +223,10 @@ STATIC_OVL void
 makerooms()
 {
     boolean tried_vault = FALSE;
-    int room_cap = MAXNROFROOMS;
-
-    /* room_density knob: cap the number of rooms (1.0 = vanilla). Values < 1
-     * thin the level out; the natural count is space-limited (rnd_rect), so a
-     * cap below it reduces rooms while 1.0 leaves the vanilla loop unchanged. */
-    if (nle_tuning.room_density != 1.0) {
-        room_cap = (int) (nle_tuning.room_density * MAXNROFROOMS + 0.5);
-        if (room_cap < 1)
-            room_cap = 1;
-        if (room_cap > MAXNROFROOMS)
-            room_cap = MAXNROFROOMS;
-    }
 
     /* make rooms until satisfied */
     /* rnd_rect() will returns 0 if no more rects are available... */
-    while (nroom < room_cap && rnd_rect()) {
+    while (nroom < MAXNROFROOMS && rnd_rect()) {
         if (nroom >= (MAXNROFROOMS / 6) && rn2(2) && !tried_vault) {
             tried_vault = TRUE;
             if (create_vault()) {
@@ -318,7 +301,7 @@ boolean nxcor;
     dest.x = tx;
     dest.y = ty;
 
-    if (!dig_corridor(&org, &dest, nxcor, level.lflags.arboreal ? ROOM : CORR,
+    if (!dig_corridor(&org, &dest, nxcor, level.flags.arboreal ? ROOM : CORR,
                       STONE))
         return;
 
@@ -354,28 +337,14 @@ makecorridors()
                 any = TRUE;
             }
     }
-    if (nroom > 2) {
-        /* corridor_connectivity knob: scale the count of extra/redundant
-         * corridors (1.0 = vanilla; the rn2(nroom) draw is preserved so 1.0
-         * is byte-identical). The vanilla base is "+ 4" redundant joins;
-         * scaling that constant raises/lowers redundant connectivity. Floor
-         * at 0 extra joins (the mandatory spanning joins above already
-         * guarantee the level is connected). */
-        int extra = 4;
-        if (nle_tuning.corridor_connectivity != 1.0) {
-            extra = (int) ((double) 4 * nle_tuning.corridor_connectivity
-                           + 0.5);
-            if (extra < 0)
-                extra = 0;
-        }
-        for (i = rn2(nroom) + extra; i; i--) {
+    if (nroom > 2)
+        for (i = rn2(nroom) + 4; i; i--) {
             a = rn2(nroom);
             b = rn2(nroom - 2);
             if (b >= a)
                 b += 2;
             join(a, b, TRUE);
         }
-    }
 }
 
 void
@@ -424,30 +393,9 @@ int type;
     levl[x][y].typ = type;
     if (type == DOOR) {
         if (!rn2(3)) { /* is it a locked door, closed, or a doorway? */
-            /* locked_door knob: scale the 1-in-6 lock chance (1.0 =
-             * vanilla; the rn2(6) draw is preserved so 1.0 is byte-
-             * identical). Larger values shrink the modulus -> more locks;
-             * smaller values widen it -> fewer. knob <= 0 means "none":
-             * a huge modulus makes rn2() essentially never roll 0, so
-             * doors are never locked. A finite cap on the scaled value
-             * keeps the (int) cast in range (never compute (int)+inf). */
-            int lock_mod = 6;
-            if (nle_tuning.locked_door != 1.0) {
-                double k = nle_tuning.locked_door;
-                if (k <= 0.0) {
-                    lock_mod = 100000;
-                } else {
-                    double m = 6.0 / k + 0.5;
-                    if (m > 100000.0)
-                        m = 100000.0;
-                    lock_mod = (int) m;
-                    if (lock_mod < 1)
-                        lock_mod = 1;
-                }
-            }
             if (!rn2(5))
                 levl[x][y].doormask = D_ISOPEN;
-            else if (!rn2(lock_mod))
+            else if (!rn2(6))
                 levl[x][y].doormask = D_LOCKED;
             else
                 levl[x][y].doormask = D_CLOSED;
@@ -523,7 +471,7 @@ int *dy, *xx, *yy;
 }
 
 /* there should be one of these per trap, in the same order as trap.h */
-static const char *trap_engravings[TRAPNUM] = {
+static NEARDATA const char *trap_engravings[TRAPNUM] = {
     (char *) 0,      (char *) 0,    (char *) 0,    (char *) 0, (char *) 0,
     (char *) 0,      (char *) 0,    (char *) 0,    (char *) 0, (char *) 0,
     (char *) 0,      (char *) 0,    (char *) 0,    (char *) 0,
@@ -585,7 +533,7 @@ int trap_type;
                                               mkclass(S_HUMAN, 0), xx,
                                               yy + dy, TRUE);
                     }
-                    if (!level.lflags.noteleport)
+                    if (!level.flags.noteleport)
                         (void) mksobj_at(SCR_TELEPORTATION, xx, yy + dy, TRUE,
                                          FALSE);
                     if (!rn2(3))
@@ -601,7 +549,7 @@ STATIC_OVL void
 make_niches()
 {
     int ct = rnd((nroom >> 1) + 1), dep = depth(&u.uz);
-    boolean ltptr = (!level.lflags.noteleport && dep > 15),
+    boolean ltptr = (!level.flags.noteleport && dep > 15),
             vamp = (dep > 5 && dep < 25);
 
     while (ct--) {
@@ -647,10 +595,10 @@ clear_level_structures()
              * These used to be '#if MICROPORT_BUG',
              * with use of memset(0) for '#if !MICROPORT_BUG' below,
              * but memset is not appropriate for initializing pointers,
-             * so do these level.objs[][] and level.monsters[][]
+             * so do these level.objects[][] and level.monsters[][]
              * initializations unconditionally.
              */
-            level.objs[x][y] = (struct obj *) 0;
+            level.objects[x][y] = (struct obj *) 0;
             level.monsters[x][y] = (struct monst *) 0;
         }
     }
@@ -660,28 +608,28 @@ clear_level_structures()
     level.damagelist = (struct damage *) 0;
     level.bonesinfo = (struct cemetery *) 0;
 
-    level.lflags.nfountains = 0;
-    level.lflags.nsinks = 0;
-    level.lflags.has_shop = 0;
-    level.lflags.has_vault = 0;
-    level.lflags.has_zoo = 0;
-    level.lflags.has_court = 0;
-    level.lflags.has_morgue = level.lflags.graveyard = 0;
-    level.lflags.has_beehive = 0;
-    level.lflags.has_barracks = 0;
-    level.lflags.has_temple = 0;
-    level.lflags.has_swamp = 0;
-    level.lflags.noteleport = 0;
-    level.lflags.hardfloor = 0;
-    level.lflags.nommap = 0;
-    level.lflags.hero_memory = 1;
-    level.lflags.shortsighted = 0;
-    level.lflags.sokoban_rules = 0;
-    level.lflags.is_maze_lev = 0;
-    level.lflags.is_cavernous_lev = 0;
-    level.lflags.arboreal = 0;
-    level.lflags.wizard_bones = 0;
-    level.lflags.corrmaze = 0;
+    level.flags.nfountains = 0;
+    level.flags.nsinks = 0;
+    level.flags.has_shop = 0;
+    level.flags.has_vault = 0;
+    level.flags.has_zoo = 0;
+    level.flags.has_court = 0;
+    level.flags.has_morgue = level.flags.graveyard = 0;
+    level.flags.has_beehive = 0;
+    level.flags.has_barracks = 0;
+    level.flags.has_temple = 0;
+    level.flags.has_swamp = 0;
+    level.flags.noteleport = 0;
+    level.flags.hardfloor = 0;
+    level.flags.nommap = 0;
+    level.flags.hero_memory = 1;
+    level.flags.shortsighted = 0;
+    level.flags.sokoban_rules = 0;
+    level.flags.is_maze_lev = 0;
+    level.flags.is_cavernous_lev = 0;
+    level.flags.arboreal = 0;
+    level.flags.wizard_bones = 0;
+    level.flags.corrmaze = 0;
 
     nroom = 0;
     rooms[0].hx = -1;
@@ -797,11 +745,11 @@ makelevel()
  fill_vault:
             add_room(vault_x, vault_y, vault_x + w, vault_y + h,
                      TRUE, VAULT, FALSE);
-            level.lflags.has_vault = 1;
+            level.flags.has_vault = 1;
             ++room_threshold;
             fill_room(&rooms[nroom - 1], FALSE);
             mk_knox_portal(vault_x + w, vault_y + h);
-            if (!level.lflags.noteleport && !rn2(3))
+            if (!level.flags.noteleport && !rn2(3))
                 makevtele();
         } else if (rnd_rect() && create_vault()) {
             vault_x = rooms[nroom].lx;
@@ -848,7 +796,7 @@ makelevel()
     }
 
  skip0:
-    /* Place current_nle_ctx->multi-dungeon branch. */
+    /* Place multi-dungeon branch. */
     place_branch(branchp, 0, 0);
 
     /* for each room: put things inside */
@@ -862,29 +810,7 @@ makelevel()
            while a monster was on the stairs. Conclusion:
            we have to check for monsters on the stairs anyway. */
 
-        /* mob_spawn knob: scale the 1-in-3 per-room sleeping-monster
-         * chance (1.0 = vanilla; the rn2(3) draw is preserved so 1.0 is
-         * byte-identical). Larger values shrink the modulus -> more rooms
-         * spawn a monster; smaller values widen it -> fewer. knob <= 0
-         * means "none": a huge modulus makes rn2() essentially never roll
-         * 0, so rooms never spawn an initial monster. A finite cap on the
-         * scaled value keeps the (int) cast in range (never (int)+inf). */
-        {
-            int mob_mod = 3;
-            if (nle_tuning.mob_spawn != 1.0) {
-                double k = nle_tuning.mob_spawn;
-                if (k <= 0.0) {
-                    mob_mod = 100000;
-                } else {
-                    double m = 3.0 / k + 0.5;
-                    if (m > 100000.0)
-                        m = 100000.0;
-                    mob_mod = (int) m;
-                    if (mob_mod < 1)
-                        mob_mod = 1;
-                }
-            }
-        if (u.uhave.amulet || !rn2(mob_mod)) {
+        if (u.uhave.amulet || !rn2(3)) {
             x = somex(croom);
             y = somey(croom);
             tmonst = makemon((struct permonst *) 0, x, y, MM_NOGRP);
@@ -892,32 +818,10 @@ makelevel()
                 && !occupied(x, y))
                 (void) maketrap(x, y, WEB);
         }
-        }
         /* put traps and mimics inside */
-        /* trap_density knob: scale the per-room trap count (1.0 = vanilla;
-         * the rn2(x) draw is preserved so 1.0 is byte-identical). The
-         * vanilla loop places a trap with geometric probability 1/x each
-         * iteration; shrinking x raises the trap rate, growing x lowers it.
-         * knob <= 0 means "none": a huge x makes rn2(x) essentially never
-         * roll 0, so the loop terminates immediately and no traps appear.
-         * A finite cap on the scaled value keeps the (int) cast in range
-         * (never compute (int)+inf). Floor x at 2 (vanilla's own minimum). */
         x = 8 - (level_difficulty() / 6);
         if (x <= 1)
             x = 2;
-        if (nle_tuning.trap_density != 1.0) {
-            double k = nle_tuning.trap_density;
-            if (k <= 0.0) {
-                x = 100000;
-            } else {
-                double m = (double) x / k + 0.5;
-                if (m > 100000.0)
-                    m = 100000.0;
-                x = (int) m;
-                if (x < 2)
-                    x = 2;
-            }
-        }
         while (!rn2(x))
             mktrap(0, 0, croom, (coord *) 0);
         if (!rn2(3))
@@ -1014,9 +918,9 @@ boolean skip_lvl_checks;
        almost all special levels are excluded */
     if (!skip_lvl_checks
         && (In_hell(&u.uz) || In_V_tower(&u.uz) || Is_rogue_level(&u.uz)
-            || level.lflags.arboreal
+            || level.flags.arboreal
             || ((sp = Is_special(&u.uz)) != 0 && !Is_oracle_level(&u.uz)
-                && (!In_mines(&u.uz) || sp->dflags.town))))
+                && (!In_mines(&u.uz) || sp->flags.town))))
         return;
 
     /* basic level-related probabilities */
@@ -1104,9 +1008,9 @@ mklev()
     /* has_morgue gets cleared once morgue is entered; graveyard stays
        set (graveyard might already be set even when has_morgue is clear
        [see fixup_special()], so don't update it unconditionally) */
-    if (level.lflags.has_morgue)
-        level.lflags.graveyard = 1;
-    if (!level.lflags.is_maze_lev) {
+    if (level.flags.has_morgue)
+        level.flags.graveyard = 1;
+    if (!level.flags.is_maze_lev) {
         for (croom = &rooms[0]; croom != &rooms[nroom]; croom++)
 #ifdef SPECIALIZATION
             topologize(croom, FALSE);
@@ -1152,13 +1056,6 @@ struct mkroom *croom;
     /* skip the room if already done; i.e. a shop handled out of order */
     /* also skip if this is non-rectangular (it _must_ be done already) */
     if ((int) levl[lowx][lowy].roomno == roomno || croom->irregular)
-        return;
-    /* Guard against degenerate room dimensions that would make
-     * the "sides" and "edges" loops below (which use `+= (h - lo + 2)` as
-     * the step) advance by zero or negative — observed under multi-env
-     * level generation with certain seeds. NetHack core assumes lowx<=hix
-     * and lowy<=hiy but doesn't enforce it. */
-    if (hix < lowx || hiy < lowy)
         return;
 #ifdef SPECIALIZATION
     if (Is_rogue_level(&u.uz))
@@ -1210,11 +1107,7 @@ coord *mp;
 {
     struct mkroom *croom = 0;
 
-    /* Nroom should be > 0 here (mklev's mkroom pass) but the
-     * `<= 0` and `== 0` paths both fall to mazexy. Guards against the rare
-     * case where prior level-gen left nroom negative (observed under
-     * multi-env training). */
-    if (nroom <= 0) {
+    if (nroom == 0) {
         mazexy(mp); /* already verifies location */
     } else {
         /* not perfect - there may be only one stairway */
@@ -1228,17 +1121,12 @@ coord *mp;
         } else
             croom = &rooms[rn2(nroom)];
 
-        /* Cap the somexy retry loop so a room with degenerate
-         * dimensions (which hits rn2(<=0) inside somex/somey) cannot
-         * spin forever logging impossible(). After N tries, fall through. */
-        int sxy_tries = 0;
         do {
             if (!somexy(croom, mp))
                 impossible("Can't place branch!");
-        } while ((occupied(mp->x, mp->y)
-                  || (levl[mp->x][mp->y].typ != CORR
-                      && levl[mp->x][mp->y].typ != ROOM))
-                 && (++sxy_tries < 200));
+        } while (occupied(mp->x, mp->y)
+                 || (levl[mp->x][mp->y].typ != CORR
+                     && levl[mp->x][mp->y].typ != ROOM));
     }
     return croom;
 }
@@ -1441,7 +1329,7 @@ coord *tm;
                     kind = NO_TRAP;
                 break;
             case LEVEL_TELEP:
-                if (lvl < 5 || level.lflags.noteleport)
+                if (lvl < 5 || level.flags.noteleport)
                     kind = NO_TRAP;
                 break;
             case SPIKED_PIT:
@@ -1466,7 +1354,7 @@ coord *tm;
                     kind = NO_TRAP;
                 break;
             case TELEP_TRAP:
-                if (level.lflags.noteleport)
+                if (level.flags.noteleport)
                     kind = NO_TRAP;
                 break;
             case HOLE:
@@ -1702,7 +1590,7 @@ struct mkroom *croom;
     if (!rn2(7))
         levl[m.x][m.y].blessedftn = 1;
 
-    level.lflags.nfountains++;
+    level.flags.nfountains++;
 }
 
 STATIC_OVL void
@@ -1722,7 +1610,7 @@ struct mkroom *croom;
     /* Put a sink at m.x, m.y */
     levl[m.x][m.y].typ = SINK;
 
-    level.lflags.nsinks++;
+    level.flags.nsinks++;
 }
 
 STATIC_OVL void
@@ -1977,7 +1865,7 @@ STATIC_OVL void
 mk_knox_portal(x, y)
 xchar x, y;
 {
-    #define n_dgns (current_nle_ctx->s_n_dgns) /* was extern from dungeon.c */
+    extern int n_dgns; /* from dungeon.c */
     d_level *source;
     branch *br;
     schar u_depth;

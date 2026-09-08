@@ -4,19 +4,11 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
-/* Notonhead migrated to nle_ctx_t->s_notonhead (per-env).
- * Was: `boolean notonhead = FALSE;` here, with `extern boolean notonhead;`
- * declarations in 9 other files. Macro added in every file that references
- * notonhead so each access expands to current_nle_ctx->s_notonhead. */
-#define notonhead         (current_nle_ctx->s_notonhead)
+boolean notonhead = FALSE;
 
-/* Nothing/unkn (per-action accumulators inside potion handlers)
- * migrated to per-env via nle_ctx_t. Were static NEARDATA int. */
-#define nothing           (current_nle_ctx->s_potion_nothing)
-#define unkn              (current_nle_ctx->s_potion_unkn)
-static const char beverages[] = { POTION_CLASS, 0 };
+static NEARDATA int nothing, unkn;
+static NEARDATA const char beverages[] = { POTION_CLASS, 0 };
 
 STATIC_DCL long FDECL(itimeout, (long));
 STATIC_DCL long FDECL(itimeout_incr, (long, int));
@@ -487,7 +479,7 @@ ghost_from_bottle()
     if (flags.verbose)
         You("are frightened to death, and unable to move.");
     nomul(-3);
-    current_nle_ctx->multi_reason = "being frightened to death";
+    multi_reason = "being frightened to death";
     nomovemsg = "You regain your composure.";
 }
 
@@ -714,7 +706,7 @@ register struct obj *otmp;
         exercise(A_WIS, FALSE);
         if (otmp->cursed) {
             You("pass out.");
-            current_nle_ctx->multi = -rnd(15);
+            multi = -rnd(15);
             nomovemsg = "You awake with a headache.";
         }
         break;
@@ -808,7 +800,7 @@ register struct obj *otmp;
                 Your("%s are frozen to the %s!", makeplural(body_part(FOOT)),
                      surface(u.ux, u.uy));
             nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
-            current_nle_ctx->multi_reason = "frozen by a potion";
+            multi_reason = "frozen by a potion";
             nomovemsg = You_can_move_again;
             exercise(A_DEX, FALSE);
         }
@@ -1724,7 +1716,7 @@ register struct obj *obj;
         if (!Free_action) {
             pline("%s seems to be holding you.", Something);
             nomul(-rnd(5));
-            current_nle_ctx->multi_reason = "frozen by a potion";
+            multi_reason = "frozen by a potion";
             nomovemsg = You_can_move_again;
             exercise(A_DEX, FALSE);
         } else
@@ -1735,7 +1727,7 @@ register struct obj *obj;
         if (!Free_action && !Sleep_resistance) {
             You_feel("rather tired.");
             nomul(-rnd(5));
-            current_nle_ctx->multi_reason = "sleeping off a magical draught";
+            multi_reason = "sleeping off a magical draught";
             nomovemsg = You_can_move_again;
             exercise(A_DEX, FALSE);
         } else

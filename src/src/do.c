@@ -6,11 +6,6 @@
 /* Contains code for 'd', 'D' (drop), '>', '<' (up, down) */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffer for dowipe() (renamed from `buf` to
- * avoid clobbering other `buf` locals in this TU). */
-#define dowipe_buf (current_nle_ctx->s_do_dowipe_buf)
 #include "lev.h"
 
 STATIC_DCL void FDECL(trycall, (struct obj *));
@@ -24,9 +19,9 @@ STATIC_DCL int NDECL(currentlevel_rewrite);
 STATIC_DCL void NDECL(final_level);
 /* static boolean FDECL(badspot, (XCHAR_P,XCHAR_P)); */
 
-#define n_dgns (current_nle_ctx->s_n_dgns) /* was extern from dungeon.c */
+extern int n_dgns; /* number of dungeons, from dungeon.c */
 
-static const char drop_types[] = { ALLOW_COUNT, COIN_CLASS,
+static NEARDATA const char drop_types[] = { ALLOW_COUNT, COIN_CLASS,
                                             ALL_CLASSES, 0 };
 
 /* 'd' command: drop one inventory item */
@@ -72,7 +67,7 @@ boolean pushing;
                 levl[rx][ry].drawbridgemask &= ~DB_UNDER; /* clear lava */
                 levl[rx][ry].drawbridgemask |= DB_FLOOR;
             } else
-                levl[rx][ry].typ = ROOM, levl[rx][ry].rmflags = 0;
+                levl[rx][ry].typ = ROOM, levl[rx][ry].flags = 0;
 
             if (ttmp)
                 (void) delfloortrap(ttmp);
@@ -321,7 +316,7 @@ polymorph_sink()
         return;
 
     sinklooted = levl[u.ux][u.uy].looted != 0;
-    level.lflags.nsinks--;
+    level.flags.nsinks--;
     levl[u.ux][u.uy].doormask = 0; /* levl[][].flags */
     switch (rn2(4)) {
     default:
@@ -331,7 +326,7 @@ polymorph_sink()
         levl[u.ux][u.uy].blessedftn = 0;
         if (sinklooted)
             SET_FOUNTAIN_LOOTED(u.ux, u.uy);
-        level.lflags.nfountains++;
+        level.flags.nfountains++;
         break;
     case 1:
         sym = S_throne;
@@ -459,7 +454,7 @@ register struct obj *obj;
         break;
     case RIN_HUNGER:
         ideed = FALSE;
-        for (otmp = level.objs[u.ux][u.uy]; otmp; otmp = otmp2) {
+        for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp2) {
             otmp2 = otmp->nexthere;
             if (otmp != uball && otmp != uchain
                 && !obj_resists(otmp, 1, 99)) {
@@ -756,7 +751,7 @@ boolean with_impact;
             container_impact_dmg(obj, u.ux, u.uy);
         if (obj == uball)
             drop_ball(u.ux, u.uy);
-        else if (level.lflags.has_shop)
+        else if (level.flags.has_shop)
             sellobj(obj, u.ux, u.uy);
         stackobj(obj);
         if (Blind && Levitation)
@@ -789,7 +784,7 @@ struct obj *obj;
          */
         if (!obj->oerodeproof || !rn2(10)) {
             /* if monsters aren't moving, assume player is responsible */
-            if (!context.mon_moving && !current_nle_ctx->program_state.gameover)
+            if (!context.mon_moving && !program_state.gameover)
                 costly_alteration(obj, COST_DEGRD);
             obj->otyp = WORM_TOOTH;
             obj->oerodeproof = 0;
@@ -938,10 +933,7 @@ int retry;
 }
 
 /* on a ladder, used in goto_level */
-/* Per-env (was static). do.c calls goto_level which
- * yields through pline; at_ladder must persist across the yield as
- * per-env state. */
-#define at_ladder (*(boolean *)&current_nle_ctx->s_at_ladder)
+static NEARDATA boolean at_ladder = FALSE;
 
 /* the '>' command */
 int
@@ -1150,8 +1142,7 @@ doup()
     return 1;
 }
 
-/* save_dlevel — migrated to nle_ctx_t (two schar fields). */
-#define save_dlevel (*(d_level *)&current_nle_ctx->save_dlevel_dnum)
+d_level save_dlevel = { 0, 0 };
 
 /* check that we can write out the current level */
 STATIC_OVL int
@@ -1448,11 +1439,11 @@ boolean at_stairs, falling, portal;
     (void) memset((genericptr_t) &updest, 0, sizeof updest);
     (void) memset((genericptr_t) &dndest, 0, sizeof dndest);
 
-    if (!(level_info[new_ledger].linfo_flags & LFILE_EXISTS)) {
+    if (!(level_info[new_ledger].flags & LFILE_EXISTS)) {
         /* entering this level for first time; make it now */
-        if (level_info[new_ledger].linfo_flags & (FORGOTTEN | VISITED)) {
+        if (level_info[new_ledger].flags & (FORGOTTEN | VISITED)) {
             impossible("goto_level: returning to discarded level?");
-            level_info[new_ledger].linfo_flags &= ~(FORGOTTEN | VISITED);
+            level_info[new_ledger].flags &= ~(FORGOTTEN | VISITED);
         }
         mklev();
         new = TRUE; /* made the level */
@@ -1466,7 +1457,7 @@ boolean at_stairs, falling, portal;
         reseed_random(rn2);
         reseed_random(rn2_on_display_rng);
         minit(); /* ZEROCOMP */
-        getlev(fd, current_nle_ctx->hackpid, new_ledger, FALSE);
+        getlev(fd, hackpid, new_ledger, FALSE);
         /* when in wizard mode, it is possible to leave from and return to
            any level in the endgame; above, we discarded bubble/cloud info
            when leaving Plane of Water or Air so recreate some now */
@@ -1580,11 +1571,11 @@ boolean at_stairs, falling, portal;
     else if (Is_firelevel(&u.uz))
         fumaroles();
 
-    if (level_info[new_ledger].linfo_flags & FORGOTTEN) {
+    if (level_info[new_ledger].flags & FORGOTTEN) {
         forget_map(ALL_MAP); /* forget the map */
         forget_traps();      /* forget all traps too */
         familiar = TRUE;
-        level_info[new_ledger].linfo_flags &= ~FORGOTTEN;
+        level_info[new_ledger].flags &= ~FORGOTTEN;
     }
 
     /* Reset the screen. */
@@ -1719,11 +1710,8 @@ final_level()
     gain_guardian_angel();
 }
 
-/* Per-env (was __thread). Affects level-change pline() between
- * the schedule_goto() and deferred_goto() calls; env A's strings would
- * leak into env B's level change. */
-#define dfr_pre_msg  (current_nle_ctx->s_dfr_pre_msg)
-#define dfr_post_msg (current_nle_ctx->s_dfr_post_msg)
+static char *dfr_pre_msg = 0,  /* pline() before level change */
+            *dfr_post_msg = 0; /* pline() after level change */
 
 /* change levels at the end of this turn, after monsters finish moving */
 void
@@ -1961,10 +1949,10 @@ int
 dowipe()
 {
     if (u.ucreamed) {
-        /* Dowipe_buf (was `buf`) migrated to nle_ctx_t */
+        static NEARDATA char buf[39];
 
-        Sprintf(dowipe_buf, "wiping off your %s", body_part(FACE));
-        set_occupation(wipeoff, dowipe_buf, 0);
+        Sprintf(buf, "wiping off your %s", body_part(FACE));
+        set_occupation(wipeoff, buf, 0);
         /* Not totally correct; what if they change back after now
          * but before they're finished wiping?
          */

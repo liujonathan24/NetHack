@@ -4,15 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
-
-/* Jumping_is_magic was a file-scope static set in jump() before
- * walk_path() invokes the get_valid_jump_position callback; under N envs in
- * one process this raced. Migrate to per-env. */
-#define jumping_is_magic  (current_nle_ctx->s_jumping_is_magic)
+extern boolean notonhead; /* for long worms */
 
 STATIC_DCL int FDECL(use_camera, (struct obj *));
 STATIC_DCL int FDECL(use_towel, (struct obj *));
@@ -215,7 +208,7 @@ int rx, ry, *resp;
     } else if (Hallucination) {
         if (!corpse) {
             /* it's a statue */
-            Strcpy(buf, "You're both current_nle_ctx->stoned");
+            Strcpy(buf, "You're both stoned");
         } else if (corpse->quan == 1L && !more_corpses) {
             int gndr = 2; /* neuter: "it" */
             struct monst *mtmp = get_mtraits(corpse, FALSE);
@@ -445,7 +438,7 @@ register struct obj *obj;
         return res;
     case SCORR:
         You_hear(hollow_str, "passage");
-        lev->typ = CORR, lev->rmflags = 0;
+        lev->typ = CORR, lev->flags = 0;
         unblock_point(rx, ry);
         feel_newsym(rx, ry);
         return res;
@@ -786,7 +779,7 @@ register xchar x, y;
             } else if (otmp->cursed && !breathless(mtmp->data)) {
                 if (um_dist(mtmp->mx, mtmp->my, 5)
                     || (mtmp->mhp -= rnd(2)) <= 0) {
-                    long save_pacifism = u.uconduct.killcount;
+                    long save_pacifism = u.uconduct.killer;
 
                     Your("leash chokes %s to death!", mon_nam(mtmp));
                     /* hero might not have intended to kill pet, but
@@ -796,7 +789,7 @@ register xchar x, y;
                     xkilled(mtmp, XKILL_NOMSG);
                     /* life-saving doesn't ordinarily reset this */
                     if (!DEADMONSTER(mtmp))
-                        u.uconduct.killcount = save_pacifism;
+                        u.uconduct.killer = save_pacifism;
                 } else {
                     pline("%s is choked by the leash!", Monnam(mtmp));
                     /* tameness eventually drops to 1 here (never 0) */
@@ -874,7 +867,7 @@ struct obj *obj;
                         pline("Yikes!  You've frozen yourself!");
                     if (!Hallucination || !rn2(4)) {
                         nomul(-rnd(MAXULEV + 6 - u.ulevel));
-                        current_nle_ctx->multi_reason = "gazing into a mirror";
+                        multi_reason = "gazing into a mirror";
                     }
                     nomovemsg = 0; /* default, "you can move again" */
                 }
@@ -952,7 +945,7 @@ struct obj *obj;
             return 1;
         if (vis)
             pline("%s is turned to stone!", Monnam(mtmp));
-        current_nle_ctx->stoned = TRUE;
+        stoned = TRUE;
         killed(mtmp);
     } else if (monable && mtmp->data == &mons[PM_FLOATING_EYE]) {
         int tmp = d((int) mtmp->m_lev, (int) mtmp->data->mattk[0].damd);
@@ -1062,7 +1055,7 @@ struct obj **optr;
                     break;
                 case 2: /* no explanation; it just happens... */
                     nomovemsg = "";
-                    current_nle_ctx->multi_reason = NULL;
+                    multi_reason = NULL;
                     nomul(-rnd(2));
                     break;
                 }
@@ -1465,7 +1458,7 @@ struct obj **optr;
     *optr = obj;
 }
 
-static const char cuddly[] = { TOOL_CLASS, GEM_CLASS, 0 };
+static NEARDATA const char cuddly[] = { TOOL_CLASS, GEM_CLASS, 0 };
 
 int
 dorub()
@@ -1631,7 +1624,7 @@ boolean showmsg;
     return TRUE;
 }
 
-/* Jumping_is_magic migrated to nle_ctx_t (macro above). */
+static int jumping_is_magic;
 
 STATIC_OVL boolean
 get_valid_jump_position(x,y)
@@ -1821,7 +1814,7 @@ int magic; /* 0=Physical, otherwise skill level */
         teleds(cc.x, cc.y, FALSE);
         sokoban_guilt();
         nomul(-1);
-        current_nle_ctx->multi_reason = "jumping around";
+        multi_reason = "jumping around";
         nomovemsg = "";
         morehungry(rnd(25));
         return 1;
@@ -2133,7 +2126,7 @@ long timeout;
     mtmp = make_familiar(figurine, cc.x, cc.y, TRUE);
     if (mtmp) {
         char and_vanish[BUFSZ];
-        struct obj *mshelter = level.objs[mtmp->mx][mtmp->my];
+        struct obj *mshelter = level.objects[mtmp->mx][mtmp->my];
 
         /* [m_monnam() yields accurate mon type, overriding hallucination] */
         Sprintf(monnambuf, "%s", an(m_monnam(mtmp)));
@@ -2265,7 +2258,7 @@ struct obj **optr;
             return;
     }
     if (!getdir((char *) 0)) {
-        context.move = current_nle_ctx->multi = 0;
+        context.move = multi = 0;
         return;
     }
     x = u.ux + u.dx;
@@ -2291,7 +2284,7 @@ struct obj **optr;
     *optr = 0;
 }
 
-static const char lubricables[] = { ALL_CLASSES, ALLOW_NONE, 0 };
+static NEARDATA const char lubricables[] = { ALL_CLASSES, ALLOW_NONE, 0 };
 
 STATIC_OVL void
 use_grease(obj)
@@ -2483,27 +2476,12 @@ struct obj *tstone;
     return;
 }
 
-/* Per-env apply.c state. trapinfo fields bundled into one struct.
- * The struct layout matches the original `struct trapinfo` exactly so that
- * `trapinfo.tobj` etc. continue to work via the macro below. */
-struct nle_apply_state {
+static struct trapinfo {
     struct obj *tobj;
     xchar tx, ty;
     int time_needed;
     boolean force_bungle;
-};
-static struct nle_apply_state *
-nle_apply(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_apply_state *s = (struct nle_apply_state *) current_nle_ctx->s_apply_state;
-    if (!s) {
-        s = (struct nle_apply_state *) nle_arena_calloc(1, sizeof(struct nle_apply_state));
-        current_nle_ctx->s_apply_state = s;
-    }
-    return s;
-}
-#define trapinfo (*nle_apply())
+} trapinfo;
 
 void
 reset_trapset()
@@ -2725,7 +2703,7 @@ struct obj *obj;
         }
         if (Levitation || u.usteed) {
             /* Have a shot at snaring something on the floor */
-            otmp = level.objs[u.ux][u.uy];
+            otmp = level.objects[u.ux][u.uy];
             if (otmp && otmp->otyp == CORPSE && otmp->corpsenm == PM_HORSE) {
                 pline("Why beat a dead horse?");
                 return 1;
@@ -2971,9 +2949,8 @@ int min_range, max_range;
     return TRUE;
 }
 
-/* Per-env (was __thread). Polearm targeting bounds. */
-#define polearm_range_min (current_nle_ctx->s_polearm_range_min)
-#define polearm_range_max (current_nle_ctx->s_polearm_range_max)
+static int polearm_range_min = -1;
+static int polearm_range_max = -1;
 
 STATIC_OVL boolean
 get_valid_polearm_position(x, y)
@@ -3253,7 +3230,7 @@ struct obj *obj;
         /* FIXME -- untrap needs to deal with non-adjacent traps */
         break;
     case 1: /* Object */
-        if ((otmp = level.objs[cc.x][cc.y]) != 0) {
+        if ((otmp = level.objects[cc.x][cc.y]) != 0) {
             You("snag an object from the %s!", surface(cc.x, cc.y));
             (void) pickup_object(otmp, 1L, FALSE);
             /* If pickup fails, leave it alone */
@@ -3452,7 +3429,7 @@ struct obj *obj;
                  */
                 typ = fillholetyp(x, y, FALSE);
                 if (typ != ROOM) {
-                    levl[x][y].typ = typ, levl[x][y].rmflags = 0;
+                    levl[x][y].typ = typ, levl[x][y].flags = 0;
                     liquid_flow(x, y, typ, t_at(x, y),
                                 fillmsg
                                   ? (char *) 0
@@ -3484,7 +3461,7 @@ struct obj *obj;
                 (void) bhitm(mon, obj);
                 /* if (context.botl) bot(); */
             }
-            if (affects_objects && level.objs[x][y]) {
+            if (affects_objects && level.objects[x][y]) {
                 (void) bhitpile(obj, bhito, x, y, 0);
                 if (context.botl)
                     bot(); /* potion effects */
@@ -3502,7 +3479,7 @@ struct obj *obj;
              * of obj->bypass in the zap code to accomplish that last case
              * since it's also used by retouch_equipment() for polyself.)
              */
-            if (affects_objects && level.objs[x][y]) {
+            if (affects_objects && level.objects[x][y]) {
                 (void) bhitpile(obj, bhito, x, y, 0);
                 if (context.botl)
                     bot(); /* potion effects */

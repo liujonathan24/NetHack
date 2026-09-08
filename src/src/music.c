@@ -27,7 +27,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL void FDECL(awaken_monsters, (int));
 STATIC_DCL void FDECL(put_monsters_to_sleep, (int));

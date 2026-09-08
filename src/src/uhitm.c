@@ -4,13 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env return buffer */
-#define msgbuf (current_nle_ctx->s_uhitm_msgbuf)
-
-/* Function-local statics migrated to nle_ctx_t */
-#define clockwise     (current_nle_ctx->s_hitum_cleave_clockwise)
 
 STATIC_DCL boolean FDECL(known_hitum, (struct monst *, struct obj *, int *,
                                        int, int, struct attack *, int));
@@ -31,22 +24,10 @@ STATIC_DCL boolean FDECL(hmonas, (struct monst *));
 STATIC_DCL void FDECL(nohandglow, (struct monst *));
 STATIC_DCL boolean FDECL(shade_aware, (struct obj *));
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+extern boolean notonhead; /* for long worms */
 
-/* Used to flag attacks caused by Stormbringer's maliciousness.
- * per-env. */
-struct nle_uhitm_state { boolean _override_confirmation; };
-static struct nle_uhitm_state *nle_uhitm(void) {
-    if (!current_nle_ctx) return NULL;
-    struct nle_uhitm_state *s = (struct nle_uhitm_state *) current_nle_ctx->s_uhitm_state;
-    if (!s) {
-        s = (struct nle_uhitm_state *) nle_arena_calloc(1, sizeof(struct nle_uhitm_state));
-        current_nle_ctx->s_uhitm_state = s;
-    }
-    return s;
-}
-#define override_confirmation (nle_uhitm()->_override_confirmation)
+/* Used to flag attacks caused by Stormbringer's maliciousness. */
+static boolean override_confirmation = FALSE;
 
 #define PROJECTILE(obj) ((obj) && is_ammo(obj))
 
@@ -212,7 +193,7 @@ struct obj *wep; /* uwep for attack(), null for kick_monster() */
                       mtmp->mtame ? "tame" : "wild", l_monnam(mtmp));
             else if (Blind || (is_pool(mtmp->mx, mtmp->my) && !Underwater))
                 pline("Wait!  There's a hidden monster there!");
-            else if ((obj = level.objs[mtmp->mx][mtmp->my]) != 0)
+            else if ((obj = level.objects[mtmp->mx][mtmp->my]) != 0)
                 pline("Wait!  There's %s hiding under %s!",
                       an(l_monnam(mtmp)), doname(obj));
             return TRUE;
@@ -430,8 +411,8 @@ register struct monst *mtmp;
     if (u.twoweap && !can_twoweapon())
         untwoweapon();
 
-    if (current_nle_ctx->unweapon) {
-        current_nle_ctx->unweapon = FALSE;
+    if (unweapon) {
+        unweapon = FALSE;
         if (flags.verbose) {
             if (uwep)
                 You("begin bashing monsters with %s.", yname(uwep));
@@ -547,7 +528,7 @@ struct attack *uattk; /* ... but we don't enforce that here; Null works ok */
        are non-consecutive, hero will sometimes start a series of attacks
        with a backswing--that doesn't impact actual play, just spoils the
        simulation attempt a bit */
-    /* Clockwise migrated to nle_ctx_t */
+    static boolean clockwise = FALSE;
     unsigned i;
     coord save_bhitpos;
     int count, umort, x = u.ux, y = u.uy;
@@ -774,7 +755,7 @@ int dieroll;
                           mon_nam(mon), more_than_1 ? "one of " : "",
                           yname(obj));
                     if (!more_than_1)
-                        uwepgone(); /* set current_nle_ctx->unweapon */
+                        uwepgone(); /* set unweapon */
                     useup(obj);
                     if (!more_than_1)
                         obj = (struct obj *) 0;
@@ -792,7 +773,7 @@ int dieroll;
                     || (hand_to_hand && obj->oartifact == ART_CLEAVER)) {
                     ; /* no special bonuses */
                 } else if (mon->mflee && Role_if(PM_ROGUE) && !Upolyd
-                           /* current_nle_ctx->multi-shot throwing is too powerful here */
+                           /* multi-shot throwing is too powerful here */
                            && hand_to_hand) {
                     You("strike %s from behind!", mon_nam(mon));
                     tmp += rnd(u.ulevel);
@@ -955,7 +936,7 @@ int dieroll;
                     /* egg is always either used up or transformed, so next
                        hand-to-hand attack should yield a "bashing" mesg */
                     if (obj == uwep)
-                        current_nle_ctx->unweapon = TRUE;
+                        unweapon = TRUE;
                     if (obj->spe && obj->corpsenm >= LOW_PM) {
                         if (obj->quan < 5L)
                             change_luck((schar) - (obj->quan));
@@ -1177,7 +1158,7 @@ int dieroll;
             /* (must be either primary or secondary weapon to get here) */
             u.twoweap = FALSE; /* untwoweapon() is too verbose here */
             if (obj == uwep)
-                uwepgone(); /* set current_nle_ctx->unweapon */
+                uwepgone(); /* set unweapon */
             /* minor side-effect: broken lance won't split puddings */
             useup(obj);
             obj = 0;
@@ -2033,13 +2014,6 @@ int specialdmg; /* blessed and/or silver bonus against various things */
     }
 
     mdef->mstrategy &= ~STRAT_WAITFORU; /* in case player is very fast */
-    /* dmg_by_player_scale knob: scale the hero's melee damage (1.0 = vanilla).
-     * v1 covers the primary weapon/melee path here in hmon_hitmon. */
-    if (nle_tuning.dmg_by_player_scale != 1.0) {
-        tmp = (int) ((double) tmp * nle_tuning.dmg_by_player_scale + 0.5);
-        if (tmp < 0)
-            tmp = 0;
-    }
     mdef->mhp -= tmp;
     if (DEADMONSTER(mdef)) {
         if (mdef->mtame && !cansee(mdef->mx, mdef->my)) {
@@ -2138,9 +2112,11 @@ gulpum(mdef, mattk)
 register struct monst *mdef;
 register struct attack *mattk;
 {
-    /* Msgbuf migrated to nle_ctx_t (per-env). nomovemsg stores
-     * a pointer into msgbuf; with per-env storage that pointer is stable
-     * for the env's own subsequent step (it was racy across envs before). */
+#ifdef LINT /* static char msgbuf[BUFSZ]; */
+    char msgbuf[BUFSZ];
+#else
+    static char msgbuf[BUFSZ]; /* for nomovemsg */
+#endif
     register int tmp;
     register int dam = d((int) mattk->damn, (int) mattk->damd);
     boolean fatal_gulp;
@@ -2246,7 +2222,7 @@ register struct attack *mattk;
                         if (Slow_digestion)
                             tmp *= 2;
                         nomul(-tmp);
-                        current_nle_ctx->multi_reason = "digesting something";
+                        multi_reason = "digesting something";
                         nomovemsg = msgbuf;
                     } else
                         pline1(msgbuf);
@@ -2748,7 +2724,7 @@ register struct monst *mon;
             break;
         if (!Upolyd)
             break; /* No extra attacks if no longer a monster */
-        if (current_nle_ctx->multi < 0)
+        if (multi < 0)
             break; /* If paralyzed while attacking, i.e. floating eye */
     }
     /* return value isn't used, but make it match hitum()'s */
@@ -2919,7 +2895,7 @@ boolean wep_was_destroyed;
                     } else {
                         You("are frozen by %s gaze!", s_suffix(mon_nam(mon)));
                         nomul((ACURR(A_WIS) > 12 || rn2(4)) ? -tmp : -127);
-                        current_nle_ctx->multi_reason = "frozen by a monster's gaze";
+                        multi_reason = "frozen by a monster's gaze";
                         nomovemsg = 0;
                     }
                 } else {
@@ -2934,7 +2910,7 @@ boolean wep_was_destroyed;
                 You("are frozen by %s!", mon_nam(mon));
                 nomovemsg = You_can_move_again;
                 nomul(-tmp);
-                current_nle_ctx->multi_reason = "frozen by a monster";
+                multi_reason = "frozen by a monster";
                 exercise(A_DEX, FALSE);
             }
             break;

@@ -6,10 +6,6 @@
 /* various code that was replicated in *main.c */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffer */
-#define pbar (current_nle_ctx->s_allmain_pbar)
 #include <ctype.h>
 
 #ifndef NO_SIGNAL
@@ -74,13 +70,13 @@ boolean resuming;
     }
     context.botlx = TRUE; /* for STATUS_HILITES */
     update_inventory(); /* for perm_invent */
-    if (resuming) { /* current_nle_ctx->restoring old game */
+    if (resuming) { /* restoring old game */
         read_engr_at(u.ux, u.uy); /* subset of pickup() */
     }
 
     (void) encumber_msg(); /* in case they auto-picked up something */
-    if (current_nle_ctx->defer_see_monsters) {
-        current_nle_ctx->defer_see_monsters = FALSE;
+    if (defer_see_monsters) {
+        defer_see_monsters = FALSE;
         see_monsters();
     }
     initrack();
@@ -89,10 +85,10 @@ boolean resuming;
     youmonst.movement = NORMAL_SPEED; /* give the hero some movement points */
     context.move = 0;
 
-    current_nle_ctx->program_state.in_moveloop = 1;
+    program_state.in_moveloop = 1;
     for (;;) {
 #ifdef SAFERHANGUP
-        if (current_nle_ctx->program_state.done_hup)
+        if (program_state.done_hup)
             end_of_input();
 #endif
         get_nh_event();
@@ -132,29 +128,11 @@ boolean resuming;
                        place after movement has been allotted, the new
                        monster effectively loses its first turn */
                     /* Change for NLE: Optionally disable monster spawning */
-                    if (nle_spawn_monsters()) {
-                        int spawn_rate = u.uevent.udemigod ? 25
+                    if (nle_spawn_monsters() && !rn2(u.uevent.udemigod ? 25
                              : (depth(&u.uz) > depth(&stronghold_level)) ? 50
-                               : 70;
-                        boolean do_spawn;
-                        /* ongoing_spawn_scale knob: scale periodic spawn rate
-                         * (1.0 = vanilla; 0 = never; >1 = more often). At the
-                         * default the rn2 draw is identical to vanilla. */
-                        if (nle_tuning.ongoing_spawn_scale <= 0.0) {
-                            do_spawn = FALSE;
-                        } else {
-                            if (nle_tuning.ongoing_spawn_scale != 1.0) {
-                                spawn_rate = (int) ((double) spawn_rate
-                                    / nle_tuning.ongoing_spawn_scale + 0.5);
-                                if (spawn_rate < 1)
-                                    spawn_rate = 1;
-                            }
-                            do_spawn = !rn2(spawn_rate);
-                        }
-                        if (do_spawn)
-                            (void) makemon((struct permonst *) 0, 0, 0,
-                                           NO_MM_FLAGS);
-                    }
+                               : 70))
+                        (void) makemon((struct permonst *) 0, 0, 0,
+                                       NO_MM_FLAGS);
 
                     /* calculate how much time passed. */
                     if (u.usteed && u.umoved) {
@@ -289,7 +267,7 @@ boolean resuming;
                                  && !rn2(80 - (20 * night())))
                             change = 2;
                         if (change && !Unchanging) {
-                            if (current_nle_ctx->multi >= 0) {
+                            if (multi >= 0) {
                                 stop_occupation();
                                 if (change == 1)
                                     polyself(0);
@@ -300,7 +278,7 @@ boolean resuming;
                         }
                     }
 
-                    if (Searching && current_nle_ctx->multi >= 0)
+                    if (Searching && multi >= 0)
                         (void) dosearch0(1);
                     if (Warning)
                         warnreveal();
@@ -336,8 +314,8 @@ boolean resuming;
                         under_ground(0);
 
                     /* when immobile, count is in turns */
-                    if (current_nle_ctx->multi < 0) {
-                        if (++current_nle_ctx->multi == 0) { /* finished yet? */
+                    if (multi < 0) {
+                        if (++multi == 0) { /* finished yet? */
                             unmul((char *) 0);
                             /* if unmul caused a level change, take it now */
                             if (u.utotype)
@@ -400,7 +378,7 @@ boolean resuming;
 
         context.move = 1;
 
-        if (current_nle_ctx->multi >= 0 && occupation) {
+        if (multi >= 0 && occupation) {
 #if defined(MICRO) || defined(WIN32)
             abort_lev = 0;
             if (kbhit()) {
@@ -423,7 +401,7 @@ boolean resuming;
                 reset_eat();
             }
 #if defined(MICRO) || defined(WIN32)
-            if (!(++current_nle_ctx->occtime % 7))
+            if (!(++occtime % 7))
                 display_nhwindow(WIN_MAP, FALSE);
 #endif
             continue;
@@ -439,25 +417,25 @@ boolean resuming;
 
         u.umoved = FALSE;
 
-        if (current_nle_ctx->multi > 0) {
+        if (multi > 0) {
             lookaround();
-            if (!current_nle_ctx->multi) {
-                /* lookaround may clear current_nle_ctx->multi */
+            if (!multi) {
+                /* lookaround may clear multi */
                 context.move = 0;
                 if (flags.time)
                     context.botl = TRUE;
                 continue;
             }
             if (context.mv) {
-                if (current_nle_ctx->multi < COLNO && !--current_nle_ctx->multi)
+                if (multi < COLNO && !--multi)
                     context.travel = context.travel1 = context.mv =
                         context.run = 0;
                 domove();
             } else {
-                --current_nle_ctx->multi;
+                --multi;
                 rhack(save_cm);
             }
-        } else if (current_nle_ctx->multi == 0) {
+        } else if (multi == 0) {
 #ifdef MAIL
             ckmailstatus();
 #endif
@@ -473,7 +451,7 @@ boolean resuming;
             vision_recalc(0); /* vision! */
         /* when running in non-tport mode, this gets done through domove() */
         if ((!context.run || flags.runmode == RUN_TPORT)
-            && (current_nle_ctx->multi && (!context.travel ? !(current_nle_ctx->multi % 7) : !(moves % 7L)))) {
+            && (multi && (!context.travel ? !(multi % 7) : !(moves % 7L)))) {
             if (flags.time && context.run)
                 context.botl = TRUE;
             /* [should this be flush_screen() instead?] */
@@ -538,17 +516,11 @@ int wtcap;
                 heal = 1;
 
             if (heal) {
-                /* hp_regen_scale knob: scale HP recovered per regen tick. */
-                if (nle_tuning.hp_regen_scale != 1.0) {
-                    heal = (int) ((double) heal * nle_tuning.hp_regen_scale + 0.5);
-                    if (heal < 0)
-                        heal = 0;
-                }
                 context.botl = TRUE;
                 u.uhp += heal;
                 if (u.uhp > u.uhpmax)
                     u.uhp = u.uhpmax;
-                /* stop voluntary current_nle_ctx->multi-turn activity if now fully healed */
+                /* stop voluntary multi-turn activity if now fully healed */
                 reached_full = (u.uhp == u.uhpmax);
             }
         }
@@ -568,7 +540,7 @@ stop_occupation()
         context.botl = TRUE; /* in case u.uhs changed */
         nomul(0);
         pushch(0);
-    } else if (current_nle_ctx->multi >= 0) {
+    } else if (multi >= 0) {
         nomul(0);
     }
 }
@@ -674,7 +646,7 @@ newgame()
 #ifdef INSURANCE
     save_currentstate();
 #endif
-    current_nle_ctx->program_state.something_worth_saving++; /* useful data now exists */
+    program_state.something_worth_saving++; /* useful data now exists */
 
     /* Success! */
     welcome(TRUE);
@@ -684,12 +656,12 @@ newgame()
 /* show "welcome [back] to nethack" message at program startup */
 void
 welcome(new_game)
-boolean new_game; /* false => current_nle_ctx->restoring an old game */
+boolean new_game; /* false => restoring an old game */
 {
     char buf[BUFSZ];
     boolean currentgend = Upolyd ? u.mfemale : flags.female;
 
-    /* skip "welcome back" if current_nle_ctx->restoring a doomed character */
+    /* skip "welcome back" if restoring a doomed character */
     if (!new_game && Upolyd && ugenocided()) {
         /* death via self-genocide is pending */
         pline("You're back, but you still feel %s inside.", udeadinside());
@@ -723,7 +695,7 @@ boolean new_game; /* false => current_nle_ctx->restoring an old game */
 STATIC_DCL void
 do_positionbar()
 {
-    /* Pbar migrated to nle_ctx_t */
+    static char pbar[COLNO];
     char *p;
 
     p = pbar;
@@ -779,7 +751,7 @@ STATIC_DCL void
 interrupt_multi(msg)
 const char *msg;
 {
-    if (current_nle_ctx->multi > 0 && !context.travel && !context.run) {
+    if (multi > 0 && !context.travel && !context.run) {
         nomul(0);
         if (flags.verbose && msg)
             Norep("%s", msg);

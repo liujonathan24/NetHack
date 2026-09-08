@@ -9,12 +9,6 @@
  *      code for monsters.
  */
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* File-static migrated to nle_ctx_t (note British
- * spelling 'propellor'). Defined mid-file in vanilla; macro is hoisted
- * to TU scope per the migration pattern. */
-#define propellor (current_nle_ctx->s_propellor)
 
 STATIC_DCL void FDECL(give_may_advance_msg, (int));
 STATIC_DCL boolean FDECL(could_advance, (int));
@@ -68,7 +62,7 @@ STATIC_VAR NEARDATA const char *const barehands_or_martial[] = {
                ? barehands_or_martial[martial_bonus()]  \
                : odd_skill_names[-skill_names_indices[type]])
 
-static const char kebabable[] = { S_XORN, S_DRAGON, S_JABBERWOCK,
+static NEARDATA const char kebabable[] = { S_XORN, S_DRAGON, S_JABBERWOCK,
                                            S_NAGA, S_GIANT,  '\0' };
 
 STATIC_OVL void
@@ -491,7 +485,7 @@ int x;
 }
 
 /* TODO: have monsters use aklys' throw-and-return */
-static const int rwep[] = {
+static NEARDATA const int rwep[] = {
     DWARVISH_SPEAR, SILVER_SPEAR, ELVEN_SPEAR, SPEAR, ORCISH_SPEAR, JAVELIN,
     SHURIKEN, YA, SILVER_ARROW, ELVEN_ARROW, ARROW, ORCISH_ARROW,
     CROSSBOW_BOLT, SILVER_DAGGER, ELVEN_DAGGER, DAGGER, ORCISH_DAGGER, KNIFE,
@@ -499,13 +493,13 @@ static const int rwep[] = {
     /* BOOMERANG, */ CREAM_PIE
 };
 
-static const int pwep[] = { HALBERD,       BARDICHE, SPETUM,
+static NEARDATA const int pwep[] = { HALBERD,       BARDICHE, SPETUM,
                                      BILL_GUISARME, VOULGE,   RANSEUR,
                                      GUISARME,      GLAIVE,   LUCERN_HAMMER,
                                      BEC_DE_CORBIN, FAUCHARD, PARTISAN,
                                      LANCE };
 
-/* propellor migrated to current_nle_ctx->s_propellor. */
+static struct obj *propellor;
 
 /* select a ranged weapon for the monster */
 struct obj *
@@ -982,7 +976,7 @@ boolean verbose;
     /* if hero is wielding this towel, don't give "you begin bashing
        with your wet towel" message on next attack with it */
     if (obj == uwep)
-        current_nle_ctx->unweapon = !is_wet_towel(obj);
+        unweapon = !is_wet_towel(obj);
 }
 
 /* decrease a towel's wetness */
@@ -1011,7 +1005,7 @@ boolean verbose;
     /* if hero is wielding this towel and it is now dry, give "you begin
        bashing with your towel" message on next attack with it */
     if (obj == uwep)
-        current_nle_ctx->unweapon = !is_wet_towel(obj);
+        unweapon = !is_wet_towel(obj);
 }
 
 /* copy the skill level name into the given buffer */

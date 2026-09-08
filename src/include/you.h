@@ -86,9 +86,7 @@ struct u_conduct {     /* number of times... */
     long food;         /* ... or any comestible */
     long gnostic;      /* used prayer, priest, or altar */
     long weaphit;      /* hit a monster with a weapon */
-    long killcount;    /* killed a monster yourself (renamed from
-                          'killer' so the `killer` token can become
-                          a macro pointing at per-env kinfo struct). */
+    long killer;       /* killed a monster yourself */
     long literate;     /* read something (other than BotD) */
     long polypiles;    /* polymorphed an object */
     long polyselfs;    /* transformed yourself */
@@ -169,8 +167,7 @@ struct Role {
 };
 
 extern const struct Role roles[]; /* table of available roles */
-/* urole — per-env role description migrated to nle_ctx_t. */
-#define urole (*(struct Role *) current_nle_ctx->s_urole_p)
+extern struct Role urole;
 #define Role_if(X) (urole.malenum == (X))
 #define Role_switch (urole.malenum)
 
@@ -222,8 +219,7 @@ struct Race {
 };
 
 extern const struct Race races[]; /* Table of available races */
-/* urace — per-env race description migrated to nle_ctx_t. */
-#define urace (*(struct Race *) current_nle_ctx->s_urace_p)
+extern struct Race urace;
 #define Race_if(X) (urace.malenum == (X))
 #define Race_switch (urace.malenum)
 

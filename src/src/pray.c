@@ -3,15 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env prayer-in-flight state. Were three
- * file-statics (p_aligntyp, p_trouble, p_type) set when prayer started
- * and read when the deferred prayer_done callback fired; across envs
- * one env's prayer could complete with another env's god. */
-#define p_aligntyp (current_nle_ctx->s_p_aligntyp)
-#define p_trouble  (current_nle_ctx->s_p_trouble)
-#define p_type     (current_nle_ctx->s_p_type)
 
 STATIC_PTR int NDECL(prayer_done);
 STATIC_DCL struct obj *NDECL(worst_cursed_item);
@@ -56,8 +47,10 @@ static const char *godvoices[] = {
     "booms out", "thunders", "rings out", "booms",
 };
 
-/* values calculated when prayer starts, and used when completed
- * — migrated to nle_ctx_t; see macros at top of file. */
+/* values calculated when prayer starts, and used when completed */
+static aligntyp p_aligntyp;
+static int p_trouble;
+static int p_type; /* (-1)-3: (-1)=really naughty, 3=really good */
 
 #define PIOUS 20
 #define DEVOUT 14
@@ -344,7 +337,7 @@ int trouble;
     int i;
     struct obj *otmp = 0;
     const char *what = (const char *) 0;
-    static const char leftglow[] = "Your left ring softly glows",
+    static NEARDATA const char leftglow[] = "Your left ring softly glows",
                                rightglow[] = "Your right ring softly glows";
 
     switch (trouble) {
@@ -1155,7 +1148,7 @@ aligntyp g_align;
             break;
         }
         case 5: {
-            static const char msg[] =
+            static NEARDATA const char msg[] =
                 "\"and thus I grant thee the gift of %s!\"";
 
             godvoice(u.ualign.type,
@@ -1245,7 +1238,7 @@ boolean bless_water;
     register long changed = 0;
     boolean other = FALSE, bc_known = !(Blind || Hallucination);
 
-    for (otmp = level.objs[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
+    for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
         /* turn water into (un)holy water */
         if (otmp->otyp == POT_WATER
             && (bless_water ? !otmp->blessed : !otmp->cursed)) {
@@ -1333,7 +1326,7 @@ register struct obj *otmp;
 int
 dosacrifice()
 {
-    static const char cloud_of_smoke[] =
+    static NEARDATA const char cloud_of_smoke[] =
         "A cloud of %s smoke surrounds you...";
     register struct obj *otmp;
     int value = 0, pm;
@@ -1434,7 +1427,7 @@ dosacrifice()
                         dmon->mpeaceful = TRUE;
                     You("are terrified, and unable to move.");
                     nomul(-3);
-                    current_nle_ctx->multi_reason = "being terrified of a demon";
+                    multi_reason = "being terrified of a demon";
                     nomovemsg = 0;
                 } else
                     pline_The("%s.", demonless_msg);
@@ -1873,7 +1866,7 @@ dopray()
         }
     }
     nomul(-3);
-    current_nle_ctx->multi_reason = "praying";
+    multi_reason = "praying";
     nomovemsg = "You finish your prayer.";
     afternmv = prayer_done;
 
@@ -2082,7 +2075,7 @@ doturn()
      *  the brief paralysis?]
      */
     nomul(-(5 - ((u.ulevel - 1) / 6))); /* -5 .. -1 */
-    current_nle_ctx->multi_reason = "trying to turn the monsters";
+    multi_reason = "trying to turn the monsters";
     nomovemsg = You_can_move_again;
     return 1;
 }
@@ -2269,7 +2262,7 @@ int dx, dy;
     int nx, ny;
     long count = 0L;
 
-    for (otmp = level.objs[u.ux + dx][u.uy + dy]; otmp;
+    for (otmp = level.objects[u.ux + dx][u.uy + dy]; otmp;
          otmp = otmp->nexthere) {
         if (otmp->otyp == BOULDER)
             count += otmp->quan;

@@ -6,17 +6,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h" /* for config.h+extern.h */
-#include "nle.h" /* current_nle_ctx — per-env return buffers */
-
-/* Per-env return buffers. ing_suffix_buf was named `buf` in
- * ing_suffix(); yyyymmddhhmmss_datestr was named `datestr` in
- * yyyymmddhhmmss(). Renamed to unique tags so the file-level macros don't
- * collide with the other locals/statics in this TU (esp. `buf` is used in
- * many other helpers, and `datestr` also appears inside an #if-0 block). */
-#define ing_suffix_buf         (current_nle_ctx->s_hacklib_ing_suffix_buf)
-#define yyyymmddhhmmss_datestr (current_nle_ctx->s_hacklib_datestr_yyyymmddhhmmss)
-#define visctrl_nbuf           (current_nle_ctx->s_hacklib_visctrl_nbuf)
-#define visctrl_bufs           (current_nle_ctx->s_hacklib_visctrl_bufs)
 /*=
     Assorted 'small' utility routines.  They're virtually independent of
     NetHack, except that rounddiv may call panic().  setrandom calls one
@@ -337,34 +326,34 @@ ing_suffix(s)
 const char *s;
 {
     static const char vowel[] = "aeiouwy";
-    /* Ing_suffix_buf (was `buf`) migrated to nle_ctx_t */
+    static char buf[BUFSZ];
     char onoff[10];
     char *p;
 
-    Strcpy(ing_suffix_buf, s);
-    p = eos(ing_suffix_buf);
+    Strcpy(buf, s);
+    p = eos(buf);
     onoff[0] = *p = *(p + 1) = '\0';
-    if ((p >= &ing_suffix_buf[3] && !strcmpi(p - 3, " on"))
-        || (p >= &ing_suffix_buf[4] && !strcmpi(p - 4, " off"))
-        || (p >= &ing_suffix_buf[5] && !strcmpi(p - 5, " with"))) {
-        p = rindex(ing_suffix_buf, ' ');
+    if ((p >= &buf[3] && !strcmpi(p - 3, " on"))
+        || (p >= &buf[4] && !strcmpi(p - 4, " off"))
+        || (p >= &buf[5] && !strcmpi(p - 5, " with"))) {
+        p = rindex(buf, ' ');
         Strcpy(onoff, p);
         *p = '\0';
     }
-    if (p >= &ing_suffix_buf[3] && !index(vowel, *(p - 1))
+    if (p >= &buf[3] && !index(vowel, *(p - 1))
         && index(vowel, *(p - 2)) && !index(vowel, *(p - 3))) {
         /* tip -> tipp + ing */
         *p = *(p - 1);
         *(p + 1) = '\0';
-    } else if (p >= &ing_suffix_buf[2] && !strcmpi(p - 2, "ie")) { /* vie -> vy + ing */
+    } else if (p >= &buf[2] && !strcmpi(p - 2, "ie")) { /* vie -> vy + ing */
         *(p - 2) = 'y';
         *(p - 1) = '\0';
-    } else if (p >= &ing_suffix_buf[1] && *(p - 1) == 'e') /* grease -> greas + ing */
+    } else if (p >= &buf[1] && *(p - 1) == 'e') /* grease -> greas + ing */
         *(p - 1) = '\0';
-    Strcat(ing_suffix_buf, "ing");
+    Strcat(buf, "ing");
     if (onoff[0])
-        Strcat(ing_suffix_buf, onoff);
-    return ing_suffix_buf;
+        Strcat(buf, onoff);
+    return buf;
 }
 
 /* trivial text encryption routine (see makedefs) */
@@ -430,12 +419,11 @@ char *
 visctrl(c)
 char c;
 {
-    /* Visctrl_bufs (pool) + visctrl_nbuf (rotating idx, was
-     * `nbuf`) migrated to nle_ctx_t. Both fields are zero-initialized in
-     * fresh ctxs, matching the original `static int nbuf = 0;` semantics. */
+    Static char visctrl_bufs[VISCTRL_NBUF][5];
+    static int nbuf = 0;
     register int i = 0;
-    char *ccc = visctrl_bufs[visctrl_nbuf];
-    visctrl_nbuf = (visctrl_nbuf + 1) % VISCTRL_NBUF;
+    char *ccc = visctrl_bufs[nbuf];
+    nbuf = (nbuf + 1) % VISCTRL_NBUF;
 
     if ((uchar) c & 0200) {
         ccc[i++] = 'M';
@@ -863,10 +851,8 @@ extern struct tm *FDECL(localtime, (time_t *));
 #endif
 STATIC_DCL struct tm *NDECL(getlt);
 
-/* NLE hack for seeds. Storage was 'unsigned long nle_seeds[2]' here; it
- * moved into nle_ctx_t (refactor stage 2) and is now accessed via the
- * current ctx. Kept in sync with rnglist_fn[] in src/rnd.c. */
-#include "nle.h"
+/* NLE hack for seeds. Should stay in sync with rnglist in src/rnd.c. */
+unsigned long nle_seeds[] = {0L, 0L};
 extern int FDECL(whichrng, (int FDECL((*fn), (int))));
 
 /* Sets the seed for the random number generator */
@@ -877,7 +863,7 @@ set_random(seed, fn)
 unsigned long seed;
 int FDECL((*fn), (int));
 {
-    current_nle_ctx->seeds[whichrng(fn)] = seed;
+    nle_seeds[whichrng(fn)] = seed;
     init_isaac64(seed, fn);
 }
 
@@ -889,7 +875,7 @@ set_random(seed, fn)
 unsigned long seed;
 int FDECL((*fn), (int)) UNUSED;
 {
-    current_nle_ctx->seeds[whichrng(fn)] = seed;
+    nle_seeds[whichrng(fn)] = seed;
     /* the types are different enough here that sweeping the different
      * routine names into one via #defines is even more confusing
      */
@@ -923,7 +909,7 @@ int FDECL((*fn), (int));
 {
    /* only reseed if we are certain that the seed generation is unguessable
     * by the players. */
-    if (current_nle_ctx->has_strong_rngseed)
+    if (has_strong_rngseed)
         init_random(fn);
 }
 
@@ -1016,7 +1002,7 @@ yyyymmddhhmmss(date)
 time_t date;
 {
     long datenum;
-    /* Yyyymmddhhmmss_datestr (was `datestr`) migrated to nle_ctx_t */
+    static char datestr[15];
     struct tm *lt;
 
     if (date == 0)
@@ -1034,10 +1020,10 @@ time_t date;
         datenum = (long) lt->tm_year + 2000L;
     else
         datenum = (long) lt->tm_year + 1900L;
-    Sprintf(yyyymmddhhmmss_datestr, "%04ld%02d%02d%02d%02d%02d", datenum,
-            lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-    debugpline1("yyyymmddhhmmss() produced date string %s", yyyymmddhhmmss_datestr);
-    return yyyymmddhhmmss_datestr;
+    Sprintf(datestr, "%04ld%02d%02d%02d%02d%02d", datenum, lt->tm_mon + 1,
+            lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
+    debugpline1("yyyymmddhhmmss() produced date string %s", datestr);
+    return datestr;
 }
 
 time_t

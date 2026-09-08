@@ -4,11 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* File-statics migrated to nle_ctx_t. */
-#define obj_zapped  (current_nle_ctx->s_obj_zapped)
-#define poly_zapped (current_nle_ctx->s_poly_zapped)
 
 /* Disintegration rays have special treatment; corpses are never left.
  * But the routine which calculates the damage is separate from the routine
@@ -17,11 +12,13 @@
  */
 #define MAGIC_COOKIE 1000
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+static NEARDATA boolean obj_zapped;
+static NEARDATA int poly_zapped;
 
-/* M_using per-env (was extern from muse.c). */
-#define m_using (current_nle_ctx->s_m_using)
+extern boolean notonhead; /* for long worms */
+
+/* kludge to use mondied instead of killed */
+extern boolean m_using;
 
 STATIC_DCL void FDECL(polyuse, (struct obj *, int, int));
 STATIC_DCL void FDECL(create_polymon, (struct obj *, int));
@@ -1904,7 +1901,7 @@ struct obj *obj, *otmp;
                 (void) boxlock(obj, otmp);
 
             if (obj_shudders(obj)) {
-                boolean cover = ((obj == level.objs[u.ux][u.uy])
+                boolean cover = ((obj == level.objects[u.ux][u.uy])
                                  && u.uundetected
                                  && hides_under(youmonst.data));
 
@@ -2113,17 +2110,17 @@ schar zz;
     }
 
     poly_zapped = -1;
-    for (otmp = level.objs[tx][ty]; otmp; otmp = next_obj) {
+    for (otmp = level.objects[tx][ty]; otmp; otmp = next_obj) {
         next_obj = otmp->nexthere;
         /* for zap downwards, don't hit object poly'd hero is hiding under */
-        if (zz > 0 && u.uundetected && otmp == level.objs[u.ux][u.uy]
+        if (zz > 0 && u.uundetected && otmp == level.objects[u.ux][u.uy]
             && hides_under(youmonst.data))
             continue;
 
         hitanything += (*fhito)(otmp, obj);
     }
     if (poly_zapped >= 0)
-        create_polymon(level.objs[tx][ty], poly_zapped);
+        create_polymon(level.objects[tx][ty], poly_zapped);
 
     return hitanything;
 }
@@ -2214,7 +2211,7 @@ struct obj *otmp;
     useup(otmp);
 }
 
-static const char zap_syms[] = { WAND_CLASS, 0 };
+static NEARDATA const char zap_syms[] = { WAND_CLASS, 0 };
 
 /* 'z' command (or 'y' if numbed_pad==-1) */
 int
@@ -2997,7 +2994,7 @@ struct obj *obj; /* wand or spell */
          */
         if (u.uundetected && hides_under(youmonst.data)) {
             int hitit = 0;
-            otmp = level.objs[u.ux][u.uy];
+            otmp = level.objects[u.ux][u.uy];
 
             if (otmp)
                 hitit = bhito(otmp, obj);
@@ -3516,7 +3513,7 @@ struct obj **pobj; /* object tossed/used, set to NULL
 }
 
 /* process thrown boomerang, which travels a curving path...
- * A current_nle_ctx->multi-shot volley ought to have all missiles in flight at once,
+ * A multi-shot volley ought to have all missiles in flight at once,
  * but we're called separately for each one.  We terminate the volley
  * early on a failed catch since continuing to throw after being hit
  * is too obviously silly.
@@ -3915,7 +3912,7 @@ boolean u_caused;
     char buf1[BUFSZ], buf2[BUFSZ];
     int cnt = 0;
 
-    for (obj = level.objs[x][y]; obj; obj = obj2) {
+    for (obj = level.objects[x][y]; obj; obj = obj2) {
         obj2 = obj->nexthere;
         if (obj->oclass == SCROLL_CLASS || obj->oclass == SPBOOK_CLASS
             || (obj->oclass == FOOD_CLASS
@@ -4462,7 +4459,7 @@ short exploding_wand_typ;
                     msgtxt = "Some water evaporates.";
             } else {
                 rangemod -= 3;
-                lev->typ = ROOM, lev->rmflags = 0;
+                lev->typ = ROOM, lev->flags = 0;
                 t = maketrap(x, y, PIT);
                 if (t)
                     t->tseen = 1;
@@ -4579,7 +4576,7 @@ short exploding_wand_typ;
                     Norep("The %s melt.", defsyms[S_bars].explanation);
                 if (*in_rooms(x, y, SHOPBASE)) {
                     /* in case we ever have a shop bounded by bars */
-                    lev->typ = ROOM, lev->rmflags = 0;
+                    lev->typ = ROOM, lev->flags = 0;
                     if (see_it)
                         newsym(x, y);
                     add_damage(x, y, (type >= 0) ? SHOP_BARS_COST : 0L);
@@ -5231,7 +5228,7 @@ STATIC_OVL void
 wishcmdassist(triesleft)
 int triesleft;
 {
-    static const char *
+    static NEARDATA const char *
         wishinfo[] = {
   "Wish details:",
   "",

@@ -86,7 +86,7 @@ extern
 #ifdef HANGUPHANDLING
     volatile
 #endif
-    struct window_procs windowprocs;
+    NEARDATA struct window_procs windowprocs;
 
 /*
  * If you wish to only support one window system and not use procedure

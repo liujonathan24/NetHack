@@ -4,12 +4,10 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "mfndpos.h"
 #include "artifact.h"
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+extern boolean notonhead;
 
 STATIC_DCL void FDECL(watch_on_duty, (struct monst *));
 STATIC_DCL int FDECL(disturb, (struct monst *));
@@ -423,7 +421,7 @@ register struct monst *mtmp;
 
     /* some monsters teleport */
     if (mtmp->mflee && !rn2(40) && can_teleport(mdat) && !mtmp->iswiz
-        && !level.lflags.noteleport) {
+        && !level.flags.noteleport) {
         (void) rloc(mtmp, TRUE);
         return 0;
     }
@@ -664,14 +662,14 @@ register struct monst *mtmp;
     return (tmp == 2);
 }
 
-static const char practical[] = { WEAPON_CLASS, ARMOR_CLASS,
+static NEARDATA const char practical[] = { WEAPON_CLASS, ARMOR_CLASS,
                                            GEM_CLASS, FOOD_CLASS, 0 };
-static const char magical[] = { AMULET_CLASS, POTION_CLASS,
+static NEARDATA const char magical[] = { AMULET_CLASS, POTION_CLASS,
                                          SCROLL_CLASS, WAND_CLASS,
                                          RING_CLASS,   SPBOOK_CLASS, 0 };
-static const char indigestion[] = { BALL_CLASS, ROCK_CLASS, 0 };
-static const char boulder_class[] = { ROCK_CLASS, 0 };
-static const char gem_class[] = { GEM_CLASS, 0 };
+static NEARDATA const char indigestion[] = { BALL_CLASS, ROCK_CLASS, 0 };
+static NEARDATA const char boulder_class[] = { ROCK_CLASS, 0 };
+static NEARDATA const char gem_class[] = { GEM_CLASS, 0 };
 
 boolean
 itsstuck(mtmp)
@@ -1088,7 +1086,7 @@ register int after;
     if (is_minion(ptr) || is_rider(ptr))
         flag |= ALLOW_SANCT;
     /* unicorn may not be able to avoid hero on a noteleport level */
-    if (is_unicorn(ptr) && !level.lflags.noteleport)
+    if (is_unicorn(ptr) && !level.flags.noteleport)
         flag |= NOTONL;
     if (passes_walls(ptr))
         flag |= (ALLOW_WALL | ALLOW_ROCK);
@@ -1121,10 +1119,10 @@ register int after;
         chi = -1;
         nidist = dist2(nix, niy, gx, gy);
         /* allow monsters be shortsighted on some levels for balance */
-        if (!mtmp->mpeaceful && level.lflags.shortsighted
+        if (!mtmp->mpeaceful && level.flags.shortsighted
             && nidist > (couldsee(nix, niy) ? 144 : 36) && appr == 1)
             appr = 0;
-        if (is_unicorn(ptr) && level.lflags.noteleport) {
+        if (is_unicorn(ptr) && level.flags.noteleport) {
             /* on noteleport levels, perhaps we cannot avoid hero */
             for (i = 0; i < cnt; i++)
                 if (!(info[i] & NOTONL))
@@ -1505,7 +1503,7 @@ dissolve_bars(x, y)
 register int x, y;
 {
     levl[x][y].typ = (Is_special(&u.uz) || *in_rooms(x, y, 0)) ? ROOM : CORR;
-    levl[x][y].rmflags = 0;
+    levl[x][y].flags = 0;
     newsym(x, y);
 }
 

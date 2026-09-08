@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #ifndef LONG_MAX
 #include <limits.h>
 #endif
@@ -166,16 +165,9 @@ register int exper, rexp;
 {
     long oldexp = u.uexp,
          oldrexp = u.urexp,
-         newexp, rexpincr, newrexp;
-
-    /* xp_gain_scale knob: scale experience (and the score component) gained. */
-    if (nle_tuning.xp_gain_scale != 1.0) {
-        exper = (int) ((double) exper * nle_tuning.xp_gain_scale + 0.5);
-        rexp = (int) ((double) rexp * nle_tuning.xp_gain_scale + 0.5);
-    }
-    newexp = oldexp + exper;
-    rexpincr = 4 * exper + rexp;
-    newrexp = oldrexp + rexpincr;
+         newexp = oldexp + exper,
+         rexpincr = 4 * exper + rexp,
+         newrexp = oldrexp + rexpincr;
 
     /* cap experience and score on wraparound */
     if (newexp < 0 && exper > 0)
