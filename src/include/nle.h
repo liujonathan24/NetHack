@@ -32,6 +32,7 @@ typedef struct nle_globals {
 
     boolean done;
     nle_obs *observation;
+    struct nh_globals *g; /* per-env game globals (nh_globals.h) */
 } nle_ctx_t;
 
 /*

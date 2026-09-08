@@ -81,7 +81,7 @@ int
 shuffled_glyph(int glyph)
 {
     if glyph_is_normal_object (glyph) {
-        return GLYPH_OBJ_OFF + objects[glyph_to_obj(glyph)].oc_descr_idx;
+        return GLYPH_OBJ_OFF + NH_G(objects)[glyph_to_obj(glyph)].oc_descr_idx;
     }
     return glyph;
 }
@@ -260,12 +260,12 @@ void
 NetHackRL::fill_obs(nle_obs *obs)
 {
     if (obs->program_state) {
-        obs->program_state[0] = program_state.gameover;
-        obs->program_state[1] = program_state.panicking;
-        obs->program_state[2] = program_state.exiting;
-        obs->program_state[3] = program_state.in_moveloop;
-        obs->program_state[4] = program_state.in_impossible;
-        obs->program_state[5] = program_state.something_worth_saving;
+        obs->program_state[0] = NH_G(program_state).gameover;
+        obs->program_state[1] = NH_G(program_state).panicking;
+        obs->program_state[2] = NH_G(program_state).exiting;
+        obs->program_state[3] = NH_G(program_state).in_moveloop;
+        obs->program_state[4] = NH_G(program_state).in_impossible;
+        obs->program_state[5] = NH_G(program_state).something_worth_saving;
         // TODO: Consider adding something_worth_saving.
         // Also consider adding ttyDisplay->inmore ...
     }
@@ -292,7 +292,7 @@ NetHackRL::fill_obs(nle_obs *obs)
         obs->misc[2] = xwaitingforspace;
     }
 
-    if ((!program_state.something_worth_saving && !program_state.in_moveloop)
+    if ((!NH_G(program_state).something_worth_saving && !NH_G(program_state).in_moveloop)
         || !iflags.window_inited) {
         // Game not yet started (!something_worth_saving && !in_moveloop -- we
         // need both as something_worth_saving also becomes false in

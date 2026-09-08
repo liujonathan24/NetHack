@@ -281,18 +281,19 @@ nle_putchar(int c)
  * Used in place of xputs from termcap.c. Not using
  * the tputs padding logic from tclib.c.
  */
-void
+int
 nle_xputs(const char *str)
 {
     int c;
     const char *p = str;
 
     if (!p || !*p)
-        return;
+        return 0;
 
     while ((c = *p++) != '\0') {
         nle_putchar(c);
     }
+    return 0;
 }
 
 /*
@@ -420,6 +421,10 @@ nle_ctx_t *
 nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
           nle_settings *settings_p)
 {
+    /* per-env game state: one struct nh_globals per context */
+    struct nh_globals *g = (struct nh_globals *) malloc(nh_globals_size());
+    nh_globals_init(g);
+
     /* Set CO and LI to control ttyrec output size. */
     CO = NLE_TERM_CO;
     LI = NLE_TERM_LI;
@@ -427,6 +432,7 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     settings = *settings_p;
 
     nle_ctx_t *nle = init_nle(ttyrec, obs);
+    nle->g = g;
     nle_seeds_init = seed_init;
 
     nle->stack = create_fcontext_stack(STACK_SIZE);
@@ -458,6 +464,7 @@ nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
     current_nle_ctx = nle;
+    nh_g = nle->g;
     nle->observation = obs;
     if (nle->ttyrec) {
         write_ttyrec_header(1, 1);
@@ -501,7 +508,7 @@ nle_end(nle_ctx_t *nle)
     if (!nle->done) {
         /* Reset without closing nethack. Need free memory, etc.
          * this is what nh_terminate in end.c does. I hope it's enough. */
-        if (!program_state.panicking) {
+        if (!NH_G(program_state).panicking) {
             freedynamicdata();
             dlb_cleanup();
         }
@@ -519,6 +526,7 @@ nle_end(nle_ctx_t *nle)
     tmt_close(nle->vterminal);
 
     destroy_fcontext_stack(&nle->stack);
+    free(nle->g);
     free(nle);
 }
 
