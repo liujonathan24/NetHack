@@ -150,6 +150,7 @@ class Model:
     macro_defs: dict = field(default_factory=_dd_list)  # name -> [(file, start, end, text)]
     macro_uses: dict = field(default_factory=_dd_list)  # file -> [(name, start, end)]
     inst_at: dict = field(default_factory=dict)       # (file, start) -> (name, end)
+    inst_def: dict = field(default_factory=dict)      # (file, start) -> file defining the macro used there
     name_refs_at: dict = field(default_factory=_dd_dd_set)  # (file, off) -> name -> {usr}
     types: dict = field(default_factory=dict)         # usr -> TypeDef (hoist candidates)
     tu_files: dict = field(default_factory=dict)      # tu main file -> set(files included)
@@ -270,6 +271,9 @@ class Analyzer:
                     if key not in m.inst_at:
                         m.macro_uses[path].append((c.spelling, c.extent.start.offset, c.extent.end.offset))
                         m.inst_at[key] = (c.spelling, c.extent.end.offset)
+                        d = c.referenced
+                        if d is not None and d.location.file is not None:
+                            m.inst_def[key] = os.path.abspath(d.location.file.name)
         for c in children:
             if c.kind in (CK.MACRO_DEFINITION, CK.MACRO_INSTANTIATION, CK.INCLUSION_DIRECTIVE):
                 continue
@@ -463,11 +467,11 @@ class Analyzer:
         for mn, a, b in uses:
             if a <= name_off:
                 continue
-            defs = m.macro_defs.get(mn, [])
-            if not defs or any(not d[0].endswith(".h") for d in defs):
+            deffile = m.inst_def.get((path, a))
+            if deffile is None or not deffile.endswith(".h"):
                 suffix_private = True
             else:
-                suffix_macro_files.extend(d[0] for d in defs)
+                suffix_macro_files.append(deffile)
         self._suffix_ranges.append((path, toks[ni].end, decl_end, c.get_usr()))
         scope = "local" if in_func else ("static" if c.storage_class == SC.STATIC else "global")
         stmt_has_static = any(t.text == "static" for t in toks[:ni])
@@ -742,7 +746,13 @@ class Analyzer:
                     mac = m.macros.get(name)
                     if mac and mac[0] == td.file:
                         td.deps_macros.append((name, mac[0], mac[1], mac[2], mac[3]))
-        # collisions for macro candidates
+        # collisions for macro candidates. A global's accessor macro lives in
+        # the generated header, i.e. it is visible exactly in the TUs that
+        # include hack.h (and in every header, which may be included by
+        # one); a declaration in a .c that never includes hack.h cannot
+        # clash with it. A static's macro is defined in its own file only.
+        hack_h = os.path.join(m.src_root, "include", "hack.h")
+        hack_tus = {tu for tu, incs in m.tu_files.items() if hack_h in incs}
         for v in m.vars.values():
             if not v.migrate:
                 continue
@@ -753,11 +763,12 @@ class Analyzer:
             coll = []
             own_tu = m.header_tu.get(v.file, v.file)
             own_files = m.tu_files.get(own_tu, set()) | {own_tu, v.file}
-            for kind, path, usr in decls:
+            for kind, path, usr in sorted(decls):
                 if usr == v.usr:
                     continue
                 if v.scope == "static" and path not in own_files:
-                    # a static's macro is defined in its own file only
+                    continue
+                if v.scope == "global" and not path.endswith(".h") and path not in hack_tus:
                     continue
                 coll.append((kind, os.path.relpath(path, m.src_root) if _in_tree(m, path) else path, usr))
             if coll:

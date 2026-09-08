@@ -1526,7 +1526,7 @@ struct obj *obj;
             any = zeroany; /* set all bits to zero */
             start_menu(tmpwin);
             /* use index+1 (cant use 0) as identifier */
-            for (i = num_ok_dungeons = 0; i < NH_G(n_dgns); i++) {
+            for (i = num_ok_dungeons = 0; i < n_dgns; i++) {
                 if (!dungeons[i].dunlev_ureached)
                     continue;
                 any.a_int = i + 1;

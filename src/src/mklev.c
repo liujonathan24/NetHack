@@ -1990,7 +1990,7 @@ xchar x, y;
     }
 
     /* Already set or 2/3 chance of deferring until a later level. */
-    if (source->dnum < NH_G(n_dgns) || (rn2(3) && !wizard))
+    if (source->dnum < n_dgns || (rn2(3) && !wizard))
         return;
 
     if (!(u.uz.dnum == oracle_level.dnum      /* in main dungeon */

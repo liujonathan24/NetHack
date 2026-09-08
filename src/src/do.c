@@ -1407,7 +1407,7 @@ boolean at_stairs, falling, portal;
         for (l_idx = maxledgerno(); l_idx > 0; --l_idx)
             delete_levelfile(l_idx);
         /* mark #overview data for all dungeon branches as uninteresting */
-        for (l_idx = 0; l_idx < NH_G(n_dgns); ++l_idx)
+        for (l_idx = 0; l_idx < n_dgns; ++l_idx)
             remdun_mapseen(l_idx);
     }
 

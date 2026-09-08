@@ -89,7 +89,7 @@ dumpit()
     if (!explicitdebug(__FILE__))
         return;
 
-    for (i = 0; i < NH_G(n_dgns); i++) {
+    for (i = 0; i < n_dgns; i++) {
         fprintf(stderr, "\n#%d \"%s\" (%s):\n", i, DD.dname, DD.proto);
         fprintf(stderr, "    num_dunlevs %d, dunlev_ureached %d\n",
                 DD.num_dunlevs, DD.dunlev_ureached);
@@ -144,9 +144,9 @@ boolean perform_write, free_data;
     int count;
 
     if (perform_write) {
-        bwrite(fd, (genericptr_t) &NH_G(n_dgns), sizeof NH_G(n_dgns));
+        bwrite(fd, (genericptr_t) &n_dgns, sizeof n_dgns);
         bwrite(fd, (genericptr_t) dungeons,
-               sizeof(dungeon) * (unsigned) NH_G(n_dgns));
+               sizeof(dungeon) * (unsigned) n_dgns);
         bwrite(fd, (genericptr_t) &dungeon_topology, sizeof dungeon_topology);
         bwrite(fd, (genericptr_t) tune, sizeof tune);
 
@@ -199,8 +199,8 @@ int fd;
     int count, i;
     mapseen *curr_ms, *last_ms;
 
-    mread(fd, (genericptr_t) &NH_G(n_dgns), sizeof(NH_G(n_dgns)));
-    mread(fd, (genericptr_t) dungeons, sizeof(dungeon) * (unsigned) NH_G(n_dgns));
+    mread(fd, (genericptr_t) &n_dgns, sizeof(n_dgns));
+    mread(fd, (genericptr_t) dungeons, sizeof(dungeon) * (unsigned) n_dgns);
     mread(fd, (genericptr_t) &dungeon_topology, sizeof dungeon_topology);
     mread(fd, (genericptr_t) tune, sizeof tune);
 
@@ -261,7 +261,7 @@ const char *s;
 {
     xchar i;
 
-    for (i = 0; i < NH_G(n_dgns); i++)
+    for (i = 0; i < n_dgns; i++)
         if (!strcmp(dungeons[i].dname, s))
             return i;
 
@@ -737,11 +737,11 @@ init_dungeons()
      * dungeon arrays.
      */
     sp_levchn = (s_level *) 0;
-    Fread((genericptr_t) &NH_G(n_dgns), sizeof(int), 1, dgn_file);
-    if (NH_G(n_dgns) >= MAXDUNGEON)
+    Fread((genericptr_t) &n_dgns, sizeof(int), 1, dgn_file);
+    if (n_dgns >= MAXDUNGEON)
         panic("init_dungeons: too many dungeons");
 
-    for (i = 0; i < NH_G(n_dgns); i++) {
+    for (i = 0; i < n_dgns; i++) {
         Fread((genericptr_t) &pd.tmpdungeon[i], sizeof(struct tmpdungeon), 1,
               dgn_file);
         if (!wizard && pd.tmpdungeon[i].chance
@@ -756,7 +756,7 @@ init_dungeons()
             for (j = 0; j < pd.tmpdungeon[i].branches; j++)
                 Fread((genericptr_t) &pd.tmpbranch[cb],
                       sizeof(struct tmpbranch), 1, dgn_file);
-            NH_G(n_dgns)--;
+            n_dgns--;
             i--;
             continue;
         }
@@ -917,7 +917,7 @@ init_dungeons()
                         break;
 
                 if (br)
-                    br->end1.dnum = NH_G(n_dgns);
+                    br->end1.dnum = n_dgns;
                 /* adjust the branch's position on the list */
                 insert_branch(br, TRUE);
             }
@@ -989,7 +989,7 @@ boolean noquest;
     d_level tmp;
     register schar ret = 0;
 
-    for (i = 0; i < NH_G(n_dgns); i++) {
+    for (i = 0; i < n_dgns; i++) {
         if (noquest && i == quest_dnum)
             continue;
         tmp.dlevel = dungeons[i].dunlev_ureached;
@@ -1024,8 +1024,8 @@ d_level *lev;
 xchar
 maxledgerno()
 {
-    return (xchar) (dungeons[NH_G(n_dgns) - 1].ledger_start
-                    + dungeons[NH_G(n_dgns) - 1].num_dunlevs);
+    return (xchar) (dungeons[n_dgns - 1].ledger_start
+                    + dungeons[n_dgns - 1].num_dunlevs);
 }
 
 /* return the dungeon that this ledgerno exists in */
@@ -1036,7 +1036,7 @@ xchar ledgerno;
     register int i;
 
     /* find i such that (i->base + 1) <= ledgerno <= (i->base + i->count) */
-    for (i = 0; i < NH_G(n_dgns); i++)
+    for (i = 0; i < n_dgns; i++)
         if (dungeons[i].ledger_start < ledgerno
             && ledgerno <= dungeons[i].ledger_start + dungeons[i].num_dunlevs)
             return (xchar) i;
@@ -1714,7 +1714,7 @@ struct dungeon *dptr;
     if (idx != knox_level.dnum)
         return FALSE;
     for (br = NH_G(s_dungeon_c_branches); br; br = br->next)
-        if (br->end1.dnum == NH_G(n_dgns) && br->end2.dnum == idx)
+        if (br->end1.dnum == n_dgns && br->end2.dnum == idx)
             return TRUE;
     return FALSE;
 }
@@ -1848,7 +1848,7 @@ xchar *rdgn;
         lchoices.menuletter = 'a';
     }
 
-    for (i = 0, dptr = dungeons; i < NH_G(n_dgns); i++, dptr++) {
+    for (i = 0, dptr = dungeons; i < n_dgns; i++, dptr++) {
         if (bymenu && In_endgame(&u.uz) && i != astral_level.dnum)
             continue;
         unplaced = unplaced_floater(dptr);
@@ -1926,7 +1926,7 @@ xchar *rdgn;
 
     /* Print out floating branches (if any). */
     for (first = TRUE, br = NH_G(s_dungeon_c_branches); br; br = br->next) {
-        if (br->end1.dnum == NH_G(n_dgns)) {
+        if (br->end1.dnum == n_dgns) {
             if (first) {
                 putstr(win, 0, "");
                 putstr(win, 0, "Floating branches");
@@ -3146,5 +3146,5 @@ nh_init_dungeon_c(void)
 int
 nle_n_dgns()
 {
-    return NH_G(n_dgns);
+    return n_dgns;
 }

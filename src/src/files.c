@@ -627,7 +627,7 @@ clearlocks()
         sethanguphandler((void FDECL((*), (int) )) SIG_IGN);
 #endif
         /* can't access maxledgerno() before dungeons are created -dlc */
-        for (x = (NH_G(n_dgns) ? maxledgerno() : 0); x >= 0; x--)
+        for (x = (n_dgns ? maxledgerno() : 0); x >= 0; x--)
             delete_levelfile(x); /* not all levels need be present */
     }
 #endif /* ?PC_LOCKING,&c */

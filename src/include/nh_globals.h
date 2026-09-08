@@ -1237,6 +1237,7 @@ void nh_init_worn_c(void) __attribute__((weak));
 #define multi (nh_g->multi)
 #define multi_reason (nh_g->multi_reason)
 #define mydogs (nh_g->mydogs)
+#define n_dgns (nh_g->n_dgns)
 #define nhUse_dummy (nh_g->nhUse_dummy)
 #define nle_seeds (nh_g->nle_seeds)
 #define nomovemsg (nh_g->nomovemsg)
