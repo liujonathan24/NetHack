@@ -13,10 +13,8 @@ import subprocess
 import sys
 from collections import Counter, defaultdict
 
-from . import clangutil as cu
-
-
 def _analyzer(args):
+    from . import clangutil as cu
     from .analyze import Analyzer
     allcc = cu.load_compile_commands(os.path.join(args.build, "compile_commands.json"))
     cmd = lambda e: e.get("command") or " ".join(e.get("arguments", []))

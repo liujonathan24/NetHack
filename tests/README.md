@@ -16,7 +16,13 @@ Run the long over-time hang proof (a few minutes by default; pass seconds to ove
 - `test_no_hang`           — N envs across T threads keep making forward progress for the
                              whole duration; a stalled env fails the test (exit 1).
 - `test_multi_env`         — multi-env churn stress for the per-env refactor.
-- `verify_determinism_all` — golden-trajectory determinism.
+- `test_interleave`       — per-env isolation: K seeded games replayed solo, then interleaved
+                             (with one game replaced mid-run), then through a snapshot/restore;
+                             every step's observation hash must be identical. Any state shared
+                             between environments shows up here.
+- `check_writable.sh`     — (tools/collect_globals) the built objects contain no writable
+                             symbol outside the whitelist: proof that no game state is shared.
+- `verify_determinism_all` — golden-trajectory determinism (needs the external PufferLib wrapper).
 
 ## Crash breadcrumbs
 On a hard crash, the sentinel writes `${NLE_CRASH_DIR:-.}/nle_crash_<pid>.txt` and the

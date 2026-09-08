@@ -463,11 +463,11 @@ class Analyzer:
         for mn, a, b in uses:
             if a <= name_off:
                 continue
-            d = m.macros.get(mn)
-            if d is None or not d[0].endswith(".h"):
+            defs = m.macro_defs.get(mn, [])
+            if not defs or any(not d[0].endswith(".h") for d in defs):
                 suffix_private = True
             else:
-                suffix_macro_files.append(d[0])
+                suffix_macro_files.extend(d[0] for d in defs)
         self._suffix_ranges.append((path, toks[ni].end, decl_end, c.get_usr()))
         scope = "local" if in_func else ("static" if c.storage_class == SC.STATIC else "global")
         stmt_has_static = any(t.text == "static" for t in toks[:ni])

@@ -5,3 +5,6 @@ test_multi_env
 core.*
 src/build-wasm/
 src/build-ref/
+__pycache__/
+*.pyc
+nle_crash_*.txt
