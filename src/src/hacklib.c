@@ -306,18 +306,18 @@ char *
 s_suffix(s)
 const char *s;
 {
-    Static char buf[BUFSZ];
+    /* buf: per-env nh_g->l_hacklib_c_s_suffix_buf */
 
-    Strcpy(buf, s);
-    if (!strcmpi(buf, "it")) /* it -> its */
-        Strcat(buf, "s");
-    else if (!strcmpi(buf, "you")) /* you -> your */
-        Strcat(buf, "r");
-    else if (*(eos(buf) - 1) == 's') /* Xs -> Xs' */
-        Strcat(buf, "'");
+    Strcpy(NH_G(l_hacklib_c_s_suffix_buf), s);
+    if (!strcmpi(NH_G(l_hacklib_c_s_suffix_buf), "it")) /* it -> its */
+        Strcat(NH_G(l_hacklib_c_s_suffix_buf), "s");
+    else if (!strcmpi(NH_G(l_hacklib_c_s_suffix_buf), "you")) /* you -> your */
+        Strcat(NH_G(l_hacklib_c_s_suffix_buf), "r");
+    else if (*(eos(NH_G(l_hacklib_c_s_suffix_buf)) - 1) == 's') /* Xs -> Xs' */
+        Strcat(NH_G(l_hacklib_c_s_suffix_buf), "'");
     else /* X -> X's */
-        Strcat(buf, "'s");
-    return buf;
+        Strcat(NH_G(l_hacklib_c_s_suffix_buf), "'s");
+    return NH_G(l_hacklib_c_s_suffix_buf);
 }
 
 /* construct a gerund (a verb formed by appending "ing" to a noun) */
@@ -326,34 +326,34 @@ ing_suffix(s)
 const char *s;
 {
     static const char vowel[] = "aeiouwy";
-    static char buf[BUFSZ];
+    /* buf: per-env nh_g->l_hacklib_c_ing_suffix_buf */
     char onoff[10];
     char *p;
 
-    Strcpy(buf, s);
-    p = eos(buf);
+    Strcpy(NH_G(l_hacklib_c_ing_suffix_buf), s);
+    p = eos(NH_G(l_hacklib_c_ing_suffix_buf));
     onoff[0] = *p = *(p + 1) = '\0';
-    if ((p >= &buf[3] && !strcmpi(p - 3, " on"))
-        || (p >= &buf[4] && !strcmpi(p - 4, " off"))
-        || (p >= &buf[5] && !strcmpi(p - 5, " with"))) {
-        p = rindex(buf, ' ');
+    if ((p >= &NH_G(l_hacklib_c_ing_suffix_buf)[3] && !strcmpi(p - 3, " on"))
+        || (p >= &NH_G(l_hacklib_c_ing_suffix_buf)[4] && !strcmpi(p - 4, " off"))
+        || (p >= &NH_G(l_hacklib_c_ing_suffix_buf)[5] && !strcmpi(p - 5, " with"))) {
+        p = rindex(NH_G(l_hacklib_c_ing_suffix_buf), ' ');
         Strcpy(onoff, p);
         *p = '\0';
     }
-    if (p >= &buf[3] && !index(vowel, *(p - 1))
+    if (p >= &NH_G(l_hacklib_c_ing_suffix_buf)[3] && !index(vowel, *(p - 1))
         && index(vowel, *(p - 2)) && !index(vowel, *(p - 3))) {
         /* tip -> tipp + ing */
         *p = *(p - 1);
         *(p + 1) = '\0';
-    } else if (p >= &buf[2] && !strcmpi(p - 2, "ie")) { /* vie -> vy + ing */
+    } else if (p >= &NH_G(l_hacklib_c_ing_suffix_buf)[2] && !strcmpi(p - 2, "ie")) { /* vie -> vy + ing */
         *(p - 2) = 'y';
         *(p - 1) = '\0';
-    } else if (p >= &buf[1] && *(p - 1) == 'e') /* grease -> greas + ing */
+    } else if (p >= &NH_G(l_hacklib_c_ing_suffix_buf)[1] && *(p - 1) == 'e') /* grease -> greas + ing */
         *(p - 1) = '\0';
-    Strcat(buf, "ing");
+    Strcat(NH_G(l_hacklib_c_ing_suffix_buf), "ing");
     if (onoff[0])
-        Strcat(buf, onoff);
-    return buf;
+        Strcat(NH_G(l_hacklib_c_ing_suffix_buf), onoff);
+    return NH_G(l_hacklib_c_ing_suffix_buf);
 }
 
 /* trivial text encryption routine (see makedefs) */
@@ -419,11 +419,11 @@ char *
 visctrl(c)
 char c;
 {
-    Static char visctrl_bufs[VISCTRL_NBUF][5];
-    static int nbuf = 0;
+    /* visctrl_bufs: per-env nh_g->l_hacklib_c_visctrl_visctrl_bufs */
+    /* nbuf: per-env nh_g->l_hacklib_c_visctrl_nbuf */
     register int i = 0;
-    char *ccc = visctrl_bufs[nbuf];
-    nbuf = (nbuf + 1) % VISCTRL_NBUF;
+    char *ccc = NH_G(l_hacklib_c_visctrl_visctrl_bufs)[NH_G(l_hacklib_c_visctrl_nbuf)];
+    NH_G(l_hacklib_c_visctrl_nbuf) = (NH_G(l_hacklib_c_visctrl_nbuf) + 1) % VISCTRL_NBUF;
 
     if ((uchar) c & 0200) {
         ccc[i++] = 'M';
@@ -551,10 +551,10 @@ char *
 sitoa(n)
 int n;
 {
-    Static char buf[13];
+    /* buf: per-env nh_g->l_hacklib_c_sitoa_buf */
 
-    Sprintf(buf, (n < 0) ? "%d" : "+%d", n);
-    return buf;
+    Sprintf(NH_G(l_hacklib_c_sitoa_buf), (n < 0) ? "%d" : "+%d", n);
+    return NH_G(l_hacklib_c_sitoa_buf);
 }
 
 /* return the sign of a number: -1, 0, or 1 */
@@ -852,7 +852,9 @@ extern struct tm *FDECL(localtime, (time_t *));
 STATIC_DCL struct tm *NDECL(getlt);
 
 /* NLE hack for seeds. Should stay in sync with rnglist in src/rnd.c. */
-unsigned long nle_seeds[] = {0L, 0L};
+/* nle_seeds: per-env, see nh_globals.h */
+const unsigned long nh_tmpl_nle_seeds[] =
+{0L, 0L};
 extern int FDECL(whichrng, (int FDECL((*fn), (int))));
 
 /* Sets the seed for the random number generator */
@@ -1002,7 +1004,7 @@ yyyymmddhhmmss(date)
 time_t date;
 {
     long datenum;
-    static char datestr[15];
+    /* datestr: per-env nh_g->l_hacklib_c_yyyymmddhhmmss_datestr */
     struct tm *lt;
 
     if (date == 0)
@@ -1020,10 +1022,10 @@ time_t date;
         datenum = (long) lt->tm_year + 2000L;
     else
         datenum = (long) lt->tm_year + 1900L;
-    Sprintf(datestr, "%04ld%02d%02d%02d%02d%02d", datenum, lt->tm_mon + 1,
+    Sprintf(NH_G(l_hacklib_c_yyyymmddhhmmss_datestr), "%04ld%02d%02d%02d%02d%02d", datenum, lt->tm_mon + 1,
             lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-    debugpline1("yyyymmddhhmmss() produced date string %s", datestr);
-    return datestr;
+    debugpline1("yyyymmddhhmmss() produced date string %s", NH_G(l_hacklib_c_yyyymmddhhmmss_datestr));
+    return NH_G(l_hacklib_c_yyyymmddhhmmss_datestr);
 }
 
 time_t

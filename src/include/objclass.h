@@ -78,19 +78,19 @@ struct objclass {
 
     Bitfield(oc_material, 5); /* one of obj_material_types */
 
-#define is_organic(otmp) (objects[otmp->otyp].oc_material <= WOOD)
+#define is_organic(otmp) (NH_G(objects)[otmp->otyp].oc_material <= WOOD)
 #define is_metallic(otmp)                    \
-    (objects[otmp->otyp].oc_material >= IRON \
-     && objects[otmp->otyp].oc_material <= MITHRIL)
+    (NH_G(objects)[otmp->otyp].oc_material >= IRON \
+     && NH_G(objects)[otmp->otyp].oc_material <= MITHRIL)
 
 /* primary damage: fire/rust/--- */
 /* is_flammable(otmp), is_rottable(otmp) in mkobj.c */
-#define is_rustprone(otmp) (objects[otmp->otyp].oc_material == IRON)
+#define is_rustprone(otmp) (NH_G(objects)[otmp->otyp].oc_material == IRON)
 
 /* secondary damage: rot/acid/acid */
 #define is_corrodeable(otmp)                   \
-    (objects[otmp->otyp].oc_material == COPPER \
-     || objects[otmp->otyp].oc_material == IRON)
+    (NH_G(objects)[otmp->otyp].oc_material == COPPER \
+     || NH_G(objects)[otmp->otyp].oc_material == IRON)
 
 #define is_damageable(otmp)                                        \
     (is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp) \
@@ -134,8 +134,12 @@ struct objdescr {
     const char *oc_descr; /* description when name unknown */
 };
 
+#ifdef NH_GLOBALS_NONE
 extern NEARDATA struct objclass objects[];
+#endif
+#ifdef NH_GLOBALS_NONE
 extern NEARDATA struct objdescr obj_descr[];
+#endif
 
 /*
  * All objects have a class. Make sure that all classes have a corresponding

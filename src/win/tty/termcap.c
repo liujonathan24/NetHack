@@ -32,11 +32,27 @@ static void NDECL(kill_hilite);
 #endif /* defined(TEXTCOLOR) && defined(TERMLIB) */
 
 /* (see tcap.h) -- nh_CM, nh_ND, nh_CD, nh_HI,nh_HE, nh_US,nh_UE, ul_hack */
-struct tc_lcl_data tc_lcl_data = { 0, 0, 0, 0, 0, 0, 0, FALSE };
+/* tc_lcl_data: per-env nh_g->tc_lcl_data */
+const struct tc_lcl_data nh_tmpl_tc_lcl_data =
+{ 0, 0, 0, 0, 0, 0, 0, FALSE };
 
-STATIC_VAR char *HO, *CL, *CE, *UP, *XD, *BC, *SO, *SE, *TI, *TE;
-STATIC_VAR char *VS, *VE;
-STATIC_VAR char *ME, *MR, *MB, *MH, *MD;
+#define HO (nh_g->s_termcap_c_HO)
+#define CL (nh_g->s_termcap_c_CL)
+#define CE (nh_g->s_termcap_c_CE)
+#define UP (nh_g->s_termcap_c_UP)
+#define XD (nh_g->s_termcap_c_XD)
+#define BC (nh_g->s_termcap_c_BC)
+#define SO (nh_g->s_termcap_c_SO)
+#define SE (nh_g->s_termcap_c_SE)
+#define TI (nh_g->s_termcap_c_TI)
+#define TE (nh_g->s_termcap_c_TE)
+#define VS (nh_g->s_termcap_c_VS)
+#define VE (nh_g->s_termcap_c_VE)
+#define ME (nh_g->s_termcap_c_ME)
+#define MR (nh_g->s_termcap_c_MR)
+#define MB (nh_g->s_termcap_c_MB)
+#define MH (nh_g->s_termcap_c_MH)
+#define MD (nh_g->s_termcap_c_MD)
 
 #ifdef TERMLIB
 boolean dynamic_HIHE = FALSE;
@@ -49,19 +65,21 @@ STATIC_VAR char tbuf[512];
 #ifdef TOS
 const char *hilites[CLR_MAX]; /* terminal escapes for the various colors */
 #else /* TOS */
-char NEARDATA *hilites[CLR_MAX]; /* terminal escapes for the various colors */
+/* hilites: per-env, see nh_globals.h */ /* terminal escapes for the various colors */
 #endif /* TOS */
 #endif /* TEXTCOLOR */
 
 static char *KS = (char *) 0, *KE = (char *) 0; /* keypad sequences */
-static char nullstr[] = "";
+#define nullstr (nh_g->s_termcap_c_nullstr)
+const char nh_tmpl_s_termcap_c_nullstr[] =
+"";
 
 #if defined(ASCIIGRAPH) && !defined(NO_TERMS)
 extern boolean HE_resets_AS;
 #endif /* defined(ASCIIGRAPH) && !defined(NO_TERMS) */
 
 #ifndef TERMLIB
-STATIC_VAR char tgotobuf[20];
+#define tgotobuf (nh_g->s_termcap_c_tgotobuf)
 #ifdef TOS
 #define tgoto(fmt, x, y) (Sprintf(tgotobuf, fmt, y + ' ', x + ' '), tgotobuf)
 #else /* TOS */
@@ -689,7 +707,7 @@ backsp()
 void
 tty_nhbell()
 {
-    if (flags.silent)
+    if (NH_G(flags).silent)
         return;
     (void) putchar('\007'); /* curx does not change */
     (void) fflush(stdout);
@@ -1116,7 +1134,9 @@ kill_hilite()
 #endif /* TEXTCOLOR && TERMLIB */
 
 #if defined(TEXTCOLOR) && !defined(TERMLIB) && defined(ANSI_DEFAULT)
-static char adef_nilstring[] = "";
+#define adef_nilstring (nh_g->s_termcap_c_adef_nilstring)
+const char nh_tmpl_s_termcap_c_adef_nilstring[] =
+"";
 
 static void
 init_hilite()
@@ -1185,7 +1205,9 @@ kill_hilite()
 }
 #endif /* TEXTCOLOR && !TERMLIB && ANSI_DEFAULT */
 
-static char nulstr[] = "";
+#define nulstr (nh_g->s_termcap_c_nulstr)
+const char nh_tmpl_s_termcap_c_nulstr[] =
+"";
 
 static char *
 s_atr2str(n)

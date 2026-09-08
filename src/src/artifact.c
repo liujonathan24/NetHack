@@ -14,7 +14,7 @@
  *        the contents, just the total size.
  */
 
-extern boolean notonhead; /* for long worms */
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
 
 #define get_artifact(o) \
     (((o) && (o)->oartifact) ? &artilist[(int) (o)->oartifact] : 0)
@@ -42,12 +42,12 @@ STATIC_DCL int FDECL(count_surround_traps, (int, int));
 #define FATAL_DAMAGE_MODIFIER 200
 
 /* coordinate effects from spec_dbon() with messages in artifact_hit() */
-STATIC_OVL int spec_dbon_applies = 0;
+#define spec_dbon_applies (nh_g->s_artifact_c_spec_dbon_applies)
 
 /* flags including which artifacts have already been created */
-static boolean artiexist[1 + NROFARTIFACTS + 1];
+#define artiexist (nh_g->s_artifact_c_artiexist)
 /* and a discovery list for them (no dummy first entry here) */
-STATIC_OVL xchar artidisco[NROFARTIFACTS];
+#define artidisco (nh_g->s_artifact_c_artidisco)
 
 STATIC_DCL void NDECL(hack_artifacts);
 STATIC_DCL boolean FDECL(attacks, (int, struct obj *));
@@ -57,7 +57,7 @@ STATIC_OVL void
 hack_artifacts()
 {
     struct artifact *art;
-    int alignmnt = aligns[flags.initalign].value;
+    int alignmnt = aligns[NH_G(flags).initalign].value;
 
     /* Fix up the alignments of "gift" artifacts */
     for (art = artilist + 1; art->otyp; art++)
@@ -131,7 +131,7 @@ aligntyp alignment; /* target alignment, or A_NONE */
     int m, n, altn;
     boolean by_align = (alignment != A_NONE);
     short o_typ = (by_align || !otmp) ? 0 : otmp->otyp;
-    boolean unique = !by_align && otmp && objects[o_typ].oc_unique;
+    boolean unique = !by_align && otmp && NH_G(objects)[o_typ].oc_unique;
     short eligible[NROFARTIFACTS];
 
     n = altn = 0;    /* no candidates found yet */
@@ -338,7 +338,7 @@ struct obj *obj;
     const struct artifact *arti;
 
     /* any silver object is effective */
-    if (objects[obj->otyp].oc_material == SILVER)
+    if (NH_G(objects)[obj->otyp].oc_material == SILVER)
         return TRUE;
     /* non-silver artifacts with bonus against undead also are effective */
     arti = get_artifact(obj);
@@ -359,7 +359,7 @@ const char *name;
     register const struct artifact *a;
     const char *aname, *odesc, *other;
     boolean sametype[NUM_OBJECTS];
-    int i, lo, hi, otyp = otmp->otyp, ocls = objects[otyp].oc_class;
+    int i, lo, hi, otyp = otmp->otyp, ocls = NH_G(objects)[otyp].oc_class;
 
     if (!*name)
         return FALSE;
@@ -373,14 +373,14 @@ const char *name;
        or share the same pool of shuffled descriptions */
     (void) memset((genericptr_t) sametype, 0, sizeof sametype); /* FALSE */
     sametype[otyp] = TRUE;
-    if (!objects[otyp].oc_name_known
-        && (odesc = OBJ_DESCR(objects[otyp])) != 0) {
+    if (!NH_G(objects)[otyp].oc_name_known
+        && (odesc = OBJ_DESCR(NH_G(objects)[otyp])) != 0) {
         obj_shuffle_range(otyp, &lo, &hi);
         for (i = bases[ocls]; i < NUM_OBJECTS; i++) {
-            if (objects[i].oc_class != ocls)
+            if (NH_G(objects)[i].oc_class != ocls)
                 break;
-            if (!objects[i].oc_name_known
-                && (other = OBJ_DESCR(objects[i])) != 0
+            if (!NH_G(objects)[i].oc_name_known
+                && (other = OBJ_DESCR(NH_G(objects)[i])) != 0
                 && (!strcmp(odesc, other) || (i >= lo && i <= hi)))
                 sametype[i] = TRUE;
         }
@@ -449,7 +449,7 @@ boolean being_worn;
 {
     const struct artifact *arti;
 
-    if (being_worn && objects[otmp->otyp].oc_oprop == PROTECTION)
+    if (being_worn && NH_G(objects)[otmp->otyp].oc_oprop == PROTECTION)
         return TRUE;
     arti = get_artifact(otmp);
     if (!arti)
@@ -635,7 +635,7 @@ long wp_mask;
 /* touch_artifact()'s return value isn't sufficient to tell whether it
    dished out damage, and tracking changes to u.uhp, u.mh, Lifesaved
    when trying to avoid second wounding is too cumbersome */
-STATIC_VAR boolean touch_blasted; /* for retouch_object() */
+#define touch_blasted (nh_g->s_artifact_c_touch_blasted) /* for retouch_object() */
 
 /*
  * creature (usually hero) tries to touch (pick up or wield) an artifact obj.
@@ -694,7 +694,7 @@ struct monst *mon;
         touch_blasted = TRUE;
         dmg = d((Antimagic ? 2 : 4), (self_willed ? 10 : 4));
         /* add half (maybe quarter) of the usual silver damage bonus */
-        if (objects[obj->otyp].oc_material == SILVER && Hate_silver)
+        if (NH_G(objects)[obj->otyp].oc_material == SILVER && Hate_silver)
             tmp = rnd(10), dmg += Maybe_Half_Phys(tmp);
         Sprintf(buf, "touching %s", oart->name);
         losehp(dmg, buf, KILLED_BY); /* magic damage, not physical */
@@ -1122,7 +1122,7 @@ char *hittee;              /* target's name: "you" or mon_nam(mdef) */
             shieldeff(youdefend ? u.ux : mdef->mx,
                       youdefend ? u.uy : mdef->my);
         }
-        if ((do_stun || do_confuse) && flags.verbose) {
+        if ((do_stun || do_confuse) && NH_G(flags).verbose) {
             char buf[BUFSZ];
 
             buf[0] = '\0';
@@ -1317,7 +1317,7 @@ int dieroll; /* needed for Magicbane and vorpal blades */
                 *dmgptr = 2 * mdef->mhp + FATAL_DAMAGE_MODIFIER;
                 pline(behead_msg[rn2(SIZE(behead_msg))], wepdesc,
                       mon_nam(mdef));
-                if (Hallucination && !flags.female)
+                if (Hallucination && !NH_G(flags).female)
                     pline("Good job Henry, but that wasn't Anne.");
                 otmp->dknown = TRUE;
                 return TRUE;
@@ -1519,14 +1519,14 @@ struct obj *obj;
         case CREATE_PORTAL: {
             int i, num_ok_dungeons, last_ok_dungeon = 0;
             d_level newlev;
-            extern int n_dgns; /* from dungeon.c */
+            /* n_dgns: per-env, see nh_globals.h */ /* from dungeon.c */
             winid tmpwin = create_nhwindow(NHW_MENU);
             anything any;
 
             any = zeroany; /* set all bits to zero */
             start_menu(tmpwin);
             /* use index+1 (cant use 0) as identifier */
-            for (i = num_ok_dungeons = 0; i < n_dgns; i++) {
+            for (i = num_ok_dungeons = 0; i < NH_G(n_dgns); i++) {
                 if (!dungeons[i].dunlev_ureached)
                     continue;
                 any.a_int = i + 1;
@@ -1732,11 +1732,11 @@ arti_cost(otmp)
 struct obj *otmp;
 {
     if (!otmp->oartifact)
-        return (long) objects[otmp->otyp].oc_cost;
+        return (long) NH_G(objects)[otmp->otyp].oc_cost;
     else if (artilist[(int) otmp->oartifact].cost)
         return artilist[(int) otmp->oartifact].cost;
     else
-        return (100L * (long) objects[otmp->otyp].oc_cost);
+        return (100L * (long) NH_G(objects)[otmp->otyp].oc_cost);
 }
 
 STATIC_OVL uchar
@@ -1768,28 +1768,12 @@ STATIC_OVL unsigned long
 abil_to_spfx(abil)
 long *abil;
 {
-    static const struct abil2spfx_tag {
-        long *abil;
-        unsigned long spfx;
-    } abil2spfx[] = {
-        { &ESearching, SPFX_SEARCH },
-        { &EHalluc_resistance, SPFX_HALRES },
-        { &ETelepat, SPFX_ESP },
-        { &EStealth, SPFX_STLTH },
-        { &ERegeneration, SPFX_REGEN },
-        { &ETeleport_control, SPFX_TCTRL },
-        { &EWarn_of_mon, SPFX_WARN },
-        { &EWarning, SPFX_WARN },
-        { &EEnergy_regeneration, SPFX_EREGEN },
-        { &EHalf_spell_damage, SPFX_HSPDAM },
-        { &EHalf_physical_damage, SPFX_HPHDAM },
-        { &EReflecting, SPFX_REFLECT },
-    };
+    /* abil2spfx: per-env nh_g->l_artifact_c_abil_to_spfx_abil2spfx */
     int k;
 
-    for (k = 0; k < SIZE(abil2spfx); k++) {
-        if (abil2spfx[k].abil == abil)
-            return abil2spfx[k].spfx;
+    for (k = 0; k < SIZE(NH_G(l_artifact_c_abil_to_spfx_abil2spfx)); k++) {
+        if (NH_G(l_artifact_c_abil_to_spfx_abil2spfx)[k].abil == abil)
+            return NH_G(l_artifact_c_abil_to_spfx_abil2spfx)[k].spfx;
     }
     return 0L;
 }
@@ -1876,14 +1860,14 @@ glow_verb(count, ingsfx)
 int count; /* 0 means blind rather than no applicable creatures */
 boolean ingsfx;
 {
-    static char resbuf[20];
+    /* resbuf: per-env nh_g->l_artifact_c_glow_verb_resbuf */
 
-    Strcpy(resbuf, glow_verbs[glow_strength(count)]);
+    Strcpy(NH_G(l_artifact_c_glow_verb_resbuf), glow_verbs[glow_strength(count)]);
     /* ing_suffix() will double the last consonant for all the words
        we're using and none of them should have that, so bypass it */
     if (ingsfx)
-        Strcat(resbuf, "ing");
-    return resbuf;
+        Strcat(NH_G(l_artifact_c_glow_verb_resbuf), "ing");
+    return NH_G(l_artifact_c_glow_verb_resbuf);
 }
 
 /* use for warning "glow" for Sting, Orcrist, and Grimtooth */
@@ -1934,7 +1918,7 @@ boolean loseit;    /* whether to drop it if hero can longer touch it */
     if (touch_artifact(obj, &youmonst)) {
         char buf[BUFSZ];
         int dmg = 0, tmp;
-        boolean ag = (objects[obj->otyp].oc_material == SILVER && Hate_silver),
+        boolean ag = (NH_G(objects)[obj->otyp].oc_material == SILVER && Hate_silver),
                 bane = bane_applies(get_artifact(obj), &youmonst);
 
         /* nothing else to do if hero can successfully handle this object */
@@ -2037,7 +2021,7 @@ void
 retouch_equipment(dropflag)
 int dropflag; /* 0==don't drop, 1==drop all, 2==drop weapon */
 {
-    static int nesting = 0; /* recursion control */
+    /* nesting: per-env nh_g->l_artifact_c_retouch_equipment_nesting */ /* recursion control */
     struct obj *obj;
     boolean dropit, had_gloves = (uarmg != 0);
     int had_rings = (!!uleft + !!uright);
@@ -2053,7 +2037,7 @@ int dropflag; /* 0==don't drop, 1==drop all, 2==drop weapon */
      * using the non-helm alignment rather than the helm alignment
      * which triggered this in the first place.
      */
-    if (!nesting++)
+    if (!NH_G(l_artifact_c_retouch_equipment_nesting)++)
         clear_bypasses(); /* init upon initial entry */
 
     dropit = (dropflag > 0); /* drop all or drop weapon */
@@ -2097,11 +2081,11 @@ int dropflag; /* 0==don't drop, 1==drop all, 2==drop weapon */
     if (had_gloves && !uarmg)
         selftouch("After losing your gloves, you");
 
-    if (!--nesting)
+    if (!--NH_G(l_artifact_c_retouch_equipment_nesting))
         clear_bypasses(); /* reset upon final exit */
 }
 
-static int mkot_trap_warn_count = 0;
+#define mkot_trap_warn_count (nh_g->s_artifact_c_mkot_trap_warn_count)
 
 STATIC_OVL int
 count_surround_traps(x, y)
@@ -2133,7 +2117,7 @@ int x, y;
                 ++ret;
                 continue;
             }
-            for (otmp = level.objects[dx][dy]; otmp; otmp = otmp->nexthere)
+            for (otmp = NH_G(level).objects[dx][dy]; otmp; otmp = otmp->nexthere)
                 if (Is_container(otmp) && otmp->otrapped) {
                     ++ret; /* we're counting locations, so just */
                     break; /* count the first one in a pile     */
@@ -2203,3 +2187,31 @@ struct monst *mon; /* if null, hero assumed */
 }
 
 /*artifact.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_ARTIFACT_C_DONE
+#define NH_INIT_ARTIFACT_C_DONE
+void
+nh_init_artifact_c(void)
+{
+    {
+        struct abil2spfx_tag nh_tmp[12] = {
+        { &ESearching, SPFX_SEARCH },
+        { &EHalluc_resistance, SPFX_HALRES },
+        { &ETelepat, SPFX_ESP },
+        { &EStealth, SPFX_STLTH },
+        { &ERegeneration, SPFX_REGEN },
+        { &ETeleport_control, SPFX_TCTRL },
+        { &EWarn_of_mon, SPFX_WARN },
+        { &EWarning, SPFX_WARN },
+        { &EEnergy_regeneration, SPFX_EREGEN },
+        { &EHalf_spell_damage, SPFX_HSPDAM },
+        { &EHalf_physical_damage, SPFX_HPHDAM },
+        { &EReflecting, SPFX_REFLECT },
+    };
+        memcpy(&(nh_g->l_artifact_c_abil_to_spfx_abil2spfx), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

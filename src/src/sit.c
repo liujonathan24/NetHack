@@ -70,14 +70,14 @@ dosit()
         && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
         register struct obj *obj;
 
-        obj = level.objects[u.ux][u.uy];
+        obj = NH_G(level).objects[u.ux][u.uy];
         if (youmonst.data->mlet == S_DRAGON && obj->oclass == COIN_CLASS) {
             You("coil up around your %shoard.",
                 (obj->quan + money_cnt(invent) < u.ulevel * 1000) ? "meager "
                                                                   : "");
         } else {
             You("sit on %s.", the(xname(obj)));
-            if (!(Is_box(obj) || objects[obj->otyp].oc_material == CLOTH))
+            if (!(Is_box(obj) || NH_G(objects)[obj->otyp].oc_material == CLOTH))
                 pline("It's not very comfortable...");
         }
     } else if (trap != 0 || (u.utrap && (u.utraptype >= TT_LAVA))) {
@@ -209,7 +209,7 @@ dosit()
                 /* Magical voice not affected by deafness */
                 pline("A voice echoes:");
                 verbalize("Thy audience hath been summoned, %s!",
-                          flags.female ? "Dame" : "Sire");
+                          NH_G(flags).female ? "Dame" : "Sire");
                 while (cnt--)
                     (void) makemon(courtmon(), u.ux, u.uy, NO_MM_FLAGS);
                 break;
@@ -218,7 +218,7 @@ dosit()
                 /* Magical voice not affected by deafness */
                 pline("A voice echoes:");
                 verbalize("By thine Imperious order, %s...",
-                          flags.female ? "Dame" : "Sire");
+                          NH_G(flags).female ? "Dame" : "Sire");
                 do_genocide(5); /* REALLY|ONTHRONE, see do_genocide() */
                 break;
             case 9:
@@ -234,7 +234,7 @@ dosit()
                 break;
             case 10:
                 if (Luck < 0 || (HSee_invisible & INTRINSIC)) {
-                    if (level.flags.nommap) {
+                    if (NH_G(level).flags.nommap) {
                         pline("A terrible drone fills your head!");
                         make_confused((HConfusion & TIMEOUT) + (long) rnd(30),
                                       FALSE);
@@ -289,13 +289,13 @@ dosit()
     } else if (lays_eggs(youmonst.data)) {
         struct obj *uegg;
 
-        if (!flags.female) {
+        if (!NH_G(flags).female) {
             pline("%s can't lay eggs!",
                   Hallucination
                       ? "You may think you are a platypus, but a male still"
                       : "Males");
             return 0;
-        } else if (u.uhunger < (int) objects[EGG].oc_nutrition) {
+        } else if (u.uhunger < (int) NH_G(objects)[EGG].oc_nutrition) {
             You("don't have enough energy to lay an egg.");
             return 0;
         } else if (eggs_in_water(youmonst.data)) {
@@ -320,7 +320,7 @@ dosit()
         You("%s an egg.", eggs_in_water(youmonst.data) ? "spawn" : "lay");
         dropy(uegg);
         stackobj(uegg);
-        morehungry((int) objects[EGG].oc_nutrition);
+        morehungry((int) NH_G(objects)[EGG].oc_nutrition);
     } else {
         pline("Having fun sitting on the %s?", surface(u.ux, u.uy));
     }

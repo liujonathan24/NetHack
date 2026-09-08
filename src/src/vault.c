@@ -50,7 +50,7 @@ boolean forceshow;
     register int fcx, fcy, fcbeg;
     struct monst *mtmp;
     boolean sawcorridor = FALSE,
-            silently = program_state.stopprint ? TRUE : FALSE;
+            silently = NH_G(program_state).stopprint ? TRUE : FALSE;
     struct egd *egrd = EGD(grd);
     struct trap *trap;
     struct rm *lev;
@@ -457,7 +457,7 @@ invault()
 
         if (!strcmpi(buf, "Croesus") || !strcmpi(buf, "Kroisos")
             || !strcmpi(buf, "Creosote")) { /* Discworld */
-            if (!mvitals[PM_CROESUS].died) {
+            if (!NH_G(mvitals)[PM_CROESUS].died) {
                 if (Deaf) {
                     if (!Blind)
                         pline("%s waves goodbye.", noit_Monnam(guard));
@@ -1099,7 +1099,7 @@ boolean silently;
     }
     for (coins = invent; coins; coins = nextcoins) {
         nextcoins = coins->nobj;
-        if (objects[coins->otyp].oc_class == COIN_CLASS) {
+        if (NH_G(objects)[coins->otyp].oc_class == COIN_CLASS) {
             freeinv(coins);
             place_object(coins, gx, gy);
             stackobj(coins);

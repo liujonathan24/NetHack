@@ -15,7 +15,7 @@ cost(otmp)
 register struct obj *otmp;
 {
     if (otmp->oclass == SPBOOK_CLASS)
-        return (10 * objects[otmp->otyp].oc_level);
+        return (10 * NH_G(objects)[otmp->otyp].oc_level);
 
     switch (otmp->otyp) {
 #ifdef MAIL
@@ -69,11 +69,11 @@ struct obj *objlist;
     struct obj *otmp;
 
     /* only scrolls */
-    if (objects[scrolltype].oc_class != SCROLL_CLASS)
+    if (NH_G(objects)[scrolltype].oc_class != SCROLL_CLASS)
         return FALSE;
     /* type known implies full discovery; otherwise,
        user-assigned name implies partial discovery */
-    if (objects[scrolltype].oc_name_known || objects[scrolltype].oc_uname)
+    if (NH_G(objects)[scrolltype].oc_name_known || NH_G(objects)[scrolltype].oc_uname)
         return TRUE;
     /* check inventory, including carried containers with known contents */
     for (otmp = objlist; otmp; otmp = otmp->nobj) {
@@ -168,12 +168,12 @@ register struct obj *pen;
     last = bases[(int) paper->oclass + 1] - 1;
     for (i = first; i <= last; i++) {
         /* extra shufflable descr not representing a real object */
-        if (!OBJ_NAME(objects[i]))
+        if (!OBJ_NAME(NH_G(objects)[i]))
             continue;
 
-        if (!strcmpi(OBJ_NAME(objects[i]), nm))
+        if (!strcmpi(OBJ_NAME(NH_G(objects)[i]), nm))
             goto found;
-        if (!strcmpi(OBJ_DESCR(objects[i]), nm)) {
+        if (!strcmpi(OBJ_DESCR(NH_G(objects)[i]), nm)) {
             by_descr = TRUE;
             goto found;
         }
@@ -181,7 +181,7 @@ register struct obj *pen;
            entry, so we don't simply use first match with it;
            also, player might assign same name multiple times
            and if so, we choose one of those matches randomly */
-        if (objects[i].oc_uname && !strcmpi(objects[i].oc_uname, nm)
+        if (NH_G(objects)[i].oc_uname && !strcmpi(NH_G(objects)[i].oc_uname, nm)
             /*
              * First match: chance incremented to 1,
              *   !rn2(1) is 1, we remember i;
@@ -216,7 +216,7 @@ found:
         pline("No mere dungeon adventurer could write that.");
         return 1;
     } else if (by_descr && paper->oclass == SPBOOK_CLASS
-               && !objects[i].oc_name_known) {
+               && !NH_G(objects)[i].oc_name_known) {
         /* can't write unknown spellbooks by description */
         pline("Unfortunately you don't have enough information to go on.");
         return 1;
@@ -285,7 +285,7 @@ found:
      */
 
     /* if known, then either by-name or by-descr works */
-    if (!objects[new_obj->otyp].oc_name_known
+    if (!NH_G(objects)[new_obj->otyp].oc_name_known
         /* else if named, then only by-descr works */
         && !(by_descr && label_known(new_obj->otyp, invent))
         /* and Luck might override after both checks have failed */
@@ -298,7 +298,7 @@ found:
             update_inventory(); /* pen charges */
         } else {
             if (by_descr) {
-                Strcpy(namebuf, OBJ_DESCR(objects[new_obj->otyp]));
+                Strcpy(namebuf, OBJ_DESCR(NH_G(objects)[new_obj->otyp]));
                 wipeout_text(namebuf, (6 + MAXULEV - u.ulevel) / 6, 0);
             } else
                 Sprintf(namebuf, "%s was here!", plname);
@@ -378,7 +378,7 @@ char *outbuf;
     };
     const char *descr, *const *comp_p;
 
-    descr = OBJ_DESCR(objects[booktype]);
+    descr = OBJ_DESCR(NH_G(objects)[booktype]);
     for (comp_p = compositions; *comp_p; ++comp_p)
         if (!strcmpi(descr, *comp_p))
             break;

@@ -25,10 +25,10 @@ struct proto_dungeon {
     int n_brs;  /* number of tmpbranch entries */
 };
 
-int n_dgns;     /* number of dungeons (also used in mklev.c and do.c) */
-static branch *branches = (branch *) 0;        /* dungeon branch list */
+/* n_dgns: per-env nh_g->n_dgns */     /* number of dungeons (also used in mklev.c and do.c) */
+/* branches: per-env nh_g->s_dungeon_c_branches */        /* dungeon branch list */
 
-mapseen *mapseenchn = (struct mapseen *) 0; /*DUNGEON_OVERVIEW*/
+/* mapseenchn: per-env, see nh_globals.h */ /*DUNGEON_OVERVIEW*/
 
 struct lchoice {
     int idx;
@@ -88,7 +88,7 @@ dumpit()
     if (!explicitdebug(__FILE__))
         return;
 
-    for (i = 0; i < n_dgns; i++) {
+    for (i = 0; i < NH_G(n_dgns); i++) {
         fprintf(stderr, "\n#%d \"%s\" (%s):\n", i, DD.dname, DD.proto);
         fprintf(stderr, "    num_dunlevs %d, dunlev_ureached %d\n",
                 DD.num_dunlevs, DD.dunlev_ureached);
@@ -112,7 +112,7 @@ dumpit()
         getchar();
     }
     fprintf(stderr, "\nBranches:\n");
-    for (br = branches; br; br = br->next) {
+    for (br = NH_G(s_dungeon_c_branches); br; br = br->next) {
         fprintf(stderr, "%d: %s, end1 %d %d, end2 %d %d, %s\n", br->id,
                 br->type == BR_STAIR
                     ? "stair"
@@ -143,17 +143,17 @@ boolean perform_write, free_data;
     int count;
 
     if (perform_write) {
-        bwrite(fd, (genericptr_t) &n_dgns, sizeof n_dgns);
+        bwrite(fd, (genericptr_t) &NH_G(n_dgns), sizeof NH_G(n_dgns));
         bwrite(fd, (genericptr_t) dungeons,
-               sizeof(dungeon) * (unsigned) n_dgns);
+               sizeof(dungeon) * (unsigned) NH_G(n_dgns));
         bwrite(fd, (genericptr_t) &dungeon_topology, sizeof dungeon_topology);
         bwrite(fd, (genericptr_t) tune, sizeof tune);
 
-        for (count = 0, curr = branches; curr; curr = curr->next)
+        for (count = 0, curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next)
             count++;
         bwrite(fd, (genericptr_t) &count, sizeof(count));
 
-        for (curr = branches; curr; curr = curr->next)
+        for (curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next)
             bwrite(fd, (genericptr_t) curr, sizeof(branch));
 
         count = maxledgerno();
@@ -172,11 +172,11 @@ boolean perform_write, free_data;
     }
 
     if (free_data) {
-        for (curr = branches; curr; curr = next) {
+        for (curr = NH_G(s_dungeon_c_branches); curr; curr = next) {
             next = curr->next;
             free((genericptr_t) curr);
         }
-        branches = 0;
+        NH_G(s_dungeon_c_branches) = 0;
         for (curr_ms = mapseenchn; curr_ms; curr_ms = next_ms) {
             next_ms = curr_ms->next;
             if (curr_ms->custom)
@@ -198,12 +198,12 @@ int fd;
     int count, i;
     mapseen *curr_ms, *last_ms;
 
-    mread(fd, (genericptr_t) &n_dgns, sizeof(n_dgns));
-    mread(fd, (genericptr_t) dungeons, sizeof(dungeon) * (unsigned) n_dgns);
+    mread(fd, (genericptr_t) &NH_G(n_dgns), sizeof(NH_G(n_dgns)));
+    mread(fd, (genericptr_t) dungeons, sizeof(dungeon) * (unsigned) NH_G(n_dgns));
     mread(fd, (genericptr_t) &dungeon_topology, sizeof dungeon_topology);
     mread(fd, (genericptr_t) tune, sizeof tune);
 
-    last = branches = (branch *) 0;
+    last = NH_G(s_dungeon_c_branches) = (branch *) 0;
 
     mread(fd, (genericptr_t) &count, sizeof(count));
     for (i = 0; i < count; i++) {
@@ -213,7 +213,7 @@ int fd;
         if (last)
             last->next = curr;
         else
-            branches = curr;
+            NH_G(s_dungeon_c_branches) = curr;
         last = curr;
     }
 
@@ -260,7 +260,7 @@ const char *s;
 {
     xchar i;
 
-    for (i = 0; i < n_dgns; i++)
+    for (i = 0; i < NH_G(n_dgns); i++)
         if (!strcmp(dungeons[i].dname, s))
             return i;
 
@@ -299,7 +299,7 @@ struct proto_dungeon *pd;
         branch *br;
         const char *dnam;
 
-        for (br = branches; br; br = br->next) {
+        for (br = NH_G(s_dungeon_c_branches); br; br = br->next) {
             dnam = dungeons[br->end2.dnum].dname;
             if (!strcmpi(dnam, s)
                 || (!strncmpi(dnam, "The ", 4) && !strcmpi(dnam + 4, s)))
@@ -399,7 +399,7 @@ struct proto_dungeon *pd;
     do {
         if (++i >= num)
             i = 0;
-        for (curr = branches; curr; curr = curr->next)
+        for (curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next)
             if ((curr->end1.dnum == dnum && curr->end1.dlevel == base + i)
                 || (curr->end2.dnum == dnum && curr->end2.dlevel == base + i))
                 break;
@@ -441,7 +441,7 @@ boolean extract_first;
     long new_val, curr_val, prev_val;
 
     if (extract_first) {
-        for (prev = 0, curr = branches; curr; prev = curr, curr = curr->next)
+        for (prev = 0, curr = NH_G(s_dungeon_c_branches); curr; prev = curr, curr = curr->next)
             if (curr == new_branch)
                 break;
 
@@ -450,7 +450,7 @@ boolean extract_first;
         if (prev)
             prev->next = curr->next;
         else
-            branches = curr->next;
+            NH_G(s_dungeon_c_branches) = curr->next;
     }
     new_branch->next = (branch *) 0;
 
@@ -466,7 +466,7 @@ boolean extract_first;
     prev = (branch *) 0;
     prev_val = -1;
     new_val = branch_val(new_branch);
-    for (curr = branches; curr;
+    for (curr = NH_G(s_dungeon_c_branches); curr;
          prev_val = curr_val, prev = curr, curr = curr->next) {
         curr_val = branch_val(curr);
         if (prev_val < new_val && new_val <= curr_val)
@@ -476,8 +476,8 @@ boolean extract_first;
         new_branch->next = curr;
         prev->next = new_branch;
     } else {
-        new_branch->next = branches;
-        branches = new_branch;
+        new_branch->next = NH_G(s_dungeon_c_branches);
+        NH_G(s_dungeon_c_branches) = new_branch;
     }
 }
 
@@ -488,7 +488,7 @@ int dgn;
 int child_entry_level;
 struct proto_dungeon *pd;
 {
-    static int branch_id = 0;
+    /* branch_id: per-env nh_g->l_dungeon_c_add_branch_branch_id */
     int branch_num;
     branch *new_branch;
 
@@ -496,7 +496,7 @@ struct proto_dungeon *pd;
     new_branch = (branch *) alloc(sizeof(branch));
     (void) memset((genericptr_t)new_branch, 0, sizeof(branch));
     new_branch->next = (branch *) 0;
-    new_branch->id = branch_id++;
+    new_branch->id = NH_G(l_dungeon_c_add_branch_branch_id)++;
     new_branch->type = correct_branch_type(&pd->tmpbranch[branch_num]);
     new_branch->end1.dnum = parent_dnum(dungeons[dgn].dname, pd);
     new_branch->end1.dlevel = parent_dlevel(dungeons[dgn].dname, pd);
@@ -678,36 +678,7 @@ struct proto_dungeon *pd;
     return FALSE;
 }
 
-struct level_map {
-    const char *lev_name;
-    d_level *lev_spec;
-} level_map[] = { { "air", &air_level },
-                  { "asmodeus", &asmodeus_level },
-                  { "astral", &astral_level },
-                  { "baalz", &baalzebub_level },
-                  { "bigrm", &bigroom_level },
-                  { "castle", &stronghold_level },
-                  { "earth", &earth_level },
-                  { "fakewiz1", &portal_level },
-                  { "fire", &fire_level },
-                  { "juiblex", &juiblex_level },
-                  { "knox", &knox_level },
-                  { "medusa", &medusa_level },
-                  { "oracle", &oracle_level },
-                  { "orcus", &orcus_level },
-                  { "rogue", &rogue_level },
-                  { "sanctum", &sanctum_level },
-                  { "valley", &valley_level },
-                  { "water", &water_level },
-                  { "wizard1", &wiz1_level },
-                  { "wizard2", &wiz2_level },
-                  { "wizard3", &wiz3_level },
-                  { "minend", &mineend_level },
-                  { "soko1", &sokoend_level },
-                  { X_START, &qstart_level },
-                  { X_LOCATE, &qlocate_level },
-                  { X_GOAL, &nemesis_level },
-                  { "", (d_level *) 0 } };
+/* level_map: per-env nh_g->level_map */
 
 /* initialize the "dungeon" structs */
 void
@@ -765,11 +736,11 @@ init_dungeons()
      * dungeon arrays.
      */
     sp_levchn = (s_level *) 0;
-    Fread((genericptr_t) &n_dgns, sizeof(int), 1, dgn_file);
-    if (n_dgns >= MAXDUNGEON)
+    Fread((genericptr_t) &NH_G(n_dgns), sizeof(int), 1, dgn_file);
+    if (NH_G(n_dgns) >= MAXDUNGEON)
         panic("init_dungeons: too many dungeons");
 
-    for (i = 0; i < n_dgns; i++) {
+    for (i = 0; i < NH_G(n_dgns); i++) {
         Fread((genericptr_t) &pd.tmpdungeon[i], sizeof(struct tmpdungeon), 1,
               dgn_file);
         if (!wizard && pd.tmpdungeon[i].chance
@@ -784,7 +755,7 @@ init_dungeons()
             for (j = 0; j < pd.tmpdungeon[i].branches; j++)
                 Fread((genericptr_t) &pd.tmpbranch[cb],
                       sizeof(struct tmpbranch), 1, dgn_file);
-            n_dgns--;
+            NH_G(n_dgns)--;
             i--;
             continue;
         }
@@ -922,7 +893,7 @@ init_dungeons()
      * Find most of the special levels and dungeons so we can access their
      * locations quickly.
      */
-    for (lev_map = level_map; lev_map->lev_name[0]; lev_map++) {
+    for (lev_map = NH_G(level_map); lev_map->lev_name[0]; lev_map++) {
         x = find_level(lev_map->lev_name);
         if (x) {
             assign_level(lev_map->lev_spec, &x->dlevel);
@@ -940,12 +911,12 @@ init_dungeons()
                  * its entrance (end1) has a bogus dnum, namely
                  * n_dgns.
                  */
-                for (br = branches; br; br = br->next)
+                for (br = NH_G(s_dungeon_c_branches); br; br = br->next)
                     if (on_level(&br->end2, &knox_level))
                         break;
 
                 if (br)
-                    br->end1.dnum = n_dgns;
+                    br->end1.dnum = NH_G(n_dgns);
                 /* adjust the branch's position on the list */
                 insert_branch(br, TRUE);
             }
@@ -1017,7 +988,7 @@ boolean noquest;
     d_level tmp;
     register schar ret = 0;
 
-    for (i = 0; i < n_dgns; i++) {
+    for (i = 0; i < NH_G(n_dgns); i++) {
         if (noquest && i == quest_dnum)
             continue;
         tmp.dlevel = dungeons[i].dunlev_ureached;
@@ -1052,8 +1023,8 @@ d_level *lev;
 xchar
 maxledgerno()
 {
-    return (xchar) (dungeons[n_dgns - 1].ledger_start
-                    + dungeons[n_dgns - 1].num_dunlevs);
+    return (xchar) (dungeons[NH_G(n_dgns) - 1].ledger_start
+                    + dungeons[NH_G(n_dgns) - 1].num_dunlevs);
 }
 
 /* return the dungeon that this ledgerno exists in */
@@ -1064,7 +1035,7 @@ xchar ledgerno;
     register int i;
 
     /* find i such that (i->base + 1) <= ledgerno <= (i->base + i->count) */
-    for (i = 0; i < n_dgns; i++)
+    for (i = 0; i < NH_G(n_dgns); i++)
         if (dungeons[i].ledger_start < ledgerno
             && ledgerno <= dungeons[i].ledger_start + dungeons[i].num_dunlevs)
             return (xchar) i;
@@ -1125,7 +1096,7 @@ d_level *lev;
 {
     branch *curr;
 
-    for (curr = branches; curr; curr = curr->next) {
+    for (curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next) {
         if (on_level(lev, &curr->end1) || on_level(lev, &curr->end2))
             return curr;
     }
@@ -1297,7 +1268,7 @@ boolean
 Can_dig_down(lev)
 d_level *lev;
 {
-    return (boolean) (!level.flags.hardfloor
+    return (boolean) (!NH_G(level).flags.hardfloor
                       && !Is_botlevel(lev)
                       && !Invocation_lev(lev));
 }
@@ -1385,7 +1356,7 @@ int levnum;
                  * This assumes that end2 is always the "child" and it is
                  * unique.
                  */
-                for (br = branches; br; br = br->next)
+                for (br = NH_G(s_dungeon_c_branches); br; br = br->next)
                     if (br->end2.dnum == dgn)
                         break;
                 if (!br)
@@ -1437,7 +1408,7 @@ const char *s;
     dnum = dname_to_dnum(s);
 
     /* Find the branch that connects to dungeon i's branch. */
-    for (br = branches; br; br = br->next)
+    for (br = NH_G(s_dungeon_c_branches); br; br = br->next)
         if (br->end2.dnum == dnum)
             break;
 
@@ -1733,8 +1704,8 @@ struct dungeon *dptr;
     /* if other floating branches are added, this will need to change */
     if (idx != knox_level.dnum)
         return FALSE;
-    for (br = branches; br; br = br->next)
-        if (br->end1.dnum == n_dgns && br->end2.dnum == idx)
+    for (br = NH_G(s_dungeon_c_branches); br; br = br->next)
+        if (br->end1.dnum == NH_G(n_dgns) && br->end2.dnum == idx)
             return TRUE;
     return FALSE;
 }
@@ -1828,7 +1799,7 @@ struct lchoice *lchoices_p;
     char buf[BUFSZ];
 
     /* This assumes that end1 is the "parent". */
-    for (br = branches; br; br = br->next) {
+    for (br = NH_G(s_dungeon_c_branches); br; br = br->next) {
         if (br->end1.dnum == dnum && lower_bound < br->end1.dlevel
             && br->end1.dlevel <= upper_bound) {
             Sprintf(buf, "%c %s to %s: %d",
@@ -1868,7 +1839,7 @@ xchar *rdgn;
         lchoices.menuletter = 'a';
     }
 
-    for (i = 0, dptr = dungeons; i < n_dgns; i++, dptr++) {
+    for (i = 0, dptr = dungeons; i < NH_G(n_dgns); i++, dptr++) {
         if (bymenu && In_endgame(&u.uz) && i != astral_level.dnum)
             continue;
         unplaced = unplaced_floater(dptr);
@@ -1945,8 +1916,8 @@ xchar *rdgn;
     }
 
     /* Print out floating branches (if any). */
-    for (first = TRUE, br = branches; br; br = br->next) {
-        if (br->end1.dnum == n_dgns) {
+    for (first = TRUE, br = NH_G(s_dungeon_c_branches); br; br = br->next) {
+        if (br->end1.dnum == NH_G(n_dgns)) {
             if (first) {
                 putstr(win, 0, "");
                 putstr(win, 0, "Floating branches");
@@ -2018,7 +1989,7 @@ d_level *dest;
         return;
 
     /* we only care about forward branches */
-    for (br = branches; br; br = br->next) {
+    for (br = NH_G(s_dungeon_c_branches); br; br = br->next) {
         if (on_level(source, &br->end1) && on_level(dest, &br->end2))
             break;
         if (on_level(source, &br->end2) && on_level(dest, &br->end1))
@@ -2198,7 +2169,7 @@ mapseen *mptr;
     branch *curr;
     int brindx;
 
-    for (brindx = 0, curr = branches; curr; curr = curr->next, ++brindx)
+    for (brindx = 0, curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next, ++brindx)
         if (curr == mptr->br)
             break;
     bwrite(fd, (genericptr_t) &brindx, sizeof brindx);
@@ -2224,7 +2195,7 @@ int fd;
     load = (mapseen *) alloc(sizeof *load);
 
     mread(fd, (genericptr_t) &branchnum, sizeof branchnum);
-    for (brindx = 0, curr = branches; curr; curr = curr->next, ++brindx)
+    for (brindx = 0, curr = NH_G(s_dungeon_c_branches); curr; curr = curr->next, ++brindx)
         if (brindx == branchnum)
             break;
     load->br = curr;
@@ -2638,11 +2609,11 @@ recalc_mapseen()
         }
     }
 
-    if (level.bonesinfo && !mptr->final_resting_place) {
+    if (NH_G(level).bonesinfo && !mptr->final_resting_place) {
         /* clone the bonesinfo so we aren't dependent upon this
            level being in memory */
         bonesaddr = &mptr->final_resting_place;
-        bp = level.bonesinfo;
+        bp = NH_G(level).bonesinfo;
         do {
             *bonesaddr = (struct cemetery *) alloc(sizeof **bonesaddr);
             **bonesaddr = *bp;
@@ -3109,3 +3080,44 @@ boolean printdun;
 }
 
 /*dungeon.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_DUNGEON_C_DONE
+#define NH_INIT_DUNGEON_C_DONE
+void
+nh_init_dungeon_c(void)
+{
+    {
+        struct level_map nh_tmp[27] = { { "air", &air_level },
+                  { "asmodeus", &asmodeus_level },
+                  { "astral", &astral_level },
+                  { "baalz", &baalzebub_level },
+                  { "bigrm", &bigroom_level },
+                  { "castle", &stronghold_level },
+                  { "earth", &earth_level },
+                  { "fakewiz1", &portal_level },
+                  { "fire", &fire_level },
+                  { "juiblex", &juiblex_level },
+                  { "knox", &knox_level },
+                  { "medusa", &medusa_level },
+                  { "oracle", &oracle_level },
+                  { "orcus", &orcus_level },
+                  { "rogue", &rogue_level },
+                  { "sanctum", &sanctum_level },
+                  { "valley", &valley_level },
+                  { "water", &water_level },
+                  { "wizard1", &wiz1_level },
+                  { "wizard2", &wiz2_level },
+                  { "wizard3", &wiz3_level },
+                  { "minend", &mineend_level },
+                  { "soko1", &sokoend_level },
+                  { X_START, &qstart_level },
+                  { X_LOCATE, &qlocate_level },
+                  { X_GOAL, &nemesis_level },
+                  { "", (d_level *) 0 } };
+        memcpy(&(nh_g->level_map), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

@@ -1,0 +1,17 @@
+# Symbols allowed to stay in a writable section of libnethack.
+# One per line, '#' comments; a name matches itself and gcc's `name.N`
+# spellings of function-local statics. Every entry needs a reason.
+
+# --- the one thread-local pointer to the current environment's state ---
+nh_g
+
+# --- process-level state that is identical for every environment (see keep.txt) ---
+ptrbuf          # alloc.c fmt_ptr(): "%p" scratch buffers for panic/debug text
+ptrbufidx       # ditto
+dlb_libs        # dlb.c: the read-only data-library file table, opened once per process
+dlb_procs       # dlb.c: active dlb backend vtable
+dlb_initialized # dlb.c: one-time dlb_init latch
+
+# --- compiler/runtime artifacts ---
+DW.ref.__gxx_personality_v0   # g++ EH personality reference (winrl.cc)
+_ZStL8__ioinit                # libstdc++ iostream init guard (winrl.cc)

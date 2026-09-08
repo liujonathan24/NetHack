@@ -58,7 +58,7 @@ void
 off_msg(otmp)
 struct obj *otmp;
 {
-    if (flags.verbose)
+    if (NH_G(flags).verbose)
         You("were wearing %s.", doname(otmp));
 }
 
@@ -67,7 +67,7 @@ STATIC_OVL void
 on_msg(otmp)
 struct obj *otmp;
 {
-    if (flags.verbose) {
+    if (NH_G(flags).verbose) {
         char how[BUFSZ];
         /* call xname() before obj_is_pname(); formatting obj's name
            might set obj->dknown and that affects the pname test */
@@ -83,7 +83,7 @@ struct obj *otmp;
 
 /* starting equipment gets auto-worn at beginning of new game,
    and we don't want stealth or displacement feedback then */
-static boolean initial_don = FALSE; /* manipulated in set_wear() */
+#define initial_don (nh_g->s_do_wear_c_initial_don) /* manipulated in set_wear() */
 
 /* putting on or taking off an item which confers stealth;
    give feedback and discover it iff stealth state is changing */
@@ -163,7 +163,7 @@ int
 Boots_on(VOID_ARGS)
 {
     long oldprop =
-        u.uprops[objects[uarmf->otyp].oc_oprop].extrinsic & ~WORN_BOOTS;
+        u.uprops[NH_G(objects)[uarmf->otyp].oc_oprop].extrinsic & ~WORN_BOOTS;
 
     switch (uarmf->otyp) {
     case LOW_BOOTS:
@@ -222,7 +222,7 @@ Boots_off(VOID_ARGS)
 {
     struct obj *otmp = uarmf;
     int otyp = otmp->otyp;
-    long oldprop = u.uprops[objects[otyp].oc_oprop].extrinsic & ~WORN_BOOTS;
+    long oldprop = u.uprops[NH_G(objects)[otyp].oc_oprop].extrinsic & ~WORN_BOOTS;
 
     context.takeoff.mask &= ~W_ARMF;
     /* For levitation, float_down() returns if Levitation, so we
@@ -281,7 +281,7 @@ STATIC_PTR int
 Cloak_on(VOID_ARGS)
 {
     long oldprop =
-        u.uprops[objects[uarmc->otyp].oc_oprop].extrinsic & ~WORN_CLOAK;
+        u.uprops[NH_G(objects)[uarmc->otyp].oc_oprop].extrinsic & ~WORN_CLOAK;
 
     switch (uarmc->otyp) {
     case ORCISH_CLOAK:
@@ -337,7 +337,7 @@ Cloak_off(VOID_ARGS)
 {
     struct obj *otmp = uarmc;
     int otyp = otmp->otyp;
-    long oldprop = u.uprops[objects[otyp].oc_oprop].extrinsic & ~WORN_CLOAK;
+    long oldprop = u.uprops[NH_G(objects)[otyp].oc_oprop].extrinsic & ~WORN_CLOAK;
 
     context.takeoff.mask &= ~W_ARMC;
     /* For mummy wrapping, taking it off first resets `Invisible'. */
@@ -501,7 +501,7 @@ int
 Gloves_on(VOID_ARGS)
 {
     long oldprop =
-        u.uprops[objects[uarmg->otyp].oc_oprop].extrinsic & ~WORN_GLOVES;
+        u.uprops[NH_G(objects)[uarmg->otyp].oc_oprop].extrinsic & ~WORN_GLOVES;
 
     switch (uarmg->otyp) {
     case LEATHER_GLOVES:
@@ -553,7 +553,7 @@ int
 Gloves_off(VOID_ARGS)
 {
     long oldprop =
-        u.uprops[objects[uarmg->otyp].oc_oprop].extrinsic & ~WORN_GLOVES;
+        u.uprops[NH_G(objects)[uarmg->otyp].oc_oprop].extrinsic & ~WORN_GLOVES;
     boolean on_purpose = !context.mon_moving && !uarmg->in_use;
 
     context.takeoff.mask &= ~W_ARMG;
@@ -757,7 +757,7 @@ Amulet_on()
         if (orig_sex != poly_gender()) {
             makeknown(AMULET_OF_CHANGE);
             You("are suddenly very %s!",
-                flags.female ? "feminine" : "masculine");
+                NH_G(flags).female ? "feminine" : "masculine");
             context.botl = 1;
         } else
             /* already polymorphed into single-gender monster; only
@@ -765,8 +765,8 @@ Amulet_on()
             You("don't feel like yourself.");
         pline_The("amulet disintegrates!");
         if (orig_sex == poly_gender() && uamul->dknown
-            && !objects[AMULET_OF_CHANGE].oc_name_known
-            && !objects[AMULET_OF_CHANGE].oc_uname)
+            && !NH_G(objects)[AMULET_OF_CHANGE].oc_name_known
+            && !NH_G(objects)[AMULET_OF_CHANGE].oc_uname)
             docall(uamul);
         useup(uamul);
         break;
@@ -861,7 +861,7 @@ boolean observed;
            effect (assumes there is at most one type for each effect),
            mark this ring as having been seen (no need for makeknown);
            otherwise if we have seen this ring, discover its type */
-        if (objects[ringtype].oc_name_known)
+        if (NH_G(objects)[ringtype].oc_name_known)
             ring->dknown = 1;
         else if (ring->dknown)
             makeknown(ringtype);
@@ -873,8 +873,8 @@ boolean observed;
 
     /* make enchantment of charged ring known (might be +0) and update
        perm invent window if we've seen this ring and know its type */
-    if (ring->dknown && objects[ringtype].oc_name_known) {
-        if (objects[ringtype].oc_charged)
+    if (ring->dknown && NH_G(objects)[ringtype].oc_name_known) {
+        if (NH_G(objects)[ringtype].oc_charged)
             ring->known = 1;
         update_inventory();
     }
@@ -884,7 +884,7 @@ void
 Ring_on(obj)
 register struct obj *obj;
 {
-    long oldprop = u.uprops[objects[obj->otyp].oc_oprop].extrinsic;
+    long oldprop = u.uprops[NH_G(objects)[obj->otyp].oc_oprop].extrinsic;
     int old_attrib, which;
     boolean observable;
 
@@ -1007,7 +1007,7 @@ boolean gone;
     boolean observable;
 
     context.takeoff.mask &= ~mask;
-    if (!(u.uprops[objects[obj->otyp].oc_oprop].extrinsic & mask))
+    if (!(u.uprops[NH_G(objects)[obj->otyp].oc_oprop].extrinsic & mask))
         impossible("Strange... I didn't know you had that ring.");
     if (gone)
         setnotworn(obj);
@@ -1137,7 +1137,7 @@ struct obj *otmp;
 
     if (Blind && !already_blind) {
         changed = TRUE;
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             You_cant("see any more.");
         /* set ball&chain variables before the hero goes blind */
         if (Punished)
@@ -1397,7 +1397,8 @@ static NEARDATA const char clothes[] = {
 static NEARDATA const char accessories[] = {
     RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, ARMOR_CLASS, 0
 };
-STATIC_VAR NEARDATA int Narmorpieces, Naccessories;
+#define Narmorpieces (nh_g->s_do_wear_c_Narmorpieces)
+#define Naccessories (nh_g->s_do_wear_c_Naccessories)
 
 /* assign values to Narmorpieces and Naccessories */
 STATIC_OVL void
@@ -1577,8 +1578,8 @@ int
 armoroff(otmp)
 struct obj *otmp;
 {
-    static char offdelaybuf[60];
-    int delay = -objects[otmp->otyp].oc_delay;
+    /* offdelaybuf: per-env nh_g->l_do_wear_c_armoroff_offdelaybuf */
+    int delay = -NH_G(objects)[otmp->otyp].oc_delay;
     const char *what = 0;
 
     if (cursed(otmp))
@@ -1611,11 +1612,11 @@ struct obj *otmp;
             afternmv = Shirt_off;
         } else {
             impossible("Taking off unknown armor (%d: %d), delay %d",
-                       otmp->otyp, objects[otmp->otyp].oc_armcat, delay);
+                       otmp->otyp, NH_G(objects)[otmp->otyp].oc_armcat, delay);
         }
         if (what) {
-            Sprintf(offdelaybuf, "You finish taking off your %s.", what);
-            nomovemsg = offdelaybuf;
+            Sprintf(NH_G(l_do_wear_c_armoroff_offdelaybuf), "You finish taking off your %s.", what);
+            nomovemsg = NH_G(l_do_wear_c_armoroff_offdelaybuf);
         }
     } else {
         /* Be warned!  We want off_msg after removing the item to
@@ -1651,7 +1652,7 @@ struct obj *otmp;
             (void) Armor_off();
         else
             impossible("Taking off unknown armor (%d: %d), no delay",
-                       otmp->otyp, objects[otmp->otyp].oc_armcat);
+                       otmp->otyp, NH_G(objects)[otmp->otyp].oc_armcat);
         off_msg(otmp);
     }
     context.takeoff.mask = context.takeoff.what = 0L;
@@ -2028,7 +2029,7 @@ struct obj *obj;
         else
             panic("wearing armor not worn as armor? [%08lx]", obj->owornmask);
 
-        delay = -objects[obj->otyp].oc_delay;
+        delay = -NH_G(objects)[obj->otyp].oc_delay;
         if (delay) {
             nomul(delay);
             multi_reason = "dressing up";
@@ -2550,7 +2551,7 @@ take_off(VOID_ARGS)
          * known cloaks, add 1 so that it actually matters...
          */
         if (uarmc)
-            doff->delay += 2 * objects[uarmc->otyp].oc_delay + 1;
+            doff->delay += 2 * NH_G(objects)[uarmc->otyp].oc_delay + 1;
     } else if (doff->what == WORN_CLOAK) {
         otmp = uarmc;
     } else if (doff->what == WORN_BOOTS) {
@@ -2565,9 +2566,9 @@ take_off(VOID_ARGS)
         otmp = uarmu;
         /* add the time to take off and put back on armor and/or cloak */
         if (uarm)
-            doff->delay += 2 * objects[uarm->otyp].oc_delay;
+            doff->delay += 2 * NH_G(objects)[uarm->otyp].oc_delay;
         if (uarmc)
-            doff->delay += 2 * objects[uarmc->otyp].oc_delay + 1;
+            doff->delay += 2 * NH_G(objects)[uarmc->otyp].oc_delay + 1;
     } else if (doff->what == WORN_AMUL) {
         doff->delay = 1;
     } else if (doff->what == LEFT_RING) {
@@ -2584,7 +2585,7 @@ take_off(VOID_ARGS)
     }
 
     if (otmp)
-        doff->delay += objects[otmp->otyp].oc_delay;
+        doff->delay += NH_G(objects)[otmp->otyp].oc_delay;
 
     /* Since setting the occupation now starts the counter next move, that
      * would always produce a delay 1 too big per item unless we subtract
@@ -2622,7 +2623,7 @@ doddoremarm()
     }
 
     add_valid_menu_class(0); /* reset */
-    if (flags.menu_style != MENU_TRADITIONAL
+    if (NH_G(flags).menu_style != MENU_TRADITIONAL
         || (result = ggetobj("take off", select_off, 0, FALSE,
                              (unsigned *) 0)) < -1)
         result = menu_remarm(result);
@@ -2654,7 +2655,7 @@ int retry;
 
     if (retry) {
         all_worn_categories = (retry == -2);
-    } else if (flags.menu_style == MENU_FULL) {
+    } else if (NH_G(flags).menu_style == MENU_FULL) {
         all_worn_categories = FALSE;
         n = query_category("What type of things do you want to take off?",
                            invent, (WORN_TYPES | ALL_TYPES
@@ -2669,7 +2670,7 @@ int retry;
                 add_valid_menu_class(pick_list[i].item.a_int);
         }
         free((genericptr_t) pick_list);
-    } else if (flags.menu_style == MENU_COMBINATION) {
+    } else if (NH_G(flags).menu_style == MENU_COMBINATION) {
         unsigned ggofeedback = 0;
 
         i = ggetobj("take off", select_off, 0, TRUE, &ggofeedback);
@@ -2690,7 +2691,7 @@ int retry;
         for (i = 0; i < n; i++)
             (void) select_off(pick_list[i].item.a_obj);
         free((genericptr_t) pick_list);
-    } else if (n < 0 && flags.menu_style != MENU_COMBINATION) {
+    } else if (n < 0 && NH_G(flags).menu_style != MENU_COMBINATION) {
         There("is nothing else you can remove or unwield.");
     }
     return 0;

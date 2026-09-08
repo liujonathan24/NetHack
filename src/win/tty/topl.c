@@ -216,10 +216,10 @@ more()
             topl_putsym('\n');
     }
 
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutbeg();
     putsyms(defmorestr);
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutend();
 
     xwaitforspace("\033 ");
@@ -541,7 +541,7 @@ char def;
 }
 
 /* shared by tty_getmsghistory() and tty_putmsghistory() */
-static char **snapshot_mesgs = 0;
+#define snapshot_mesgs (nh_g->s_topl_c_snapshot_mesgs)
 
 /* collect currently available message history data into a sequential array;
    optionally, purge that data from the active circular buffer set as we go */
@@ -626,17 +626,17 @@ char *
 tty_getmsghistory(init)
 boolean init;
 {
-    static int nxtidx;
+    /* nxtidx: per-env nh_g->l_topl_c_tty_getmsghistory_nxtidx */
     char *nextmesg;
     char *result = 0;
 
     if (init) {
         msghistory_snapshot(FALSE);
-        nxtidx = 0;
+        NH_G(l_topl_c_tty_getmsghistory_nxtidx) = 0;
     }
 
     if (snapshot_mesgs) {
-        nextmesg = snapshot_mesgs[nxtidx++];
+        nextmesg = snapshot_mesgs[NH_G(l_topl_c_tty_getmsghistory_nxtidx)++];
         if (nextmesg) {
             result = (char *) nextmesg;
         } else {
@@ -668,20 +668,20 @@ tty_putmsghistory(msg, restoring_msghist)
 const char *msg;
 boolean restoring_msghist;
 {
-    static boolean initd = FALSE;
+    /* initd: per-env nh_g->l_topl_c_tty_putmsghistory_initd */
     int idx;
 #ifdef DUMPLOG
     extern unsigned saved_pline_index; /* pline.c */
 #endif
 
-    if (restoring_msghist && !initd) {
+    if (restoring_msghist && !NH_G(l_topl_c_tty_putmsghistory_initd)) {
         /* we're restoring history from the previous session, but new
            messages have already been issued this session ("Restoring...",
            for instance); collect current history (ie, those new messages),
            and also clear it out so that nothing will be present when the
            restored ones are being put into place */
         msghistory_snapshot(TRUE);
-        initd = TRUE;
+        NH_G(l_topl_c_tty_putmsghistory_initd) = TRUE;
 #ifdef DUMPLOG
         /* this suffices; there's no need to scrub saved_pline[] pointers */
         saved_pline_index = 0;
@@ -706,7 +706,7 @@ boolean restoring_msghist;
         }
         /* now release the snapshot */
         free_msghistory_snapshot(TRUE);
-        initd = FALSE; /* reset */
+        NH_G(l_topl_c_tty_putmsghistory_initd) = FALSE; /* reset */
     }
 }
 

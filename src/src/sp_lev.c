@@ -189,26 +189,31 @@ STATIC_DCL boolean FDECL(sp_level_coder, (sp_lev *));
 
 extern struct engr *head_engr;
 
-extern int min_rx, max_rx, min_ry, max_ry; /* from mkmap.c */
+/* min_rx, max_rx, min_ry, max_ry: per-env, see nh_globals.h */ /* from mkmap.c */
 
 /* positions touched by level elements explicitly defined in the des-file */
-static char SpLev_Map[COLNO][ROWNO];
+#define SpLev_Map (nh_g->s_sp_lev_c_SpLev_Map)
 
-static aligntyp ralign[3] = { AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL };
-static NEARDATA xchar xstart, ystart;
-static NEARDATA char xsize, ysize;
+#define ralign (nh_g->s_sp_lev_c_ralign)
+const aligntyp nh_tmpl_s_sp_lev_c_ralign[3] =
+{ AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL };
+#define xstart (nh_g->s_sp_lev_c_xstart)
+#define ystart (nh_g->s_sp_lev_c_ystart)
+/* xsize: per-env nh_g->s_sp_lev_c_xsize */
+/* ysize: per-env nh_g->s_sp_lev_c_ysize */
 
-char *lev_message = 0;
-lev_region *lregions = 0;
-int num_lregions = 0;
+/* lev_message: per-env, see nh_globals.h */
+/* lregions: per-env, see nh_globals.h */
+/* num_lregions: per-env, see nh_globals.h */
 
-static boolean splev_init_present = FALSE;
-static boolean icedpools = FALSE;
-static int mines_prize_count = 0, soko_prize_count = 0; /* achievements */
+#define splev_init_present (nh_g->s_sp_lev_c_splev_init_present)
+/* icedpools: per-env nh_g->s_sp_lev_c_icedpools */
+#define mines_prize_count (nh_g->s_sp_lev_c_mines_prize_count)
+#define soko_prize_count (nh_g->s_sp_lev_c_soko_prize_count) /* achievements */
 
-static struct obj *container_obj[MAX_CONTAINMENT];
-static int container_idx = 0;
-static struct monst *invent_carrying_monster = NULL;
+#define container_obj (nh_g->s_sp_lev_c_container_obj)
+#define container_idx (nh_g->s_sp_lev_c_container_idx)
+#define invent_carrying_monster (nh_g->s_sp_lev_c_invent_carrying_monster)
 
 #define SPLEV_STACK_RESERVE 128
 
@@ -607,7 +612,7 @@ schar filling;
 
     for (x = x1; x <= x2; x++)
         for (y = y1; y <= y2; y++) {
-            if (level.flags.corrmaze)
+            if (NH_G(level).flags.corrmaze)
                 levl[x][y].typ = STONE;
             else
                 levl[x][y].typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE
@@ -680,14 +685,14 @@ count_features()
 {
     xchar x, y;
 
-    level.flags.nfountains = level.flags.nsinks = 0;
+    NH_G(level).flags.nfountains = NH_G(level).flags.nsinks = 0;
     for (y = 0; y < ROWNO; y++)
         for (x = 0; x < COLNO; x++) {
             int typ = levl[x][y].typ;
             if (typ == FOUNTAIN)
-                level.flags.nfountains++;
+                NH_G(level).flags.nfountains++;
             else if (typ == SINK)
-                level.flags.nsinks++;
+                NH_G(level).flags.nsinks++;
         }
 }
 
@@ -787,7 +792,7 @@ link_doors_rooms()
                    directive, set/clear levl[][].horizontal for it */
                 set_door_orientation(x, y);
 
-                for (tmpi = 0; tmpi < nroom; tmpi++) {
+                for (tmpi = 0; tmpi < NH_G(nroom); tmpi++) {
                     maybe_add_door(x, y, &rooms[tmpi]);
                     for (m = 0; m < rooms[tmpi].nsubrooms; m++) {
                         maybe_add_door(x, y, rooms[tmpi].sbrooms[m]);
@@ -801,7 +806,7 @@ fill_rooms()
 {
     int tmpi, m;
 
-    for (tmpi = 0; tmpi < nroom; tmpi++) {
+    for (tmpi = 0; tmpi < NH_G(nroom); tmpi++) {
         if (rooms[tmpi].needfill)
             fill_room(&rooms[tmpi], (rooms[tmpi].needfill == 2));
         for (m = 0; m < rooms[tmpi].nsubrooms; m++)
@@ -844,7 +849,7 @@ rndtrap()
             break;
         case LEVEL_TELEP:
         case TELEP_TRAP:
-            if (level.flags.noteleport)
+            if (NH_G(level).flags.noteleport)
                 rtrap = NO_TRAP;
             break;
         case ROLLING_BOULDER_TRAP:
@@ -881,8 +886,8 @@ struct mkroom *croom;
     } else {
         mx = xstart;
         my = ystart;
-        sx = xsize;
-        sy = ysize;
+        sx = NH_G(s_sp_lev_c_xsize);
+        sy = NH_G(s_sp_lev_c_ysize);
     }
 
     if (*x >= 0) { /* normal locations */
@@ -971,21 +976,21 @@ get_unpacked_coord(loc, defhumidity)
 long loc;
 int defhumidity;
 {
-    static unpacked_coord c;
+    /* c: per-env nh_g->l_sp_lev_c_get_unpacked_coord_c */
 
     if (loc & SP_COORD_IS_RANDOM) {
-        c.x = c.y = -1;
-        c.is_random = 1;
-        c.getloc_flags = (loc & ~SP_COORD_IS_RANDOM);
-        if (!c.getloc_flags)
-            c.getloc_flags = defhumidity;
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).x = (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).y = -1;
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).is_random = 1;
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).getloc_flags = (loc & ~SP_COORD_IS_RANDOM);
+        if (!(*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).getloc_flags)
+            (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).getloc_flags = defhumidity;
     } else {
-        c.is_random = 0;
-        c.getloc_flags = defhumidity;
-        c.x = SP_COORD_X(loc);
-        c.y = SP_COORD_Y(loc);
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).is_random = 0;
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).getloc_flags = defhumidity;
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).x = SP_COORD_X(loc);
+        (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c)).y = SP_COORD_Y(loc);
     }
-    return c;
+    return (*(unpacked_coord *) NH_G(l_sp_lev_c_get_unpacked_coord_c));
 }
 
 STATIC_OVL void
@@ -1200,10 +1205,10 @@ xchar rtype, rlit;
                    + rn2(hx - (lx > 0 ? lx : 3) - dx - xborder + 1);
             yabs = ly + (ly > 0 ? ylim : 2)
                    + rn2(hy - (ly > 0 ? ly : 2) - dy - yborder + 1);
-            if (ly == 0 && hy >= (ROWNO - 1) && (!nroom || !rn2(nroom))
+            if (ly == 0 && hy >= (ROWNO - 1) && (!NH_G(nroom) || !rn2(NH_G(nroom)))
                 && (yabs + dy > ROWNO / 2)) {
                 yabs = rn1(3, 2);
-                if (nroom < 4 && dy > 1)
+                if (NH_G(nroom) < 4 && dy > 1)
                     dy--;
             }
             if (!check_room(&xabs, &dx, &yabs, &dy, vault)) {
@@ -1281,12 +1286,12 @@ xchar rtype, rlit;
     split_rects(r1, &r2);
 
     if (!vault) {
-        smeq[nroom] = nroom;
+        smeq[NH_G(nroom)] = NH_G(nroom);
         add_room(xabs, yabs, xabs + wtmp - 1, yabs + htmp - 1, rlit, rtype,
                  FALSE);
     } else {
-        rooms[nroom].lx = xabs;
-        rooms[nroom].ly = yabs;
+        rooms[NH_G(nroom)].lx = xabs;
+        rooms[NH_G(nroom)].ly = yabs;
     }
     return TRUE;
 }
@@ -1610,7 +1615,7 @@ struct mkroom *croom;
         pm = (struct permonst *) 0;
     else if (m->id != NON_PM) {
         pm = &mons[m->id];
-        g_mvflags = (unsigned) mvitals[monsndx(pm)].mvflags;
+        g_mvflags = (unsigned) NH_G(mvitals)[monsndx(pm)].mvflags;
         if ((pm->geno & G_UNIQ) && (g_mvflags & G_EXTINCT))
             return;
         else if (g_mvflags & G_GONE)    /* genocided or extinct */
@@ -1688,8 +1693,8 @@ struct mkroom *croom;
 
             case M_AP_OBJECT:
                 for (i = 0; i < NUM_OBJECTS; i++)
-                    if (OBJ_NAME(objects[i])
-                        && !strcmp(OBJ_NAME(objects[i]), m->appear_as.str))
+                    if (OBJ_NAME(NH_G(objects)[i])
+                        && !strcmp(OBJ_NAME(NH_G(objects)[i]), m->appear_as.str))
                         break;
                 if (i == NUM_OBJECTS) {
                     impossible("create_monster: can't find object \"%s\"",
@@ -1932,7 +1937,7 @@ struct mkroom *croom;
         otmp->oinvis = 1;
 #endif
 
-    if (o->quan > 0 && objects[otmp->otyp].oc_merge) {
+    if (o->quan > 0 && NH_G(objects)[otmp->otyp].oc_merge) {
         otmp->quan = o->quan;
         otmp->owt = weight(otmp);
     }
@@ -2123,7 +2128,7 @@ struct mkroom *croom;
     if (a->shrine) { /* Is it a shrine  or sanctum? */
         priestini(&u.uz, croom, x, y, (a->shrine > 1));
         levl[x][y].altarmask |= AM_SHRINE;
-        level.flags.has_temple = TRUE;
+        NH_G(level).flags.has_temple = TRUE;
     }
 }
 
@@ -2337,7 +2342,7 @@ fix_stair_rooms()
         && !((dnstairs_room->lx <= xdnstair && xdnstair <= dnstairs_room->hx)
              && (dnstairs_room->ly <= ydnstair
                  && ydnstair <= dnstairs_room->hy))) {
-        for (i = 0; i < nroom; i++) {
+        for (i = 0; i < NH_G(nroom); i++) {
             croom = &rooms[i];
             if ((croom->lx <= xdnstair && xdnstair <= croom->hx)
                 && (croom->ly <= ydnstair && ydnstair <= croom->hy)) {
@@ -2345,14 +2350,14 @@ fix_stair_rooms()
                 break;
             }
         }
-        if (i == nroom)
+        if (i == NH_G(nroom))
             panic("Couldn't find dnstair room in fix_stair_rooms!");
     }
     if (xupstair
         && !((upstairs_room->lx <= xupstair && xupstair <= upstairs_room->hx)
              && (upstairs_room->ly <= yupstair
                  && yupstair <= upstairs_room->hy))) {
-        for (i = 0; i < nroom; i++) {
+        for (i = 0; i < NH_G(nroom); i++) {
             croom = &rooms[i];
             if ((croom->lx <= xupstair && xupstair <= croom->hx)
                 && (croom->ly <= yupstair && yupstair <= croom->hy)) {
@@ -2360,7 +2365,7 @@ fix_stair_rooms()
                 break;
             }
         }
-        if (i == nroom)
+        if (i == NH_G(nroom))
             panic("Couldn't find upstair room in fix_stair_rooms!");
     }
 }
@@ -2439,7 +2444,7 @@ boolean prefilled;
         /* Shop ? */
         if (croom->rtype >= SHOPBASE) {
             stock_room(croom->rtype - SHOPBASE, croom);
-            level.flags.has_shop = TRUE;
+            NH_G(level).flags.has_shop = TRUE;
             return;
         }
 
@@ -2464,28 +2469,28 @@ boolean prefilled;
     }
     switch (croom->rtype) {
     case VAULT:
-        level.flags.has_vault = TRUE;
+        NH_G(level).flags.has_vault = TRUE;
         break;
     case ZOO:
-        level.flags.has_zoo = TRUE;
+        NH_G(level).flags.has_zoo = TRUE;
         break;
     case COURT:
-        level.flags.has_court = TRUE;
+        NH_G(level).flags.has_court = TRUE;
         break;
     case MORGUE:
-        level.flags.has_morgue = TRUE;
+        NH_G(level).flags.has_morgue = TRUE;
         break;
     case BEEHIVE:
-        level.flags.has_beehive = TRUE;
+        NH_G(level).flags.has_beehive = TRUE;
         break;
     case BARRACKS:
-        level.flags.has_barracks = TRUE;
+        NH_G(level).flags.has_barracks = TRUE;
         break;
     case TEMPLE:
-        level.flags.has_temple = TRUE;
+        NH_G(level).flags.has_temple = TRUE;
         break;
     case SWAMP:
-        level.flags.has_swamp = TRUE;
+        NH_G(level).flags.has_swamp = TRUE;
         break;
     }
 }
@@ -2503,7 +2508,7 @@ struct mkroom *mkr;
         aroom = &subrooms[nsubroom];
         okroom = create_subroom(mkr, r->x, r->y, r->w, r->h, rtype, r->rlit);
     } else {
-        aroom = &rooms[nroom];
+        aroom = &rooms[NH_G(nroom)];
         okroom = create_room(r->x, r->y, r->w, r->h, r->xalign, r->yalign,
                              rtype, r->rlit);
     }
@@ -2791,7 +2796,7 @@ lev_init *linit;
             linit->lit = rn2(2);
         if (linit->filling > -1)
             lvlfill_solid(linit->filling, 0);
-        linit->icedpools = icedpools;
+        linit->icedpools = NH_G(s_sp_lev_c_icedpools);
         mkmap(linit);
         break;
     }
@@ -3259,7 +3264,7 @@ struct sp_coder *coder;
         create_object(&tmpobj, coder->croom);
         quancnt--;
     } while ((quancnt > 0) && ((tmpobj.id > STRANGE_OBJECT)
-                               && !objects[tmpobj.id].oc_merge));
+                               && !NH_G(objects)[tmpobj.id].oc_merge));
 
     Free(tmpobj.name.str);
     opvar_free(varparam);
@@ -3280,29 +3285,29 @@ struct sp_coder *coder;
     lflags = OV_i(flagdata);
 
     if (lflags & NOTELEPORT)
-        level.flags.noteleport = 1;
+        NH_G(level).flags.noteleport = 1;
     if (lflags & HARDFLOOR)
-        level.flags.hardfloor = 1;
+        NH_G(level).flags.hardfloor = 1;
     if (lflags & NOMMAP)
-        level.flags.nommap = 1;
+        NH_G(level).flags.nommap = 1;
     if (lflags & SHORTSIGHTED)
-        level.flags.shortsighted = 1;
+        NH_G(level).flags.shortsighted = 1;
     if (lflags & ARBOREAL)
-        level.flags.arboreal = 1;
+        NH_G(level).flags.arboreal = 1;
     if (lflags & MAZELEVEL)
-        level.flags.is_maze_lev = 1;
+        NH_G(level).flags.is_maze_lev = 1;
     if (lflags & PREMAPPED)
         coder->premapped = TRUE;
     if (lflags & SHROUD)
-        level.flags.hero_memory = 0;
+        NH_G(level).flags.hero_memory = 0;
     if (lflags & GRAVEYARD)
-        level.flags.graveyard = 1;
+        NH_G(level).flags.graveyard = 1;
     if (lflags & ICEDPOOLS)
-        icedpools = TRUE;
+        NH_G(s_sp_lev_c_icedpools) = TRUE;
     if (lflags & SOLIDIFY)
         coder->solidify = TRUE;
     if (lflags & CORRMAZE)
-        level.flags.corrmaze = TRUE;
+        NH_G(level).flags.corrmaze = TRUE;
     if (lflags & CHECK_INACCESSIBLES)
         coder->check_inaccessibles = TRUE;
 
@@ -3460,11 +3465,11 @@ struct sp_coder *coder;
            room,
            and there's no MAP.
         */
-        if (xsize <= 1 && ysize <= 1) {
+        if (NH_G(s_sp_lev_c_xsize) <= 1 && NH_G(s_sp_lev_c_ysize) <= 1) {
             xstart = 1;
             ystart = 0;
-            xsize = COLNO - 1;
-            ysize = ROWNO;
+            NH_G(s_sp_lev_c_xsize) = COLNO - 1;
+            NH_G(s_sp_lev_c_ysize) = ROWNO;
         }
     }
 }
@@ -3865,8 +3870,8 @@ int dir;
                 selection_setpoint(x, y, ov, 1);
 }
 
-STATIC_VAR int FDECL((*selection_flood_check_func), (int, int));
-STATIC_VAR schar floodfillchk_match_under_typ;
+#define selection_flood_check_func (nh_g->s_sp_lev_c_selection_flood_check_func)
+#define floodfillchk_match_under_typ (nh_g->s_sp_lev_c_floodfillchk_match_under_typ)
 
 void
 set_selection_floodfillchk(f)
@@ -4630,7 +4635,7 @@ struct sp_coder *coder;
        an actual room to be created (such rooms are used to
        control placement of migrating monster arrivals) */
     room_not_needed = (OV_i(rtype) == OROOM && !irregular && !prefilled);
-    if (room_not_needed || nroom >= MAXNROFROOMS) {
+    if (room_not_needed || NH_G(nroom) >= MAXNROFROOMS) {
         region tmpregion;
         if (!room_not_needed)
             impossible("Too many rooms on new level!");
@@ -4649,7 +4654,7 @@ struct sp_coder *coder;
         return;
     }
 
-    troom = &rooms[nroom];
+    troom = &rooms[NH_G(nroom)];
 
     /* mark rooms that must be filled, but do it later */
     if (OV_i(rtype) != OROOM)
@@ -4660,8 +4665,8 @@ struct sp_coder *coder;
     if (irregular) {
         min_rx = max_rx = dx1;
         min_ry = max_ry = dy1;
-        smeq[nroom] = nroom;
-        flood_fill_rm(dx1, dy1, nroom + ROOMOFFSET, OV_i(rlit), TRUE);
+        smeq[NH_G(nroom)] = NH_G(nroom);
+        flood_fill_rm(dx1, dy1, NH_G(nroom) + ROOMOFFSET, OV_i(rlit), TRUE);
         add_room(min_rx, min_ry, max_rx, max_ry, FALSE, OV_i(rtype), TRUE);
         troom->rlit = OV_i(rlit);
         troom->irregular = TRUE;
@@ -4741,7 +4746,7 @@ struct sp_coder *coder;
         return;
 
     if (OV_i(ftyp) < 1) {
-        OV_i(ftyp) = level.flags.corrmaze ? CORR : ROOM;
+        OV_i(ftyp) = NH_G(level).flags.corrmaze ? CORR : ROOM;
     }
 
     /* don't use move() - it doesn't use W_NORTH, etc. */
@@ -4883,8 +4888,8 @@ struct sp_coder *coder;
         dy2 = (xchar) SP_REGION_Y2(OV_i(r));
         wallify_map(dx1 < 0 ? (xstart - 1) : dx1,
                     dy1 < 0 ? (ystart - 1) : dy1,
-                    dx2 < 0 ? (xstart + xsize + 1) : dx2,
-                    dy2 < 0 ? (ystart + ysize + 1) : dy2);
+                    dx2 < 0 ? (xstart + NH_G(s_sp_lev_c_xsize) + 1) : dx2,
+                    dy2 < 0 ? (ystart + NH_G(s_sp_lev_c_ysize) + 1) : dy2);
         break;
     case 1:
         if (!OV_pop_typ(r, SPOVAR_SEL))
@@ -4919,15 +4924,15 @@ struct sp_coder *coder;
     tmpmazepart.halign = upc.x;
     tmpmazepart.valign = upc.y;
 
-    tmpxsize = xsize;
-    tmpysize = ysize;
+    tmpxsize = NH_G(s_sp_lev_c_xsize);
+    tmpysize = NH_G(s_sp_lev_c_ysize);
     tmpxstart = xstart;
     tmpystart = ystart;
 
     halign = tmpmazepart.halign;
     valign = tmpmazepart.valign;
-    xsize = tmpmazepart.xsize;
-    ysize = tmpmazepart.ysize;
+    NH_G(s_sp_lev_c_xsize) = tmpmazepart.xsize;
+    NH_G(s_sp_lev_c_ysize) = tmpmazepart.ysize;
     switch (tmpmazepart.zaligntyp) {
     default:
     case 0:
@@ -4938,16 +4943,16 @@ struct sp_coder *coder;
             xstart = splev_init_present ? 1 : 3;
             break;
         case H_LEFT:
-            xstart = 2 + ((x_maze_max - 2 - xsize) / 4);
+            xstart = 2 + ((x_maze_max - 2 - NH_G(s_sp_lev_c_xsize)) / 4);
             break;
         case CENTER:
-            xstart = 2 + ((x_maze_max - 2 - xsize) / 2);
+            xstart = 2 + ((x_maze_max - 2 - NH_G(s_sp_lev_c_xsize)) / 2);
             break;
         case H_RIGHT:
-            xstart = 2 + ((x_maze_max - 2 - xsize) * 3 / 4);
+            xstart = 2 + ((x_maze_max - 2 - NH_G(s_sp_lev_c_xsize)) * 3 / 4);
             break;
         case RIGHT:
-            xstart = x_maze_max - xsize - 1;
+            xstart = x_maze_max - NH_G(s_sp_lev_c_xsize) - 1;
             break;
         }
         switch ((int) valign) {
@@ -4955,10 +4960,10 @@ struct sp_coder *coder;
             ystart = 3;
             break;
         case CENTER:
-            ystart = 2 + ((y_maze_max - 2 - ysize) / 2);
+            ystart = 2 + ((y_maze_max - 2 - NH_G(s_sp_lev_c_ysize)) / 2);
             break;
         case BOTTOM:
-            ystart = y_maze_max - ysize - 1;
+            ystart = y_maze_max - NH_G(s_sp_lev_c_ysize) - 1;
             break;
         }
         if (!(xstart % 2))
@@ -4970,37 +4975,37 @@ struct sp_coder *coder;
         if (!coder->croom) {
             xstart = 1;
             ystart = 0;
-            xsize = COLNO - 1 - tmpmazepart.xsize;
-            ysize = ROWNO - tmpmazepart.ysize;
+            NH_G(s_sp_lev_c_xsize) = COLNO - 1 - tmpmazepart.xsize;
+            NH_G(s_sp_lev_c_ysize) = ROWNO - tmpmazepart.ysize;
         }
         get_location_coord(&halign, &valign, ANY_LOC, coder->croom,
                            OV_i(mpa));
-        xsize = tmpmazepart.xsize;
-        ysize = tmpmazepart.ysize;
+        NH_G(s_sp_lev_c_xsize) = tmpmazepart.xsize;
+        NH_G(s_sp_lev_c_ysize) = tmpmazepart.ysize;
         xstart = halign;
         ystart = valign;
         break;
     }
-    if (ystart < 0 || ystart + ysize > ROWNO) {
+    if (ystart < 0 || ystart + NH_G(s_sp_lev_c_ysize) > ROWNO) {
         /* try to move the start a bit */
         ystart += (ystart > 0) ? -2 : 2;
-        if (ysize == ROWNO)
+        if (NH_G(s_sp_lev_c_ysize) == ROWNO)
             ystart = 0;
-        if (ystart < 0 || ystart + ysize > ROWNO)
+        if (ystart < 0 || ystart + NH_G(s_sp_lev_c_ysize) > ROWNO)
             panic("reading special level with ysize too large");
     }
-    if (xsize <= 1 && ysize <= 1) {
+    if (NH_G(s_sp_lev_c_xsize) <= 1 && NH_G(s_sp_lev_c_ysize) <= 1) {
         xstart = 1;
         ystart = 0;
-        xsize = COLNO - 1;
-        ysize = ROWNO;
+        NH_G(s_sp_lev_c_xsize) = COLNO - 1;
+        NH_G(s_sp_lev_c_ysize) = ROWNO;
     } else {
         xchar x, y, mptyp;
 
         /* Load the map */
-        for (y = ystart; y < ystart + ysize; y++)
-            for (x = xstart; x < xstart + xsize; x++) {
-                mptyp = (mpmap->vardata.str[(y - ystart) * xsize
+        for (y = ystart; y < ystart + NH_G(s_sp_lev_c_ysize); y++)
+            for (x = xstart; x < xstart + NH_G(s_sp_lev_c_xsize); x++) {
+                mptyp = (mpmap->vardata.str[(y - ystart) * NH_G(s_sp_lev_c_xsize)
                                                   + (x - xstart)] - 1);
                 if (mptyp >= MAX_TYPE)
                     continue;
@@ -5033,16 +5038,16 @@ struct sp_coder *coder;
                 else if (levl[x][y].typ == LAVAPOOL)
                     levl[x][y].lit = 1;
                 else if (splev_init_present && levl[x][y].typ == ICE)
-                    levl[x][y].icedpool = icedpools ? ICED_POOL : ICED_MOAT;
+                    levl[x][y].icedpool = NH_G(s_sp_lev_c_icedpools) ? ICED_POOL : ICED_MOAT;
             }
         if (coder->lvl_is_joined)
-            remove_rooms(xstart, ystart, xstart + xsize, ystart + ysize);
+            remove_rooms(xstart, ystart, xstart + NH_G(s_sp_lev_c_xsize), ystart + NH_G(s_sp_lev_c_ysize));
     }
     if (!OV_i(mpkeepr)) {
         xstart = tmpxstart;
         ystart = tmpystart;
-        xsize = tmpxsize;
-        ysize = tmpysize;
+        NH_G(s_sp_lev_c_xsize) = tmpxsize;
+        NH_G(s_sp_lev_c_ysize) = tmpysize;
     }
 
     opvar_free(mpxs);
@@ -5322,7 +5327,7 @@ sp_lev *lvl;
     coder->lvl_is_joined = 0;
 
     splev_init_present = FALSE;
-    icedpools = FALSE;
+    NH_G(s_sp_lev_c_icedpools) = FALSE;
     /* achievement tracking; static init would suffice except we need to
        reset if #wizmakemap is used to recreate mines' end or sokoban end;
        once either level is created, these values can be forgotten */
@@ -5350,12 +5355,12 @@ sp_lev *lvl;
 
     (void) memset((genericptr_t) &SpLev_Map[0][0], 0, sizeof SpLev_Map);
 
-    level.flags.is_maze_lev = 0;
+    NH_G(level).flags.is_maze_lev = 0;
 
     xstart = 1;
     ystart = 0;
-    xsize = COLNO - 1;
-    ysize = ROWNO;
+    NH_G(s_sp_lev_c_xsize) = COLNO - 1;
+    NH_G(s_sp_lev_c_ysize) = ROWNO;
 
     while (coder->frame->n_opcode < lvl->n_opcodes && !coder->exit_script) {
         coder->opcode = lvl->opcodes[coder->frame->n_opcode].opcode;
@@ -5999,7 +6004,7 @@ sp_lev *lvl;
      * is currently not possible, we overload the corrmaze flag for this
      * purpose.
      */
-    if (!level.flags.corrmaze)
+    if (!NH_G(level).flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
 
     count_features();

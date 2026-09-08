@@ -61,7 +61,12 @@ struct monst { struct monst *dummy; };  /* lint: struct obj's union */
                cost,sdam,ldam,oc1,oc2,nut,color)  { obj }
 #define None (char *) 0 /* less visual distraction for 'no description' */
 
+#ifdef NH_GLOBALS_NONE
 NEARDATA struct objdescr obj_descr[] =
+#else
+/* obj_descr: per-env, see nh_globals.h */
+const struct objdescr nh_tmpl_obj_descr[] =
+#endif
 #else
 /* second pass -- object definitions */
 #define BITS(nmkn,mrg,uskn,ctnr,mgc,chrg,uniq,nwsh,big,tuf,dir,sub,mtrl) \
@@ -75,7 +80,12 @@ NEARDATA struct objdescr obj_descr[] =
 #define HARDGEM(n) (0)
 #endif
 
+#ifdef NH_GLOBALS_NONE
 NEARDATA struct objclass objects[] =
+#else
+/* objects: per-env nh_g->objects */
+const struct objclass nh_tmpl_objects[] =
+#endif
 #endif
 {
 /* dummy object[0] -- description [2nd arg] *must* be NULL */

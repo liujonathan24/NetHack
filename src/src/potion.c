@@ -5,9 +5,10 @@
 
 #include "hack.h"
 
-boolean notonhead = FALSE;
+/* notonhead: per-env, see nh_globals.h */
 
-static NEARDATA int nothing, unkn;
+#define nothing (nh_g->s_potion_c_nothing)
+#define unkn (nh_g->s_potion_c_unkn)
 static NEARDATA const char beverages[] = { POTION_CLASS, 0 };
 
 STATIC_DCL long FDECL(itimeout, (long));
@@ -476,7 +477,7 @@ ghost_from_bottle()
     }
     pline("As you open the bottle, an enormous %s emerges!",
           Hallucination ? rndmonnam(NULL) : (const char *) "ghost");
-    if (flags.verbose)
+    if (NH_G(flags).verbose)
         You("are frightened to death, and unable to move.");
     nomul(-3);
     multi_reason = "being frightened to death";
@@ -540,17 +541,17 @@ dodrink()
     }
     otmp->in_use = TRUE; /* you've opened the stopper */
 
-    potion_descr = OBJ_DESCR(objects[otmp->otyp]);
+    potion_descr = OBJ_DESCR(NH_G(objects)[otmp->otyp]);
     if (potion_descr) {
         if (!strcmp(potion_descr, "milky")
-            && !(mvitals[PM_GHOST].mvflags & G_GONE)
-            && !rn2(POTION_OCCUPANT_CHANCE(mvitals[PM_GHOST].born))) {
+            && !(NH_G(mvitals)[PM_GHOST].mvflags & G_GONE)
+            && !rn2(POTION_OCCUPANT_CHANCE(NH_G(mvitals)[PM_GHOST].born))) {
             ghost_from_bottle();
             useup(otmp);
             return 1;
         } else if (!strcmp(potion_descr, "smoky")
-                   && !(mvitals[PM_DJINNI].mvflags & G_GONE)
-                   && !rn2(POTION_OCCUPANT_CHANCE(mvitals[PM_DJINNI].born))) {
+                   && !(NH_G(mvitals)[PM_DJINNI].mvflags & G_GONE)
+                   && !rn2(POTION_OCCUPANT_CHANCE(NH_G(mvitals)[PM_DJINNI].born))) {
             djinni_from_bottle(otmp);
             useup(otmp);
             return 1;
@@ -575,11 +576,11 @@ register struct obj *otmp;
         You("have a %s feeling for a moment, then it passes.",
             Hallucination ? "normal" : "peculiar");
     }
-    if (otmp->dknown && !objects[otmp->otyp].oc_name_known) {
+    if (otmp->dknown && !NH_G(objects)[otmp->otyp].oc_name_known) {
         if (!unkn) {
             makeknown(otmp->otyp);
             more_experienced(0, 10);
-        } else if (!objects[otmp->otyp].oc_uname)
+        } else if (!NH_G(objects)[otmp->otyp].oc_uname)
             docall(otmp);
     }
     useup(otmp);
@@ -1195,7 +1196,7 @@ strange_feeling(obj, txt)
 struct obj *obj;
 const char *txt;
 {
-    if (flags.beginner || !txt)
+    if (NH_G(flags).beginner || !txt)
         You("have a %s feeling for a moment, then it passes.",
             Hallucination ? "normal" : "strange");
     else
@@ -1204,14 +1205,16 @@ const char *txt;
     if (!obj) /* e.g., crystal ball finds no traps */
         return;
 
-    if (obj->dknown && !objects[obj->otyp].oc_name_known
-        && !objects[obj->otyp].oc_uname)
+    if (obj->dknown && !NH_G(objects)[obj->otyp].oc_name_known
+        && !NH_G(objects)[obj->otyp].oc_uname)
         docall(obj);
 
     useup(obj);
 }
 
-const char *bottlenames[] = { "bottle", "phial", "flagon", "carafe",
+/* bottlenames: per-env, see nh_globals.h */
+const char *const nh_tmpl_bottlenames[] =
+{ "bottle", "phial", "flagon", "carafe",
                               "flask",  "jar",   "vial" };
 
 const char *
@@ -1587,8 +1590,8 @@ int how;
     if ((distance == 0 || (distance < 3 && rn2(5)))
         && (!breathless(youmonst.data) || haseyes(youmonst.data)))
         potionbreathe(obj);
-    else if (obj->dknown && !objects[obj->otyp].oc_name_known
-             && !objects[obj->otyp].oc_uname && cansee(tx, ty))
+    else if (obj->dknown && !NH_G(objects)[obj->otyp].oc_name_known
+             && !NH_G(objects)[obj->otyp].oc_uname && cansee(tx, ty))
         docall(obj);
 
     if (*u.ushops && obj->unpaid) {
@@ -1778,8 +1781,8 @@ register struct obj *obj;
     if (obj->dknown) {
         if (kn)
             makeknown(obj->otyp);
-        else if (!objects[obj->otyp].oc_name_known
-                 && !objects[obj->otyp].oc_uname)
+        else if (!NH_G(objects)[obj->otyp].oc_name_known
+                 && !NH_G(objects)[obj->otyp].oc_uname)
             docall(obj);
     }
 }
@@ -1913,7 +1916,7 @@ dodip()
     /* Is there a fountain to dip into here? */
     if (IS_FOUNTAIN(here)) {
         Sprintf(qbuf, "%s%s into the fountain?", Dip_,
-                flags.verbose ? obuf : shortestname);
+                NH_G(flags).verbose ? obuf : shortestname);
         /* "Dip <the object> into the fountain?" */
         if (yn(qbuf) == 'y') {
             dipfountain(obj);
@@ -1923,7 +1926,7 @@ dodip()
         const char *pooltype = waterbody_name(u.ux, u.uy);
 
         Sprintf(qbuf, "%s%s into the %s?", Dip_,
-                flags.verbose ? obuf : shortestname, pooltype);
+                NH_G(flags).verbose ? obuf : shortestname, pooltype);
         /* "Dip <the object> into the {pool, moat, &c}?" */
         if (yn(qbuf) == 'y') {
             if (Levitation) {
@@ -1942,7 +1945,7 @@ dodip()
     }
 
     /* "What do you want to dip <the object> into? [xyz or ?*] " */
-    Sprintf(qbuf, "dip %s into", flags.verbose ? obuf : shortestname);
+    Sprintf(qbuf, "dip %s into", NH_G(flags).verbose ? obuf : shortestname);
     potion = getobj(beverages, qbuf);
     if (!potion)
         return 0;
@@ -1999,8 +2002,8 @@ dodip()
 
         mixture = mixtype(obj, potion);
 
-        magic = (mixture != STRANGE_OBJECT) ? objects[mixture].oc_magic
-            : (objects[obj->otyp].oc_magic || objects[potion->otyp].oc_magic);
+        magic = (mixture != STRANGE_OBJECT) ? NH_G(objects)[mixture].oc_magic
+            : (NH_G(objects)[obj->otyp].oc_magic || NH_G(objects)[potion->otyp].oc_magic);
         Strcpy(qbuf, "The"); /* assume full stack */
         if (amt > (magic ? 3 : 7)) {
             /* trying to dip multiple potions will usually affect only a
@@ -2076,7 +2079,7 @@ dodip()
             pline_The("mixture bubbles%s.", Blind ? "" : ", then clears");
         } else if (!Blind) {
             pline_The("mixture looks %s.",
-                      hcolor(OBJ_DESCR(objects[obj->otyp])));
+                      hcolor(OBJ_DESCR(NH_G(objects)[obj->otyp])));
         }
 
         /* this is required when 'obj' was split off from a bigger stack,
@@ -2099,8 +2102,8 @@ dodip()
                                      : hcolor(NH_RED));
         potion->in_use = FALSE; /* didn't go poof */
         if (potion->dknown
-            && !objects[potion->otyp].oc_name_known
-            && !objects[potion->otyp].oc_uname)
+            && !NH_G(objects)[potion->otyp].oc_name_known
+            && !NH_G(objects)[potion->otyp].oc_uname)
             docall(potion);
         return 1;
     }
@@ -2228,7 +2231,7 @@ dodip()
         oldbuf[0] = '\0';
         if (potion->dknown) {
             old_dknown = TRUE;
-            Sprintf(oldbuf, "%s ", hcolor(OBJ_DESCR(objects[potion->otyp])));
+            Sprintf(oldbuf, "%s ", hcolor(OBJ_DESCR(NH_G(objects)[potion->otyp])));
         }
         /* with multiple merged potions, split off one and
            just clear it */
@@ -2254,7 +2257,7 @@ dodip()
                 Sprintf(newbuf, "clears");
             else if (!Blind)
                 Sprintf(newbuf, "turns %s",
-                        hcolor(OBJ_DESCR(objects[mixture])));
+                        hcolor(OBJ_DESCR(NH_G(objects)[mixture])));
             if (*newbuf)
                 pline_The("%spotion%s %s.", oldbuf,
                           more_than_one ? " that you dipped into" : "",
@@ -2263,8 +2266,8 @@ dodip()
                 pline("Something happens.");
 
             if (old_dknown
-                && !objects[old_otyp].oc_name_known
-                && !objects[old_otyp].oc_uname) {
+                && !NH_G(objects)[old_otyp].oc_name_known
+                && !NH_G(objects)[old_otyp].oc_uname) {
                 struct obj fakeobj;
 
                 fakeobj = zeroobj;
@@ -2289,8 +2292,8 @@ dodip()
 
  poof:
     if (potion->dknown
-        && !objects[potion->otyp].oc_name_known
-        && !objects[potion->otyp].oc_uname)
+        && !NH_G(objects)[potion->otyp].oc_name_known
+        && !NH_G(objects)[potion->otyp].oc_uname)
         docall(potion);
     useup(potion);
     return 1;

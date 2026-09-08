@@ -158,7 +158,7 @@ gottype:
     for (sroom = &rooms[0];; sroom++) {
         if (sroom->hx < 0)
             return;
-        if (sroom - rooms >= nroom) {
+        if (sroom - rooms >= NH_G(nroom)) {
             pline("rooms not closed by -1?");
             return;
         }
@@ -211,10 +211,10 @@ pick_room(strict)
 register boolean strict;
 {
     register struct mkroom *sroom;
-    register int i = nroom;
+    register int i = NH_G(nroom);
 
-    for (sroom = &rooms[rn2(nroom)]; i--; sroom++) {
-        if (sroom == &rooms[nroom])
+    for (sroom = &rooms[rn2(NH_G(nroom))]; i--; sroom++) {
+        if (sroom == &rooms[NH_G(nroom)])
             sroom = &rooms[0];
         if (sroom->hx < 0)
             return (struct mkroom *) 0;
@@ -276,7 +276,7 @@ struct mkroom *sroom;
     sh = sroom->fdoor;
     switch (type) {
     case COURT:
-        if (level.flags.is_maze_lev) {
+        if (NH_G(level).flags.is_maze_lev) {
             for (tx = sroom->lx; tx <= sroom->hx; tx++)
                 for (ty = sroom->ly; ty <= sroom->hy; ty++)
                     if (IS_THRONE(levl[tx][ty].typ))
@@ -415,23 +415,23 @@ struct mkroom *sroom;
         add_to_container(chest, gold);
         chest->owt = weight(chest);
         chest->spe = 2; /* so it can be found later */
-        level.flags.has_court = 1;
+        NH_G(level).flags.has_court = 1;
         break;
     }
     case BARRACKS:
-        level.flags.has_barracks = 1;
+        NH_G(level).flags.has_barracks = 1;
         break;
     case ZOO:
-        level.flags.has_zoo = 1;
+        NH_G(level).flags.has_zoo = 1;
         break;
     case MORGUE:
-        level.flags.has_morgue = 1;
+        NH_G(level).flags.has_morgue = 1;
         break;
     case SWAMP:
-        level.flags.has_swamp = 1;
+        NH_G(level).flags.has_swamp = 1;
         break;
     case BEEHIVE:
-        level.flags.has_beehive = 1;
+        NH_G(level).flags.has_beehive = 1;
         break;
     }
 }
@@ -456,7 +456,7 @@ int mm_flags;
                 || !revive(otmp, FALSE)))
             (void) makemon(mdat, cc.x, cc.y, mm_flags);
     }
-    level.flags.graveyard = TRUE; /* reduced chance for undead corpse */
+    NH_G(level).flags.graveyard = TRUE; /* reduced chance for undead corpse */
 }
 
 STATIC_OVL struct permonst *
@@ -505,9 +505,9 @@ antholemon()
             break;
         }
         /* try again if chosen type has been genocided or used up */
-    } while (++trycnt < 3 && (mvitals[mtyp].mvflags & G_GONE));
+    } while (++trycnt < 3 && (NH_G(mvitals)[mtyp].mvflags & G_GONE));
 
-    return ((mvitals[mtyp].mvflags & G_GONE) ? (struct permonst *) 0
+    return ((NH_G(mvitals)[mtyp].mvflags & G_GONE) ? (struct permonst *) 0
                                              : &mons[mtyp]);
 }
 
@@ -518,7 +518,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
     register int sx, sy, i, eelct = 0;
 
     for (i = 0; i < 5; i++) { /* turn up to 5 rooms swampy */
-        sroom = &rooms[rn2(nroom)];
+        sroom = &rooms[rn2(NH_G(nroom))];
         if (sroom->hx < 0 || sroom->rtype != OROOM || has_upstairs(sroom)
             || has_dnstairs(sroom))
             continue;
@@ -545,7 +545,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
                         (void) makemon(mkclass(S_FUNGUS, 0), sx, sy,
                                        NO_MM_FLAGS);
                 }
-        level.flags.has_swamp = 1;
+        NH_G(level).flags.has_swamp = 1;
     }
 }
 
@@ -553,7 +553,7 @@ STATIC_OVL coord *
 shrine_pos(roomno)
 int roomno;
 {
-    static coord buf;
+    /* buf: per-env nh_g->l_mkroom_c_shrine_pos_buf */
     int delta;
     struct mkroom *troom = &rooms[roomno - ROOMOFFSET];
 
@@ -561,14 +561,14 @@ int roomno;
        if either or both are even, center point is a hypothetical spot
        between map locations and placement will be adjacent to that */
     delta = troom->hx - troom->lx;
-    buf.x = troom->lx + delta / 2;
+    NH_G(l_mkroom_c_shrine_pos_buf).x = troom->lx + delta / 2;
     if ((delta % 2) && rn2(2))
-        buf.x++;
+        NH_G(l_mkroom_c_shrine_pos_buf).x++;
     delta = troom->hy - troom->ly;
-    buf.y = troom->ly + delta / 2;
+    NH_G(l_mkroom_c_shrine_pos_buf).y = troom->ly + delta / 2;
     if ((delta % 2) && rn2(2))
-        buf.y++;
-    return &buf;
+        NH_G(l_mkroom_c_shrine_pos_buf).y++;
+    return &NH_G(l_mkroom_c_shrine_pos_buf);
 }
 
 STATIC_OVL void
@@ -593,7 +593,7 @@ mktemple()
     lev->altarmask = induced_align(80);
     priestini(&u.uz, sroom, shrine_spot->x, shrine_spot->y, FALSE);
     lev->altarmask |= AM_SHRINE;
-    level.flags.has_temple = 1;
+    NH_G(level).flags.has_temple = 1;
 }
 
 boolean
@@ -788,7 +788,7 @@ squadmon()
     }
     mndx = squadprob[rn2(NSTYPES)].pm;
 gotone:
-    if (!(mvitals[mndx].mvflags & G_GONE))
+    if (!(NH_G(mvitals)[mndx].mvflags & G_GONE))
         return &mons[mndx];
     else
         return (struct permonst *) 0;
@@ -825,8 +825,8 @@ int fd;
     short i;
 
     /* First, write the number of rooms */
-    bwrite(fd, (genericptr_t) &nroom, sizeof(nroom));
-    for (i = 0; i < nroom; i++)
+    bwrite(fd, (genericptr_t) &NH_G(nroom), sizeof(NH_G(nroom)));
+    for (i = 0; i < NH_G(nroom); i++)
         save_room(fd, &rooms[i]);
 }
 
@@ -855,13 +855,13 @@ int fd;
 {
     short i;
 
-    mread(fd, (genericptr_t) &nroom, sizeof(nroom));
+    mread(fd, (genericptr_t) &NH_G(nroom), sizeof(NH_G(nroom)));
     nsubroom = 0;
-    for (i = 0; i < nroom; i++) {
+    for (i = 0; i < NH_G(nroom); i++) {
         rest_room(fd, &rooms[i]);
         rooms[i].resident = (struct monst *) 0;
     }
-    rooms[nroom].hx = -1; /* restore ending flags */
+    rooms[NH_G(nroom)].hx = -1; /* restore ending flags */
     subrooms[nsubroom].hx = -1;
 }
 

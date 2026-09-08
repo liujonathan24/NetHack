@@ -48,9 +48,9 @@ static const char *godvoices[] = {
 };
 
 /* values calculated when prayer starts, and used when completed */
-static aligntyp p_aligntyp;
-static int p_trouble;
-static int p_type; /* (-1)-3: (-1)=really naughty, 3=really good */
+#define p_aligntyp (nh_g->s_pray_c_p_aligntyp)
+#define p_trouble (nh_g->s_pray_c_p_trouble)
+#define p_type (nh_g->s_pray_c_p_type) /* (-1)-3: (-1)=really naughty, 3=really good */
 
 #define PIOUS 20
 #define DEVOUT 14
@@ -661,8 +661,8 @@ boolean via_disintegration;
 {
     You("%s!", !via_disintegration ? "fry to a crisp"
                                    : "disintegrate into a pile of dust");
-    killer.format = KILLED_BY;
-    Sprintf(killer.name, "the wrath of %s", align_gname(resp_god));
+    NH_G(killer).format = KILLED_BY;
+    Sprintf(NH_G(killer).name, "the wrath of %s", align_gname(resp_god));
     done(DIED);
 }
 
@@ -817,7 +817,7 @@ gcrownu()
         break;
     }
 
-    if (objects[class_gift].oc_class == SPBOOK_CLASS) {
+    if (NH_G(objects)[class_gift].oc_class == SPBOOK_CLASS) {
         obj = mksobj(class_gift, TRUE, FALSE);
         bless(obj);
         obj->bknown = 1; /* ok to skip set_bknown() */
@@ -1200,7 +1200,7 @@ aligntyp g_align;
                         && !P_RESTRICTED(spell_skilltype(otmp->otyp)))
                         break; /* usable, but not yet known */
                 } else {
-                    if (!objects[SPE_BLANK_PAPER].oc_name_known
+                    if (!NH_G(objects)[SPE_BLANK_PAPER].oc_name_known
                         || carrying(MAGIC_MARKER))
                         break;
                 }
@@ -1238,7 +1238,7 @@ boolean bless_water;
     register long changed = 0;
     boolean other = FALSE, bc_known = !(Blind || Hallucination);
 
-    for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
+    for (otmp = NH_G(level).objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
         /* turn water into (un)holy water */
         if (otmp->otyp == POT_WATER
             && (bless_water ? !otmp->blessed : !otmp->cursed)) {
@@ -1532,8 +1532,8 @@ dosacrifice()
                 pline("%s shrugs and retains dominion over %s,", Moloch,
                       u_gname());
                 pline("then mercilessly snuffs out your life.");
-                Sprintf(killer.name, "%s indifference", s_suffix(Moloch));
-                killer.format = KILLED_BY;
+                Sprintf(NH_G(killer).name, "%s indifference", s_suffix(Moloch));
+                NH_G(killer).format = KILLED_BY;
                 done(DIED);
                 /* life-saved (or declined to die in wizard/explore mode) */
                 pline("%s snarls and tries again...", Moloch);
@@ -1561,7 +1561,7 @@ dosacrifice()
                 verbalize(
           "In return for thy service, I grant thee the gift of Immortality!");
                 You("ascend to the status of Demigod%s...",
-                    flags.female ? "dess" : "");
+                    NH_G(flags).female ? "dess" : "");
                 done(ASCENDED);
             }
         }
@@ -2262,7 +2262,7 @@ int dx, dy;
     int nx, ny;
     long count = 0L;
 
-    for (otmp = level.objects[u.ux + dx][u.uy + dy]; otmp;
+    for (otmp = NH_G(level).objects[u.ux + dx][u.uy + dy]; otmp;
          otmp = otmp->nexthere) {
         if (otmp->otyp == BOULDER)
             count += otmp->quan;

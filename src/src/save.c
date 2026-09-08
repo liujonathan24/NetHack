@@ -49,14 +49,9 @@ STATIC_DCL void FDECL(zerocomp_bwrite, (int, genericptr_t, unsigned int));
 STATIC_DCL void FDECL(zerocomp_bputc, (int));
 #endif
 
-static struct save_procs {
-    const char *name;
-    void FDECL((*save_bufon), (int));
-    void FDECL((*save_bufoff), (int));
-    void FDECL((*save_bflush), (int));
-    void FDECL((*save_bwrite), (int, genericptr_t, unsigned int));
-    void FDECL((*save_bclose), (int));
-} saveprocs = {
+#define saveprocs (nh_g->s_save_c_saveprocs)
+const struct save_procs nh_tmpl_s_save_c_saveprocs =
+{
 #if !defined(ZEROCOMP) || (defined(COMPRESS) || defined(ZLIB_COMP))
     "externalcomp", def_bufon, def_bufoff, def_bflush, def_bwrite, def_bclose,
 #else
@@ -66,13 +61,14 @@ static struct save_procs {
 };
 
 #if defined(UNIX) || defined(VMS) || defined(__EMX__) || defined(WIN32)
-#define HUP if (!program_state.done_hup)
+#define HUP if (!NH_G(program_state).done_hup)
 #else
 #define HUP
 #endif
 
 /* need to preserve these during save to avoid accessing freed memory */
-static unsigned ustuck_id = 0, usteed_id = 0;
+#define ustuck_id (nh_g->s_save_c_ustuck_id)
+#define usteed_id (nh_g->s_save_c_usteed_id)
 
 int
 dosave()
@@ -88,7 +84,7 @@ dosave()
         clear_nhwindow(WIN_MESSAGE);
         pline("Saving...");
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-        program_state.done_hup = 0;
+        NH_G(program_state).done_hup = 0;
 #endif
         if (dosave0()) {
             u.uhp = -1; /* universal game's over indicator */
@@ -123,7 +119,7 @@ dosave0()
     if (iflags.save_uburied)
         u.uburied = 1, iflags.save_uburied = 0;
 
-    if (!program_state.something_worth_saving || !SAVEF[0])
+    if (!NH_G(program_state).something_worth_saving || !SAVEF[0])
         return 0;
     fq_save = fqname(SAVEF, SAVEPREFIX, 1); /* level files take 0 */
 
@@ -166,9 +162,9 @@ dosave0()
                          in the event of an impossible() call */
 
     /* undo date-dependent luck adjustments made at startup time */
-    if (flags.moonphase == FULL_MOON) /* ut-sally!fletcher */
+    if (NH_G(flags).moonphase == FULL_MOON) /* ut-sally!fletcher */
         change_luck(-1);              /* and unido!ab */
-    if (flags.friday13)
+    if (NH_G(flags).friday13)
         change_luck(1);
     if (iflags.window_inited)
         HUP clear_nhwindow(WIN_MESSAGE);
@@ -251,7 +247,7 @@ dosave0()
             HUP pline1(whynot);
             (void) nhclose(fd);
             (void) delete_savefile();
-            HUP Strcpy(killer.name, whynot);
+            HUP Strcpy(NH_G(killer).name, whynot);
             HUP done(TRICKED);
             return 0;
         }
@@ -271,7 +267,7 @@ dosave0()
     delete_levelfile(0);
     nh_compress(fq_save);
     /* this should probably come sooner... */
-    program_state.something_worth_saving = 0;
+    NH_G(program_state).something_worth_saving = 0;
     return 1;
 }
 
@@ -288,7 +284,7 @@ register int fd, mode;
     uid = (unsigned long) getuid();
     bwrite(fd, (genericptr_t) &uid, sizeof uid);
     bwrite(fd, (genericptr_t) &context, sizeof context);
-    bwrite(fd, (genericptr_t) &flags, sizeof flags);
+    bwrite(fd, (genericptr_t) &NH_G(flags), sizeof NH_G(flags));
 #ifdef SYSFLAGS
     bwrite(fd, (genericptr_t) &sysflags, sysflags);
 #endif
@@ -328,7 +324,7 @@ register int fd, mode;
         migrating_objs = 0;
         migrating_mons = 0;
     }
-    bwrite(fd, (genericptr_t) mvitals, sizeof mvitals);
+    bwrite(fd, (genericptr_t) NH_G(mvitals), sizeof NH_G(mvitals));
 
     save_dungeon(fd, (boolean) !!perform_bwrite(mode),
                  (boolean) !!release_data(mode));
@@ -361,7 +357,7 @@ char *whynot;
     if (fd < 0) {
         pline1(whynot);
         pline("Probably someone removed it.");
-        Strcpy(killer.name, whynot);
+        Strcpy(NH_G(killer).name, whynot);
         done(TRICKED);
         return TRUE;
     }
@@ -529,7 +525,7 @@ int mode;
        the guessing that was needed in 3.4.3 and without having to
        interpret level data to find where to start; unfortunately it
        still needs to handle all the data compression schemes */
-    savecemetery(fd, mode, &level.bonesinfo);
+    savecemetery(fd, mode, &NH_G(level).bonesinfo);
     if (mode == FREE_SAVE) /* see above */
         goto skip_lots;
 
@@ -543,7 +539,7 @@ int mode;
     bwrite(fd, (genericptr_t) &sstairs, sizeof (stairway));
     bwrite(fd, (genericptr_t) &updest, sizeof (dest_area));
     bwrite(fd, (genericptr_t) &dndest, sizeof (dest_area));
-    bwrite(fd, (genericptr_t) &level.flags, sizeof level.flags);
+    bwrite(fd, (genericptr_t) &NH_G(level).flags, sizeof NH_G(level).flags);
     bwrite(fd, (genericptr_t) doors, sizeof doors);
     save_rooms(fd); /* no dynamic memory to reclaim */
 
@@ -557,17 +553,17 @@ int mode;
     save_worm(fd, mode); /* save worm information */
     savetrapchn(fd, ftrap, mode);
     saveobjchn(fd, fobj, mode);
-    saveobjchn(fd, level.buriedobjlist, mode);
+    saveobjchn(fd, NH_G(level).buriedobjlist, mode);
     saveobjchn(fd, billobjs, mode);
     if (release_data(mode)) {
         int x,y;
 
         for (y = 0; y < ROWNO; y++)
             for (x = 0; x < COLNO; x++)
-                level.monsters[x][y] = 0;
+                NH_G(level).monsters[x][y] = 0;
         fmon = 0;
         ftrap = 0;
-        fobj = level.buriedobjlist = billobjs = 0;
+        fobj = NH_G(level).buriedobjlist = billobjs = 0;
         /* level.bonesinfo = 0; -- handled by savecemetery() */
     }
     save_engravings(fd, mode);
@@ -677,9 +673,11 @@ int fd;
     return;
 }
 
-static int bw_fd = -1;
-static FILE *bw_FILE = 0;
-static boolean buffering = FALSE;
+#define bw_fd (nh_g->s_save_c_bw_fd)
+const int nh_tmpl_s_save_c_bw_fd =
+-1;
+#define bw_FILE (nh_g->s_save_c_bw_FILE)
+#define buffering (nh_g->s_save_c_buffering)
 
 STATIC_OVL void
 def_bufon(fd)
@@ -751,7 +749,7 @@ register unsigned num;
 
     if (failed) {
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-        if (program_state.done_hup)
+        if (NH_G(program_state).done_hup)
             nh_terminate(EXIT_FAILURE);
         else
 #endif
@@ -971,7 +969,7 @@ register int fd, mode;
     register struct damage *damageptr, *tmp_dam;
     unsigned int xl = 0;
 
-    damageptr = level.damagelist;
+    damageptr = NH_G(level).damagelist;
     for (tmp_dam = damageptr; tmp_dam; tmp_dam = tmp_dam->next)
         xl++;
     if (perform_bwrite(mode))
@@ -986,7 +984,7 @@ register int fd, mode;
             free((genericptr_t) tmp_dam);
     }
     if (release_data(mode))
-        level.damagelist = 0;
+        NH_G(level).damagelist = 0;
 }
 
 STATIC_OVL void
@@ -1158,7 +1156,7 @@ int fd;
 register struct trap *trap;
 int mode;
 {
-    static struct trap zerotrap;
+    /* zerotrap: per-env nh_g->l_save_c_savetrapchn_zerotrap */
     register struct trap *trap2;
 
     while (trap) {
@@ -1170,7 +1168,7 @@ int mode;
         trap = trap2;
     }
     if (perform_bwrite(mode))
-        bwrite(fd, (genericptr_t) &zerotrap, sizeof zerotrap);
+        bwrite(fd, (genericptr_t) &NH_G(l_save_c_savetrapchn_zerotrap), sizeof NH_G(l_save_c_savetrapchn_zerotrap));
 }
 
 /* save all the fruit names and ID's; this is used only in saving whole games
@@ -1182,7 +1180,7 @@ void
 savefruitchn(fd, mode)
 int fd, mode;
 {
-    static struct fruit zerofruit;
+    /* zerofruit: per-env nh_g->l_save_c_savefruitchn_zerofruit */
     register struct fruit *f2, *f1;
 
     f1 = ffruit;
@@ -1195,7 +1193,7 @@ int fd, mode;
         f1 = f2;
     }
     if (perform_bwrite(mode))
-        bwrite(fd, (genericptr_t) &zerofruit, sizeof zerofruit);
+        bwrite(fd, (genericptr_t) &NH_G(l_save_c_savefruitchn_zerofruit), sizeof NH_G(l_save_c_savefruitchn_zerofruit));
     if (release_data(mode))
         ffruit = 0;
 }

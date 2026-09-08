@@ -101,7 +101,13 @@ void NDECL(monst_init);
  */
 
 #ifndef SPLITMON_2
-NEARDATA struct permonst mons[] = {
+#ifdef NH_GLOBALS_NONE
+NEARDATA struct permonst mons[] =
+#else
+/* mons: per-env, see nh_globals.h */
+const struct permonst nh_tmpl_mons[] =
+#endif
+{
     /*
      * ants
      */

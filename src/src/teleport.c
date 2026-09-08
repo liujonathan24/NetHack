@@ -12,7 +12,7 @@ STATIC_DCL boolean FDECL(rloc_pos_ok, (int, int, struct monst *));
 STATIC_DCL void FDECL(mvault_tele, (struct monst *));
 
 /* non-null when teleporting via having read this scroll */
-STATIC_VAR struct obj *telescroll = 0;
+#define telescroll (nh_g->s_teleport_c_telescroll)
 
 /*
  * Is (x,y) a good position of mtmp?  If mtmp is NULL, then is (x,y) good
@@ -491,7 +491,7 @@ struct obj *scroll;
     boolean result = FALSE; /* don't learn scroll */
 
     /* Disable teleportation in stronghold && Vlad's Tower */
-    if (level.flags.noteleport) {
+    if (NH_G(level).flags.noteleport) {
         if (!wizard) {
             pline("A mysterious force prevents you from teleporting!");
             return TRUE;
@@ -721,7 +721,7 @@ boolean break_the_rules; /* True: wizard mode ^T */
            even though casting failure due to these reasons doesn't.
            [Note: this spellev() is different from the one in spell.c
            but they both yield the same result.] */
-#define spellev(spell_otyp) ((int) objects[spell_otyp].oc_level)
+#define spellev(spell_otyp) ((int) NH_G(objects)[spell_otyp].oc_level)
         energy = 5 * spellev(SPE_TELEPORT_AWAY);
         if (break_the_rules) {
             if (!castit)
@@ -874,8 +874,8 @@ level_tele()
             if (invent)
                 Your("possessions land on the %s with a thud.",
                      surface(u.ux, u.uy));
-            killer.format = NO_KILLER_PREFIX;
-            Strcpy(killer.name, "committed suicide");
+            NH_G(killer).format = NO_KILLER_PREFIX;
+            Strcpy(NH_G(killer).name, "committed suicide");
             done(DIED);
             pline("An energized cloud of dust begins to coalesce.");
             Your("body rematerializes%s.",
@@ -929,7 +929,7 @@ level_tele()
         return;
     }
 
-    killer.name[0] = 0; /* still alive, so far... */
+    NH_G(killer).name[0] = 0; /* still alive, so far... */
 
     if (iflags.debug_fuzzer && newlev < 0)
         goto random_levtport;
@@ -945,8 +945,8 @@ level_tele()
         if (newlev <= -10) {
             You("arrive in heaven.");
             verbalize("Thou art early, but we'll admit thee.");
-            killer.format = NO_KILLER_PREFIX;
-            Strcpy(killer.name, "went to heaven prematurely");
+            NH_G(killer).format = NO_KILLER_PREFIX;
+            Strcpy(NH_G(killer).name, "went to heaven prematurely");
         } else if (newlev == -9) {
             You_feel("deliriously happy.");
             pline("(In fact, you're on Cloud 9!)");
@@ -954,7 +954,7 @@ level_tele()
         } else
             You("are now high above the clouds...");
 
-        if (killer.name[0]) {
+        if (NH_G(killer).name[0]) {
             ; /* arrival in heaven is pending */
         } else if (Levitation) {
             escape_by_flying = "float gently down to earth";
@@ -963,14 +963,14 @@ level_tele()
         } else {
             pline("Unfortunately, you don't know how to fly.");
             You("plummet a few thousand feet to your death.");
-            Sprintf(killer.name,
+            Sprintf(NH_G(killer).name,
                     "teleported out of the dungeon and fell to %s death",
                     uhis());
-            killer.format = NO_KILLER_PREFIX;
+            NH_G(killer).format = NO_KILLER_PREFIX;
         }
     }
 
-    if (killer.name[0]) { /* the chosen destination was not survivable */
+    if (NH_G(killer).name[0]) { /* the chosen destination was not survivable */
         d_level lsav;
 
         /* set specific death location; this also suppresses bones */
@@ -1293,7 +1293,7 @@ boolean
 tele_restrict(mon)
 struct monst *mon;
 {
-    if (level.flags.noteleport) {
+    if (NH_G(level).flags.noteleport) {
         if (canseemon(mon))
             pline("A mysterious force prevents %s from teleporting!",
                   mon_nam(mon));
@@ -1568,7 +1568,7 @@ boolean give_feedback;
         if (give_feedback)
             pline("%s resists your magic!", Monnam(mtmp));
         return FALSE;
-    } else if (level.flags.noteleport && u.uswallow && mtmp == u.ustuck) {
+    } else if (NH_G(level).flags.noteleport && u.uswallow && mtmp == u.ustuck) {
         if (give_feedback)
             You("are no longer inside %s!", mon_nam(mtmp));
         unstuck(mtmp);

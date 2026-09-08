@@ -11,9 +11,9 @@
  * structure eventually.
  */
 
-static NhRegion **regions;
-static int n_regions = 0;
-static int max_regions = 0;
+#define regions (nh_g->s_region_c_regions)
+#define n_regions (nh_g->s_region_c_n_regions)
+#define max_regions (nh_g->s_region_c_max_regions)
 
 #define NO_CALLBACK (-1)
 
@@ -314,7 +314,7 @@ NhRegion *reg;
             if (!isok(i, j))
                 continue;
             if (MON_AT(i, j) && inside_region(reg, i, j))
-                add_mon_to_reg(reg, level.monsters[i][j]);
+                add_mon_to_reg(reg, NH_G(level).monsters[i][j]);
             if (reg->visible && cansee(i, j))
                 newsym(i, j);
         }

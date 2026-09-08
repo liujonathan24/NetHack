@@ -57,7 +57,7 @@ STATIC_VAR NEARDATA const char *const barehands_or_martial[] = {
 
 #define P_NAME(type)                                    \
     ((skill_names_indices[type] > 0)                    \
-         ? OBJ_NAME(objects[skill_names_indices[type]]) \
+         ? OBJ_NAME(NH_G(objects)[skill_names_indices[type]]) \
          : (type == P_BARE_HANDED_COMBAT)               \
                ? barehands_or_martial[martial_bonus()]  \
                : odd_skill_names[-skill_names_indices[type]])
@@ -95,7 +95,7 @@ struct obj *obj;
         descr = (obj->otyp == CORPSE || obj->otyp == TIN || obj->otyp == EGG
                  || obj->otyp == STATUE || obj->otyp == BOULDER
                  || obj->otyp == TOWEL)
-                    ? OBJ_NAME(objects[obj->otyp])
+                    ? OBJ_NAME(NH_G(objects)[obj->otyp])
                     : def_oc_syms[(int) obj->oclass].name;
         break;
     case P_SLING:
@@ -148,7 +148,7 @@ struct monst *mon;
         tmp += otmp->spe;
 
     /* Put weapon specific "to hit" bonuses in below: */
-    tmp += objects[otmp->otyp].oc_hitbon;
+    tmp += NH_G(objects)[otmp->otyp].oc_hitbon;
 
     /* Put weapon vs. monster type "to hit" bonuses in below: */
 
@@ -218,8 +218,8 @@ struct monst *mon;
         return 0;
 
     if (bigmonst(ptr)) {
-        if (objects[otyp].oc_wldam)
-            tmp = rnd(objects[otyp].oc_wldam);
+        if (NH_G(objects)[otyp].oc_wldam)
+            tmp = rnd(NH_G(objects)[otyp].oc_wldam);
         switch (otyp) {
         case IRON_CHAIN:
         case CROSSBOW_BOLT:
@@ -256,8 +256,8 @@ struct monst *mon;
             break;
         }
     } else {
-        if (objects[otyp].oc_wsdam)
-            tmp = rnd(objects[otyp].oc_wsdam);
+        if (NH_G(objects)[otyp].oc_wsdam)
+            tmp = rnd(NH_G(objects)[otyp].oc_wsdam);
         switch (otyp) {
         case IRON_CHAIN:
         case CROSSBOW_BOLT:
@@ -295,7 +295,7 @@ struct monst *mon;
             tmp = 0;
     }
 
-    if (objects[otyp].oc_material <= LEATHER && thick_skinned(ptr))
+    if (NH_G(objects)[otyp].oc_material <= LEATHER && thick_skinned(ptr))
         /* thick skinned/scaled creatures don't feel it */
         tmp = 0;
     if (ptr == &mons[PM_SHADE] && !shade_glare(otmp))
@@ -303,7 +303,7 @@ struct monst *mon;
 
     /* "very heavy iron ball"; weight increase is in increments */
     if (otyp == HEAVY_IRON_BALL && tmp > 0) {
-        int wt = (int) objects[HEAVY_IRON_BALL].oc_weight;
+        int wt = (int) NH_G(objects)[HEAVY_IRON_BALL].oc_weight;
 
         if ((int) otmp->owt > wt) {
             wt = ((int) otmp->owt - wt) / IRON_BALL_W_INCR;
@@ -323,7 +323,7 @@ struct monst *mon;
             bonus += rnd(4);
         if (is_axe(otmp) && is_wooden(ptr))
             bonus += rnd(4);
-        if (objects[otyp].oc_material == SILVER && mon_hates_silver(mon))
+        if (NH_G(objects)[otyp].oc_material == SILVER && mon_hates_silver(mon))
             bonus += rnd(20);
         if (artifact_light(otmp) && otmp->lamplit && hates_light(ptr))
             bonus += rnd(8);
@@ -393,7 +393,7 @@ long *silverhit_p; /* output flag mask for silver bonus */
            scales refer to color, not material) and the only way to hit
            with one--aside from throwing--is to wield it and perform a
            weapon hit, but we include a general check here */
-        if (objects[obj->otyp].oc_material == SILVER
+        if (NH_G(objects)[obj->otyp].oc_material == SILVER
             && mon_hates_silver(mdef)) {
             bonus += rnd(20);
             silverhit |= armask;
@@ -402,14 +402,14 @@ long *silverhit_p; /* output flag mask for silver bonus */
     /* when no gloves we check for silver rings (blessed rings ignored) */
     } else if ((left_ring || right_ring) && magr == &youmonst) {
         if (left_ring && uleft) {
-            if (objects[uleft->otyp].oc_material == SILVER
+            if (NH_G(objects)[uleft->otyp].oc_material == SILVER
                 && mon_hates_silver(mdef)) {
                 bonus += rnd(20);
                 silverhit |= W_RINGL;
             }
         }
         if (right_ring && uright) {
-            if (objects[uright->otyp].oc_material == SILVER
+            if (NH_G(objects)[uright->otyp].oc_material == SILVER
                 && mon_hates_silver(mdef)) {
                 /* two silver rings don't give double silver damage
                    but 'silverhit' messages might be adjusted for them */
@@ -439,8 +439,8 @@ long silverhit;
         rtyp = ((uright && (silverhit & W_RINGR) != 0L)
                 ? uright->otyp : STRANGE_OBJECT);
     boolean both,
-        l_ag = (objects[ltyp].oc_material == SILVER && uleft->dknown),
-        r_ag = (objects[rtyp].oc_material == SILVER && uright->dknown);
+        l_ag = (NH_G(objects)[ltyp].oc_material == SILVER && uleft->dknown),
+        r_ag = (NH_G(objects)[rtyp].oc_material == SILVER && uright->dknown);
 
     if ((silverhit & (W_RINGL | W_RINGR)) != 0L) {
         /* plural if both the same type (so not multi_claw and both rings
@@ -499,7 +499,7 @@ static NEARDATA const int pwep[] = { HALBERD,       BARDICHE, SPETUM,
                                      BEC_DE_CORBIN, FAUCHARD, PARTISAN,
                                      LANCE };
 
-static struct obj *propellor;
+#define propellor (nh_g->s_weapon_c_propellor)
 
 /* select a ranged weapon for the monster */
 struct obj *
@@ -540,8 +540,8 @@ register struct monst *mtmp;
              */
             if (((strongmonst(mtmp->data)
                   && (mtmp->misc_worn_check & W_ARMS) == 0)
-                 || !objects[pwep[i]].oc_bimanual)
-                && (objects[pwep[i]].oc_material != SILVER
+                 || !NH_G(objects)[pwep[i]].oc_bimanual)
+                && (NH_G(objects)[pwep[i]].oc_material != SILVER
                     || !mon_hates_silver(mtmp))) {
                 if ((otmp = oselect(mtmp, pwep[i])) != 0
                     && (otmp == mwep || !mweponly)) {
@@ -574,7 +574,7 @@ register struct monst *mtmp;
         /* KMH -- This belongs here so darts will work */
         propellor = (struct obj *) &zeroobj;
 
-        prop = objects[rwep[i]].oc_skill;
+        prop = NH_G(objects)[rwep[i]].oc_skill;
         if (prop < 0) {
             switch (-prop) {
             case P_BOW:
@@ -663,7 +663,7 @@ register struct monst *mtmp;
         if (otmp->oclass == WEAPON_CLASS && otmp->oartifact
             && touch_artifact(otmp, mtmp)
             && ((strong && !wearing_shield)
-                || !objects[otmp->otyp].oc_bimanual))
+                || !NH_G(objects)[otmp->otyp].oc_bimanual))
             return otmp;
     }
 
@@ -677,8 +677,8 @@ register struct monst *mtmp;
         if (hwep[i] == CORPSE && !(mtmp->misc_worn_check & W_ARMG)
             && !resists_ston(mtmp))
             continue;
-        if (((strong && !wearing_shield) || !objects[hwep[i]].oc_bimanual)
-            && (objects[hwep[i]].oc_material != SILVER
+        if (((strong && !wearing_shield) || !NH_G(objects)[hwep[i]].oc_bimanual)
+            && (NH_G(objects)[hwep[i]].oc_material != SILVER
                 || !mon_hates_silver(mtmp)))
             Oselect(hwep[i]);
     }
@@ -1375,7 +1375,7 @@ struct obj *obj;
     if (obj->oclass != WEAPON_CLASS && obj->oclass != TOOL_CLASS
         && obj->oclass != GEM_CLASS)
         return P_NONE; /* Not a weapon, weapon-tool, or ammo */
-    type = objects[obj->otyp].oc_skill;
+    type = NH_G(objects)[obj->otyp].oc_skill;
     return (type < 0) ? -type : type;
 }
 

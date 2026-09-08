@@ -6,7 +6,7 @@
 #include "hack.h"
 #include "lev.h"
 
-extern char bones[]; /* from files.c */
+/* bones: per-env, see nh_globals.h */ /* from files.c */
 #ifdef MFLOPPY
 extern long bytes_counted;
 #endif
@@ -20,7 +20,7 @@ STATIC_OVL boolean
 no_bones_level(lev)
 d_level *lev;
 {
-    extern d_level save_dlevel; /* in do.c */
+    /* save_dlevel: per-env, see nh_globals.h */ /* in do.c */
     s_level *sptr;
 
     if (ledger_no(&save_dlevel))
@@ -106,7 +106,7 @@ boolean restore;
         } else { /* saving */
             /* do not zero out o_ids for ghost levels anymore */
 
-            if (objects[otmp->otyp].oc_uses_known)
+            if (NH_G(objects)[otmp->otyp].oc_uses_known)
                 otmp->known = 0;
             otmp->dknown = otmp->bknown = 0;
             otmp->rknown = 0;
@@ -324,7 +324,7 @@ can_make_bones()
 {
     register struct trap *ttmp;
 
-    if (!flags.bones)
+    if (!NH_G(flags).bones)
         return FALSE;
     if (ledger_no(&u.uz) <= 0 || ledger_no(&u.uz) > maxledgerno())
         return FALSE;
@@ -464,7 +464,7 @@ struct obj *corpse;
     if (mtmp) {
         mtmp->m_lev = (u.ulevel ? u.ulevel : 1);
         mtmp->mhp = mtmp->mhpmax = u.uhpmax;
-        mtmp->female = flags.female;
+        mtmp->female = NH_G(flags).female;
         mtmp->msleeping = 1;
     }
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
@@ -479,7 +479,7 @@ struct obj *corpse;
         ttmp->tseen = (ttmp->ttyp == HOLE);
     }
     resetobjs(fobj, FALSE);
-    resetobjs(level.buriedobjlist, FALSE);
+    resetobjs(NH_G(level).buriedobjlist, FALSE);
 
     /* Hero is no longer on the map. */
     u.ux0 = u.ux, u.uy0 = u.uy;
@@ -503,7 +503,7 @@ struct obj *corpse;
        gender and alignment reflect final values rather than what the
        character started out as, same as topten and logfile entries */
     Sprintf(newbones->who, "%s-%.3s-%.3s-%.3s-%.3s", plname, urole.filecode,
-            urace.filecode, genders[flags.female].filecode,
+            urace.filecode, genders[NH_G(flags).female].filecode,
             aligns[1 - u.ualign.type].filecode);
     formatkiller(newbones->how, sizeof newbones->how, how, TRUE);
     Strcpy(newbones->when, yyyymmddhhmmss(when));
@@ -512,13 +512,13 @@ struct obj *corpse;
     newbones->bonesknown = FALSE;
     /* if current character died on a bones level, the cemetery list
        will have multiple entries, most recent (this dead hero) first */
-    newbones->next = level.bonesinfo;
-    level.bonesinfo = newbones;
+    newbones->next = NH_G(level).bonesinfo;
+    NH_G(level).bonesinfo = newbones;
     /* flag these bones if they are being created in wizard mode;
        they might already be flagged as such, even when we're playing
        in normal mode, if this level came from a previous bones file */
     if (wizard)
-        level.flags.wizard_bones = 1;
+        NH_G(level).flags.wizard_bones = 1;
 
     fd = create_bonesfile(&u.uz, &bonesid, whynot);
     if (fd < 0) {
@@ -584,7 +584,7 @@ getbones()
     if (discover) /* save bones files for real games */
         return 0;
 
-    if (!flags.bones)
+    if (!NH_G(flags).bones)
         return 0;
     /* wizard check added by GAN 02/05/87 */
     if (rn2(3) /* only once in three times do we find bones */
@@ -596,7 +596,7 @@ getbones()
     if (fd < 0)
         return 0;
 
-    if (validate(fd, bones) != 0) {
+    if (validate(fd, NH_G(bones)) != 0) {
         if (!wizard)
             pline("Discarding unusable bones; no need to panic...");
         ok = FALSE;
@@ -655,7 +655,7 @@ getbones()
                     resetobjs(mtmp->minvent, TRUE);
             }
             resetobjs(fobj, TRUE);
-            resetobjs(level.buriedobjlist, TRUE);
+            resetobjs(NH_G(level).buriedobjlist, TRUE);
         }
     }
     (void) nhclose(fd);

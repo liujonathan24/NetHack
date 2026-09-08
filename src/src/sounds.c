@@ -31,25 +31,25 @@ dosounds()
 #endif
     struct monst *mtmp;
 
-    if (Deaf || !flags.acoustics || u.uswallow || Underwater)
+    if (Deaf || !NH_G(flags).acoustics || u.uswallow || Underwater)
         return;
 
     hallu = Hallucination ? 1 : 0;
 
-    if (level.flags.nfountains && !rn2(400)) {
+    if (NH_G(level).flags.nfountains && !rn2(400)) {
         static const char *const fountain_msg[4] = {
             "bubbling water.", "water falling on coins.",
             "the splashing of a naiad.", "a soda fountain!",
         };
         You_hear1(fountain_msg[rn2(3) + hallu]);
     }
-    if (level.flags.nsinks && !rn2(300)) {
+    if (NH_G(level).flags.nsinks && !rn2(300)) {
         static const char *const sink_msg[3] = {
             "a slow drip.", "a gurgling noise.", "dishes being washed!",
         };
         You_hear1(sink_msg[rn2(2) + hallu]);
     }
-    if (level.flags.has_court && !rn2(200)) {
+    if (NH_G(level).flags.has_court && !rn2(200)) {
         static const char *const throne_msg[4] = {
             "the tones of courtly conversation.",
             "a sceptre pounded in judgment.",
@@ -72,7 +72,7 @@ dosounds()
             }
         }
     }
-    if (level.flags.has_swamp && !rn2(200)) {
+    if (NH_G(level).flags.has_swamp && !rn2(200)) {
         static const char *const swamp_msg[3] = {
             "hear mosquitoes!", "smell marsh gas!", /* so it's a smell...*/
             "hear Donald Duck!",
@@ -80,10 +80,10 @@ dosounds()
         You1(swamp_msg[rn2(2) + hallu]);
         return;
     }
-    if (level.flags.has_vault && !rn2(200)) {
+    if (NH_G(level).flags.has_vault && !rn2(200)) {
         if (!(sroom = search_special(VAULT))) {
             /* strange ... */
-            level.flags.has_vault = 0;
+            NH_G(level).flags.has_vault = 0;
             return;
         }
         if (gd_sound())
@@ -124,7 +124,7 @@ dosounds()
             }
         return;
     }
-    if (level.flags.has_beehive && !rn2(200)) {
+    if (NH_G(level).flags.has_beehive && !rn2(200)) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
                 continue;
@@ -146,7 +146,7 @@ dosounds()
             }
         }
     }
-    if (level.flags.has_morgue && !rn2(200)) {
+    if (NH_G(level).flags.has_morgue && !rn2(200)) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
                 continue;
@@ -171,7 +171,7 @@ dosounds()
             }
         }
     }
-    if (level.flags.has_barracks && !rn2(200)) {
+    if (NH_G(level).flags.has_barracks && !rn2(200)) {
         static const char *const barracks_msg[4] = {
             "blades being honed.", "loud snoring.", "dice being thrown.",
             "General MacArthur!",
@@ -194,7 +194,7 @@ dosounds()
             }
         }
     }
-    if (level.flags.has_zoo && !rn2(200)) {
+    if (NH_G(level).flags.has_zoo && !rn2(200)) {
         static const char *const zoo_msg[3] = {
             "a sound reminiscent of an elephant stepping on a peanut.",
             "a sound reminiscent of a seal barking.", "Doctor Dolittle!",
@@ -209,10 +209,10 @@ dosounds()
             }
         }
     }
-    if (level.flags.has_shop && !rn2(200)) {
+    if (NH_G(level).flags.has_shop && !rn2(200)) {
         if (!(sroom = search_special(ANY_SHOP))) {
             /* strange... */
-            level.flags.has_shop = 0;
+            NH_G(level).flags.has_shop = 0;
             return;
         }
         if (tended_shop(sroom)
@@ -225,7 +225,7 @@ dosounds()
         }
         return;
     }
-    if (level.flags.has_temple && !rn2(200)
+    if (NH_G(level).flags.has_temple && !rn2(200)
         && !(Is_astralevel(&u.uz) || Is_sanctum(&u.uz))) {
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
@@ -558,7 +558,7 @@ register struct monst *mtmp;
             (Upolyd && (u.umonnum == PM_WOLF || u.umonnum == PM_WINTER_WOLF
                         || u.umonnum == PM_WINTER_WOLF_CUB));
         const char *racenoun =
-            (flags.female && urace.individual.f)
+            (NH_G(flags).female && urace.individual.f)
                 ? urace.individual.f
                 : (urace.individual.m) ? urace.individual.m : urace.noun;
 
@@ -581,7 +581,7 @@ register struct monst *mtmp;
         } else if (mtmp->mpeaceful) {
             if (kindred && isnight) {
                 Sprintf(verbuf, "Good feeding %s!",
-                        flags.female ? "sister" : "brother");
+                        NH_G(flags).female ? "sister" : "brother");
                 verbl_msg = verbuf;
             } else if (nightchild && isnight) {
                 Sprintf(verbuf, "How nice to hear you, child of the night!");
@@ -624,7 +624,7 @@ register struct monst *mtmp;
         }
     } break;
     case MS_WERE:
-        if (flags.moonphase == FULL_MOON && (night() ^ !rn2(13))) {
+        if (NH_G(flags).moonphase == FULL_MOON && (night() ^ !rn2(13))) {
             pline("%s throws back %s head and lets out a blood curdling %s!",
                   Monnam(mtmp), mhis(mtmp),
                   ptr == &mons[PM_HUMAN_WERERAT] ? "shriek" : "howl");
@@ -634,7 +634,7 @@ register struct monst *mtmp;
                 "whispers inaudibly.  All you can make out is \"moon\".";
         break;
     case MS_BARK:
-        if (flags.moonphase == FULL_MOON && night()) {
+        if (NH_G(flags).moonphase == FULL_MOON && night()) {
             pline_msg = "howls.";
         } else if (mtmp->mpeaceful) {
             if (mtmp->mtame
@@ -862,7 +862,7 @@ register struct monst *mtmp;
     } break;
     case MS_ARREST:
         if (mtmp->mpeaceful)
-            verbalize("Just the facts, %s.", flags.female ? "Ma'am" : "Sir");
+            verbalize("Just the facts, %s.", NH_G(flags).female ? "Ma'am" : "Sir");
         else {
             static const char *const arrest_msg[3] = {
                 "Anything you say can be used against you.",

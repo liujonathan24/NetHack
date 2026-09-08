@@ -82,11 +82,7 @@ struct window_procs {
     boolean NDECL((*win_can_suspend));
 };
 
-extern
-#ifdef HANGUPHANDLING
-    volatile
-#endif
-    NEARDATA struct window_procs windowprocs;
+/* windowprocs: per-env, see nh_globals.h */
 
 /*
  * If you wish to only support one window system and not use procedure

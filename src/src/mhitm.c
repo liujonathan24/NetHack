@@ -6,11 +6,12 @@
 #include "hack.h"
 #include "artifact.h"
 
-extern boolean notonhead;
+/* notonhead: per-env, see nh_globals.h */
 
-static NEARDATA boolean vis, far_noise;
-static NEARDATA long noisetime;
-static NEARDATA struct obj *otmp;
+#define vis (nh_g->s_mhitm_c_vis)
+#define far_noise (nh_g->s_mhitm_c_far_noise)
+#define noisetime (nh_g->s_mhitm_c_noisetime)
+#define otmp (nh_g->s_mhitm_c_otmp)
 
 static const char brief_feeling[] =
     "have a %s feeling for a moment, then it passes.";
@@ -37,7 +38,7 @@ STATIC_DCL int FDECL(passivemm, (struct monst *, struct monst *,
  * If we use this a lot it should probably be a parameter to mdamagem()
  * instead of a global variable.
  */
-static int dieroll;
+#define dieroll (nh_g->s_mhitm_c_dieroll)
 
 STATIC_OVL void
 noises(magr, mattk)
@@ -409,8 +410,8 @@ register struct monst *magr, *mdef;
                 res[i] = hitmm(magr, mdef, mattk);
                 if ((mdef->data == &mons[PM_BLACK_PUDDING]
                      || mdef->data == &mons[PM_BROWN_PUDDING])
-                    && (otmp && (objects[otmp->otyp].oc_material == IRON
-                                 || objects[otmp->otyp].oc_material == METAL))
+                    && (otmp && (NH_G(objects)[otmp->otyp].oc_material == IRON
+                                 || NH_G(objects)[otmp->otyp].oc_material == METAL))
                     && mdef->mhp > 1 && !mdef->mcan) {
                     struct monst *mclone;
 
@@ -541,7 +542,7 @@ struct attack *mattk;
     boolean weaponhit = ((mattk->aatyp == AT_WEAP
                           || (mattk->aatyp == AT_CLAW && otmp))),
             silverhit = (weaponhit && otmp
-                         && objects[otmp->otyp].oc_material == SILVER),
+                         && NH_G(objects)[otmp->otyp].oc_material == SILVER),
             showit = FALSE;
 
     /* unhiding or unmimicking happens even if hero can't see it
@@ -917,7 +918,7 @@ register struct attack *mattk;
                 You(brief_feeling, "queasy");
             return MM_AGR_DIED;
         }
-        if (flags.verbose && !Deaf)
+        if (NH_G(flags).verbose && !Deaf)
             verbalize("Burrrrp!");
         tmp = mdef->mhp;
         /* Use up amulet of life saving */
@@ -934,7 +935,7 @@ register struct attack *mattk;
          */
         num = monsndx(pd);
         if (magr->mtame && !magr->isminion
-            && !(mvitals[num].mvflags & G_NOCORPSE)) {
+            && !(NH_G(mvitals)[num].mvflags & G_NOCORPSE)) {
             struct obj *virtualcorpse = mksobj(CORPSE, FALSE, FALSE);
             int nutrit;
 
@@ -1567,9 +1568,9 @@ mswingsm(magr, mdef, otemp)
 struct monst *magr, *mdef;
 struct obj *otemp;
 {
-    if (flags.verbose && !Blind && mon_visible(magr)) {
+    if (NH_G(flags).verbose && !Blind && mon_visible(magr)) {
         pline("%s %s %s%s %s at %s.", Monnam(magr),
-              (objects[otemp->otyp].oc_dir & PIERCE) ? "thrusts" : "swings",
+              (NH_G(objects)[otemp->otyp].oc_dir & PIERCE) ? "thrusts" : "swings",
               (otemp->quan > 1L) ? "one of " : "", mhis(magr), xname(otemp),
               mon_nam(mdef));
     }

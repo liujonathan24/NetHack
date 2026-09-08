@@ -19,89 +19,25 @@ const char
     *const attrname[] = { "strength", "intelligence", "wisdom",
                           "dexterity", "constitution", "charisma" };
 
-static const struct innate {
-    schar ulevel;
-    long *ability;
-    const char *gainstr, *losestr;
-} arc_abil[] = { { 1, &(HStealth), "", "" },
-                 { 1, &(HFast), "", "" },
-                 { 10, &(HSearching), "perceptive", "" },
-                 { 0, 0, 0, 0 } },
-
-  bar_abil[] = { { 1, &(HPoison_resistance), "", "" },
-                 { 7, &(HFast), "quick", "slow" },
-                 { 15, &(HStealth), "stealthy", "" },
-                 { 0, 0, 0, 0 } },
-
-  cav_abil[] = { { 7, &(HFast), "quick", "slow" },
-                 { 15, &(HWarning), "sensitive", "" },
-                 { 0, 0, 0, 0 } },
-
-  hea_abil[] = { { 1, &(HPoison_resistance), "", "" },
-                 { 15, &(HWarning), "sensitive", "" },
-                 { 0, 0, 0, 0 } },
-
-  kni_abil[] = { { 7, &(HFast), "quick", "slow" }, { 0, 0, 0, 0 } },
-
-  mon_abil[] = { { 1, &(HFast), "", "" },
-                 { 1, &(HSleep_resistance), "", "" },
-                 { 1, &(HSee_invisible), "", "" },
-                 { 3, &(HPoison_resistance), "healthy", "" },
-                 { 5, &(HStealth), "stealthy", "" },
-                 { 7, &(HWarning), "sensitive", "" },
-                 { 9, &(HSearching), "perceptive", "unaware" },
-                 { 11, &(HFire_resistance), "cool", "warmer" },
-                 { 13, &(HCold_resistance), "warm", "cooler" },
-                 { 15, &(HShock_resistance), "insulated", "conductive" },
-                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
-                 { 0, 0, 0, 0 } },
-
-  pri_abil[] = { { 15, &(HWarning), "sensitive", "" },
-                 { 20, &(HFire_resistance), "cool", "warmer" },
-                 { 0, 0, 0, 0 } },
-
-  ran_abil[] = { { 1, &(HSearching), "", "" },
-                 { 7, &(HStealth), "stealthy", "" },
-                 { 15, &(HSee_invisible), "", "" },
-                 { 0, 0, 0, 0 } },
-
-  rog_abil[] = { { 1, &(HStealth), "", "" },
-                 { 10, &(HSearching), "perceptive", "" },
-                 { 0, 0, 0, 0 } },
-
-  sam_abil[] = { { 1, &(HFast), "", "" },
-                 { 15, &(HStealth), "stealthy", "" },
-                 { 0, 0, 0, 0 } },
-
-  tou_abil[] = { { 10, &(HSearching), "perceptive", "" },
-                 { 20, &(HPoison_resistance), "hardy", "" },
-                 { 0, 0, 0, 0 } },
-
-  val_abil[] = { { 1, &(HCold_resistance), "", "" },
-                 { 1, &(HStealth), "", "" },
-                 { 7, &(HFast), "quick", "slow" },
-                 { 0, 0, 0, 0 } },
-
-  wiz_abil[] = { { 15, &(HWarning), "sensitive", "" },
-                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
-                 { 0, 0, 0, 0 } },
-
-  /* Intrinsics conferred by race */
-  dwa_abil[] = { { 1, &HInfravision, "", "" },
-                 { 0, 0, 0, 0 } },
-
-  elf_abil[] = { { 1, &HInfravision, "", "" },
-                 { 4, &HSleep_resistance, "awake", "tired" },
-                 { 0, 0, 0, 0 } },
-
-  gno_abil[] = { { 1, &HInfravision, "", "" },
-                 { 0, 0, 0, 0 } },
-
-  orc_abil[] = { { 1, &HInfravision, "", "" },
-                 { 1, &HPoison_resistance, "", "" },
-                 { 0, 0, 0, 0 } },
-
-  hum_abil[] = { { 0, 0, 0, 0 } };
+#define arc_abil (nh_g->s_attrib_c_arc_abil)
+#define bar_abil (nh_g->s_attrib_c_bar_abil)
+#define cav_abil (nh_g->s_attrib_c_cav_abil)
+#define hea_abil (nh_g->s_attrib_c_hea_abil)
+#define kni_abil (nh_g->s_attrib_c_kni_abil)
+#define mon_abil (nh_g->s_attrib_c_mon_abil)
+#define pri_abil (nh_g->s_attrib_c_pri_abil)
+#define ran_abil (nh_g->s_attrib_c_ran_abil)
+#define rog_abil (nh_g->s_attrib_c_rog_abil)
+#define sam_abil (nh_g->s_attrib_c_sam_abil)
+#define tou_abil (nh_g->s_attrib_c_tou_abil)
+#define val_abil (nh_g->s_attrib_c_val_abil)
+#define wiz_abil (nh_g->s_attrib_c_wiz_abil)
+#define dwa_abil (nh_g->s_attrib_c_dwa_abil)
+#define elf_abil (nh_g->s_attrib_c_elf_abil)
+#define gno_abil (nh_g->s_attrib_c_gno_abil)
+#define orc_abil (nh_g->s_attrib_c_orc_abil)
+#define hum_abil (nh_g->s_attrib_c_hum_abil)
+const struct innate nh_tmpl_s_attrib_c_hum_abil[] = { { 0, 0, 0, 0 } };
 
 STATIC_DCL void NDECL(exerper);
 STATIC_DCL void FDECL(postadjabil, (long *));
@@ -169,7 +105,7 @@ int msgflg; /* positive => no message, zero => message, and */
         abonflg = (ABON(ndx) > 0);
     }
     if (ACURR(ndx) == old_acurr) {
-        if (msgflg == 0 && flags.verbose) {
+        if (msgflg == 0 && NH_G(flags).verbose) {
             if (ABASE(ndx) == old_abase && AMAX(ndx) == old_amax) {
                 pline("You're %s as %s as you can get.",
                       abonflg ? "currently" : "already", attrstr);
@@ -186,7 +122,7 @@ int msgflg; /* positive => no message, zero => message, and */
     if (msgflg <= 0)
         You_feel("%s%s!", (incr > 1 || incr < -1) ? "very " : "", attrstr);
     context.botl = TRUE;
-    if (program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
+    if (NH_G(program_state).in_moveloop && (ndx == A_STR || ndx == A_CON))
         (void) encumber_msg();
     return TRUE;
 }
@@ -328,8 +264,8 @@ boolean thrown_weapon; /* thrown weapons are less deadly */
     }
 
     if (u.uhp < 1) {
-        killer.format = kprefix;
-        Strcpy(killer.name, pkiller);
+        NH_G(killer).format = kprefix;
+        Strcpy(NH_G(killer).name, pkiller);
         /* "Poisoned by a poisoned ___" is redundant */
         done(strstri(pkiller, "poison") ? DIED : POISONING);
     }
@@ -816,9 +752,9 @@ char *
 from_what(propidx)
 int propidx; /* special cases can have negative values */
 {
-    static char buf[BUFSZ];
+    /* buf: per-env nh_g->l_attrib_c_from_what_buf */
 
-    buf[0] = '\0';
+    NH_G(l_attrib_c_from_what_buf)[0] = '\0';
     /*
      * Restrict the source of the attributes just to debug mode for now
      */
@@ -845,38 +781,38 @@ int propidx; /* special cases can have negative values */
              * takes priority over knight's innate but limited jumping.
              */
             if (propidx == BLINDED && u.uroleplay.blind)
-                Sprintf(buf, " from birth");
+                Sprintf(NH_G(l_attrib_c_from_what_buf), " from birth");
             else if (innateness == FROM_ROLE || innateness == FROM_RACE)
-                Strcpy(buf, " innately");
+                Strcpy(NH_G(l_attrib_c_from_what_buf), " innately");
             else if (innateness == FROM_INTR) /* [].intrinsic & FROMOUTSIDE */
-                Strcpy(buf, " intrinsically");
+                Strcpy(NH_G(l_attrib_c_from_what_buf), " intrinsically");
             else if (innateness == FROM_EXP)
-                Strcpy(buf, " because of your experience");
+                Strcpy(NH_G(l_attrib_c_from_what_buf), " because of your experience");
             else if (innateness == FROM_LYCN)
-                Strcpy(buf, " due to your lycanthropy");
+                Strcpy(NH_G(l_attrib_c_from_what_buf), " due to your lycanthropy");
             else if (innateness == FROM_FORM)
-                Strcpy(buf, " from current creature form");
+                Strcpy(NH_G(l_attrib_c_from_what_buf), " from current creature form");
             else if (propidx == FAST && Very_fast)
-                Sprintf(buf, because_of,
+                Sprintf(NH_G(l_attrib_c_from_what_buf), because_of,
                         ((HFast & TIMEOUT) != 0L) ? "a potion or spell"
                           : ((EFast & W_ARMF) != 0L && uarmf->dknown
-                             && objects[uarmf->otyp].oc_name_known)
+                             && NH_G(objects)[uarmf->otyp].oc_name_known)
                               ? ysimple_name(uarmf) /* speed boots */
                                 : EFast ? "worn equipment"
                                   : something);
             else if (wizard
                      && (obj = what_gives(&u.uprops[propidx].extrinsic)) != 0)
-                Sprintf(buf, because_of, obj->oartifact
+                Sprintf(NH_G(l_attrib_c_from_what_buf), because_of, obj->oartifact
                                              ? bare_artifactname(obj)
                                              : ysimple_name(obj));
             else if (propidx == BLINDED && Blindfolded_only)
-                Sprintf(buf, because_of, ysimple_name(ublindf));
+                Sprintf(NH_G(l_attrib_c_from_what_buf), because_of, ysimple_name(ublindf));
 
             /* remove some verbosity and/or redundancy */
-            if ((p = strstri(buf, " pair of ")) != 0)
+            if ((p = strstri(NH_G(l_attrib_c_from_what_buf), " pair of ")) != 0)
                 copynchars(p + 1, p + 9, BUFSZ); /* overlapping buffers ok */
             else if (propidx == STRANGLED
-                     && (p = strstri(buf, " of strangulation")) != 0)
+                     && (p = strstri(NH_G(l_attrib_c_from_what_buf), " of strangulation")) != 0)
                 *p = '\0';
 
         } else { /* negative property index */
@@ -886,23 +822,23 @@ int propidx; /* special cases can have negative values */
             case BLINDED:
                 if (ublindf
                     && ublindf->oartifact == ART_EYES_OF_THE_OVERWORLD)
-                    Sprintf(buf, because_of, bare_artifactname(ublindf));
+                    Sprintf(NH_G(l_attrib_c_from_what_buf), because_of, bare_artifactname(ublindf));
                 break;
             case INVIS:
                 if (u.uprops[INVIS].blocked & W_ARMC)
-                    Sprintf(buf, because_of,
+                    Sprintf(NH_G(l_attrib_c_from_what_buf), because_of,
                             ysimple_name(uarmc)); /* mummy wrapping */
                 break;
             case CLAIRVOYANT:
                 if (wizard && (u.uprops[CLAIRVOYANT].blocked & W_ARMH))
-                    Sprintf(buf, because_of,
+                    Sprintf(NH_G(l_attrib_c_from_what_buf), because_of,
                             ysimple_name(uarmh)); /* cornuthaum */
                 break;
             }
         }
 
     } /*wizard*/
-    return buf;
+    return NH_G(l_attrib_c_from_what_buf);
 }
 
 void
@@ -991,7 +927,7 @@ newhp()
             hp += rnd(urace.hpadv.inrnd);
         if (moves <= 1L) { /* initial hero; skip for polyself to new man */
             /* Initialize alignment stuff */
-            u.ualign.type = aligns[flags.initalign].value;
+            u.ualign.type = aligns[NH_G(flags).initalign].value;
             u.ualign.record = urole.initrecord;
         }
         /* no Con adjustment for initial hit points */
@@ -1170,3 +1106,125 @@ int reason; /* 0==conversion, 1==helm-of-OA on, 2==helm-of-OA off */
 }
 
 /*attrib.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_ATTRIB_C_DONE
+#define NH_INIT_ATTRIB_C_DONE
+void
+nh_init_attrib_c(void)
+{
+    {
+        struct innate nh_tmp[4] = { { 1, &(HStealth), "", "" },
+                 { 1, &(HFast), "", "" },
+                 { 10, &(HSearching), "perceptive", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_arc_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[4] = { { 1, &(HPoison_resistance), "", "" },
+                 { 7, &(HFast), "quick", "slow" },
+                 { 15, &(HStealth), "stealthy", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_bar_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 7, &(HFast), "quick", "slow" },
+                 { 15, &(HWarning), "sensitive", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_cav_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 1, &(HPoison_resistance), "", "" },
+                 { 15, &(HWarning), "sensitive", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_hea_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[2] = { { 7, &(HFast), "quick", "slow" }, { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_kni_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[12] = { { 1, &(HFast), "", "" },
+                 { 1, &(HSleep_resistance), "", "" },
+                 { 1, &(HSee_invisible), "", "" },
+                 { 3, &(HPoison_resistance), "healthy", "" },
+                 { 5, &(HStealth), "stealthy", "" },
+                 { 7, &(HWarning), "sensitive", "" },
+                 { 9, &(HSearching), "perceptive", "unaware" },
+                 { 11, &(HFire_resistance), "cool", "warmer" },
+                 { 13, &(HCold_resistance), "warm", "cooler" },
+                 { 15, &(HShock_resistance), "insulated", "conductive" },
+                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_mon_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 15, &(HWarning), "sensitive", "" },
+                 { 20, &(HFire_resistance), "cool", "warmer" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_pri_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[4] = { { 1, &(HSearching), "", "" },
+                 { 7, &(HStealth), "stealthy", "" },
+                 { 15, &(HSee_invisible), "", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_ran_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 1, &(HStealth), "", "" },
+                 { 10, &(HSearching), "perceptive", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_rog_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 1, &(HFast), "", "" },
+                 { 15, &(HStealth), "stealthy", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_sam_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 10, &(HSearching), "perceptive", "" },
+                 { 20, &(HPoison_resistance), "hardy", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_tou_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[4] = { { 1, &(HCold_resistance), "", "" },
+                 { 1, &(HStealth), "", "" },
+                 { 7, &(HFast), "quick", "slow" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_val_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 15, &(HWarning), "sensitive", "" },
+                 { 17, &(HTeleport_control), "controlled", "uncontrolled" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_wiz_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[2] = { { 1, &HInfravision, "", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_dwa_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 1, &HInfravision, "", "" },
+                 { 4, &HSleep_resistance, "awake", "tired" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_elf_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[2] = { { 1, &HInfravision, "", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_gno_abil), &nh_tmp, sizeof nh_tmp);
+    }
+    {
+        struct innate nh_tmp[3] = { { 1, &HInfravision, "", "" },
+                 { 1, &HPoison_resistance, "", "" },
+                 { 0, 0, 0, 0 } };
+        memcpy(&(nh_g->s_attrib_c_orc_abil), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

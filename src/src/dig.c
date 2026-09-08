@@ -5,7 +5,7 @@
 
 #include "hack.h"
 
-static NEARDATA boolean did_dig_msg;
+#define did_dig_msg (nh_g->s_dig_c_did_dig_msg)
 
 STATIC_DCL boolean NDECL(rm_waslit);
 STATIC_DCL void FDECL(mkcavepos,
@@ -161,7 +161,7 @@ xchar x, y;
                      : IS_TREE(levl[x][y].typ)
                         ? (ispick ? DIGTYP_UNDIGGABLE : DIGTYP_TREE)
                         : (ispick && IS_ROCK(levl[x][y].typ)
-                           && (!level.flags.arboreal
+                           && (!NH_G(level).flags.arboreal
                                || IS_WALL(levl[x][y].typ)))
                            ? DIGTYP_ROCK
                            : DIGTYP_UNDIGGABLE);
@@ -409,9 +409,9 @@ dig(VOID_ARGS)
                 add_damage(dpx, dpy, SHOP_WALL_DMG);
                 dmgtxt = "damage";
             }
-            if (level.flags.is_maze_lev) {
+            if (NH_G(level).flags.is_maze_lev) {
                 lev->typ = ROOM, lev->flags = 0;
-            } else if (level.flags.is_cavernous_lev && !in_town(dpx, dpy)) {
+            } else if (NH_G(level).flags.is_cavernous_lev && !in_town(dpx, dpy)) {
                 lev->typ = CORR, lev->flags = 0;
             } else {
                 lev->typ = DOOR, lev->doormask = D_NODOOR;
@@ -592,11 +592,11 @@ int ttyp;
     else
         Strcpy(surface_type, surface(x, y));
     shopdoor = IS_DOOR(lev->typ) && *in_rooms(x, y, SHOPBASE);
-    oldobjs = level.objects[x][y];
+    oldobjs = NH_G(level).objects[x][y];
     ttmp = maketrap(x, y, ttyp);
     if (!ttmp)
         return;
-    newobjs = level.objects[x][y];
+    newobjs = NH_G(level).objects[x][y];
     ttmp->madeby_u = madeby_u;
     ttmp->tseen = 0;
     if (cansee(x, y))
@@ -614,7 +614,7 @@ int ttyp;
                 pay_for_damage("ruin", FALSE);
         } else if (!madeby_obj && canseemon(madeby)) {
             pline("%s digs a pit in the %s.", Monnam(madeby), surface_type);
-        } else if (cansee(x, y) && flags.verbose) {
+        } else if (cansee(x, y) && NH_G(flags).verbose) {
             pline("A pit appears in the %s.", surface_type);
         }
         /* in case we're digging down while encased in solid rock
@@ -646,7 +646,7 @@ int ttyp;
         else if (!madeby_obj && canseemon(madeby))
             pline("%s digs a hole through the %s.", Monnam(madeby),
                   surface_type);
-        else if (cansee(x, y) && flags.verbose)
+        else if (cansee(x, y) && NH_G(flags).verbose)
             pline("A hole appears in the %s.", surface_type);
 
         if (at_u) {
@@ -1049,7 +1049,7 @@ struct obj *obj;
         if (dam <= 0)
             dam = 1;
         You("hit yourself with %s.", yname(uwep));
-        Sprintf(buf, "%s own %s", uhis(), OBJ_NAME(objects[obj->otyp]));
+        Sprintf(buf, "%s own %s", uhis(), OBJ_NAME(NH_G(objects)[obj->otyp]));
         losehp(Maybe_Half_Phys(dam), buf, KILLED_BY);
         context.botl = 1;
         return 1;
@@ -1134,7 +1134,7 @@ struct obj *obj;
             if (context.digging.pos.x != rx || context.digging.pos.y != ry
                 || !on_level(&context.digging.level, &u.uz)
                 || context.digging.down) {
-                if (flags.autodig && dig_target == DIGTYP_ROCK
+                if (NH_G(flags).autodig && dig_target == DIGTYP_ROCK
                     && !context.digging.down
                     && context.digging.pos.x == u.ux
                     && context.digging.pos.y == u.uy
@@ -1279,7 +1279,7 @@ register struct monst *mtmp;
                 return TRUE;
             }
         } else {
-            if (!rn2(3) && flags.verbose) /* not too often.. */
+            if (!rn2(3) && NH_G(flags).verbose) /* not too often.. */
                 draft_message(TRUE); /* "You feel an unexpected draft." */
             here->doormask = D_BROKEN;
         }
@@ -1306,13 +1306,13 @@ register struct monst *mtmp;
 
     if (IS_WALL(here->typ)) {
         /* KMH -- Okay on arboreal levels (room walls are still stone) */
-        if (flags.verbose && !rn2(5))
+        if (NH_G(flags).verbose && !rn2(5))
             You_hear("crashing rock.");
         if (*in_rooms(mtmp->mx, mtmp->my, SHOPBASE))
             add_damage(mtmp->mx, mtmp->my, 0L);
-        if (level.flags.is_maze_lev) {
+        if (NH_G(level).flags.is_maze_lev) {
             here->typ = ROOM, here->flags = 0;
-        } else if (level.flags.is_cavernous_lev
+        } else if (NH_G(level).flags.is_cavernous_lev
                    && !in_town(mtmp->mx, mtmp->my)) {
             here->typ = CORR, here->flags = 0;
         } else {
@@ -1447,7 +1447,7 @@ zap_dig()
 
     /* normal case: digging across the level */
     shopdoor = shopwall = FALSE;
-    maze_dig = level.flags.is_maze_lev && !Is_earthlevel(&u.uz);
+    maze_dig = NH_G(level).flags.is_maze_lev && !Is_earthlevel(&u.uz);
     zx = u.ux + u.dx;
     zy = u.uy + u.dy;
     if (u.utrap && u.utraptype == TT_PIT
@@ -1553,7 +1553,7 @@ zap_dig()
                     shopwall = TRUE;
                 }
                 watch_dig((struct monst *) 0, zx, zy, TRUE);
-                if (level.flags.is_cavernous_lev && !in_town(zx, zy)) {
+                if (NH_G(level).flags.is_cavernous_lev && !in_town(zx, zy)) {
                     room->typ = CORR, room->flags = 0;
                 } else {
                     room->typ = DOOR, room->doormask = D_NODOOR;
@@ -1744,7 +1744,7 @@ coord *cc;
      */
 
     if (u.utrap && u.utraptype == TT_BURIEDBALL)
-        for (otmp = level.buriedobjlist; otmp; otmp = otmp->nobj) {
+        for (otmp = NH_G(level).buriedobjlist; otmp; otmp = otmp->nobj) {
             if (otmp->otyp != HEAVY_IRON_BALL)
                 continue;
             /* if found at the target spot, we're done */
@@ -1900,10 +1900,10 @@ int x, y;
     costly = ((shkp = shop_keeper(*in_rooms(x, y, SHOPBASE)))
               && costly_spot(x, y));
 
-    if (level.objects[x][y] != (struct obj *) 0) {
+    if (NH_G(level).objects[x][y] != (struct obj *) 0) {
         debugpline2("bury_objs: at <%d,%d>", x, y);
     }
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp2) {
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp2) {
         if (costly) {
             loss += stolen_value(otmp, x, y, (boolean) shkp->mpeaceful, TRUE);
             if (otmp->oclass != COIN_CLASS)
@@ -1934,7 +1934,7 @@ int x, y;
     cc.x = x;
     cc.y = y;
     bball = buried_ball(&cc);
-    for (otmp = level.buriedobjlist; otmp; otmp = otmp2) {
+    for (otmp = NH_G(level).buriedobjlist; otmp; otmp = otmp2) {
         otmp2 = otmp->nobj;
         if (otmp->ox == x && otmp->oy == y) {
             if (bball && otmp == bball
@@ -2000,7 +2000,7 @@ long timeout;
         x = obj->ox;
         y = obj->oy;
     } else if (in_invent) {
-        if (flags.verbose) {
+        if (NH_G(flags).verbose) {
             char *cname = corpse_xname(obj, (const char *) 0, CXN_NO_PFX);
 
             Your("%s%s %s away%c", obj == uwep ? "wielded " : "", cname,

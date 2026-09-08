@@ -26,7 +26,7 @@ static const int explcolors[] = {
 
 #define zap_color(n) color = iflags.use_color ? zapcolors[n] : NO_COLOR
 #define cmap_color(n) color = iflags.use_color ? defsyms[n].color : NO_COLOR
-#define obj_color(n) color = iflags.use_color ? objects[n].oc_color : NO_COLOR
+#define obj_color(n) color = iflags.use_color ? NH_G(objects)[n].oc_color : NO_COLOR
 #define mon_color(n) color = iflags.use_color ? mons[n].mcolor : NO_COLOR
 #define invis_color(n) color = NO_COLOR
 #define pet_color(n) color = iflags.use_color ? mons[n].mcolor : NO_COLOR
@@ -54,8 +54,8 @@ static const int explcolors[] = {
     (currentgraphics == ROGUESET && SYMHANDLING(H_IBM))
 #endif
 
-#define is_objpile(x,y) (!Hallucination && level.objects[(x)][(y)] \
-                         && level.objects[(x)][(y)]->nexthere)
+#define is_objpile(x,y) (!Hallucination && NH_G(level).objects[(x)][(y)] \
+                         && NH_G(level).objects[(x)][(y)]->nexthere)
 
 /*ARGSUSED*/
 int
@@ -144,11 +144,11 @@ unsigned mgflags;
             cmap_color(offset);
         }
     } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) { /* object */
-        idx = objects[offset].oc_class + SYM_OFF_O;
+        idx = NH_G(objects)[offset].oc_class + SYM_OFF_O;
         if (offset == BOULDER)
             idx = SYM_BOULDER + SYM_OFF_X;
         if (has_rogue_color && iflags.use_color) {
-            switch (objects[offset].oc_class) {
+            switch (NH_G(objects)[offset].oc_class) {
             case COIN_CLASS:
                 color = CLR_YELLOW;
                 break;
@@ -174,7 +174,7 @@ unsigned mgflags;
             mon_color(offset);
         special |= MG_RIDDEN;
     } else if ((offset = (glyph - GLYPH_BODY_OFF)) >= 0) { /* a corpse */
-        idx = objects[CORPSE].oc_class + SYM_OFF_O;
+        idx = NH_G(objects)[CORPSE].oc_class + SYM_OFF_O;
         if (has_rogue_color && iflags.use_color)
             color = CLR_RED;
         else
@@ -217,14 +217,14 @@ unsigned mgflags;
             mon_color(glyph);
 #ifdef TEXTCOLOR
             /* special case the hero for `showrace' option */
-            if (iflags.use_color && is_you && flags.showrace && !Upolyd)
+            if (iflags.use_color && is_you && NH_G(flags).showrace && !Upolyd)
                 color = HI_DOMESTIC;
 #endif
         }
     }
 
     /* These were requested by a blind player to enhance screen reader use */
-    if (sysopt.accessibility == 1 && !(mgflags & MG_FLAG_NOOVERRIDE)) {
+    if (NH_G(sysopt).accessibility == 1 && !(mgflags & MG_FLAG_NOOVERRIDE)) {
         int ovidx;
 
         if ((special & MG_PET) != 0) {
@@ -257,10 +257,10 @@ char *
 encglyph(glyph)
 int glyph;
 {
-    static char encbuf[20]; /* 10+1 would suffice */
+    /* encbuf: per-env nh_g->l_mapglyph_c_encglyph_encbuf */ /* 10+1 would suffice */
 
-    Sprintf(encbuf, "\\G%04X%04X", context.rndencode, glyph);
-    return encbuf;
+    Sprintf(NH_G(l_mapglyph_c_encglyph_encbuf), "\\G%04X%04X", context.rndencode, glyph);
+    return NH_G(l_mapglyph_c_encglyph_encbuf);
 }
 
 char *

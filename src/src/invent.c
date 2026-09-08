@@ -39,7 +39,9 @@ STATIC_DCL void FDECL(menu_identify, (int));
 STATIC_DCL boolean FDECL(tool_in_use, (struct obj *));
 STATIC_DCL char FDECL(obj_to_let, (struct obj *));
 
-static int lastinvnr = 51; /* 0 ... 51 (never saved&restored) */
+#define lastinvnr (nh_g->s_invent_c_lastinvnr)
+const int nh_tmpl_s_invent_c_lastinvnr =
+51; /* 0 ... 51 (never saved&restored) */
 
 /* wizards can wish for venom, which will become an invisible inventory
  * item without this.  putting it in inv_order would mean venom would
@@ -50,9 +52,17 @@ static int lastinvnr = 51; /* 0 ... 51 (never saved&restored) */
  * confused:  'WIZARD' used to be a compile-time conditional so this was
  * guarded by #ifdef WIZARD/.../#endif.]
  */
-static char venom_inv[] = { VENOM_CLASS, 0 }; /* (constant) */
+#define venom_inv (nh_g->s_invent_c_venom_inv)
+const char nh_tmpl_s_invent_c_venom_inv[] =
+{ VENOM_CLASS, 0 }; /* (constant) */
 
 /* sortloot() classification; called at most once [per sort] for each object */
+const char nh_tmpl_l_invent_c_loot_classify_def_srt_order[MAXOCLASSES] = {
+        COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS, POTION_CLASS,
+        SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
+        WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, 0,
+    };
+
 STATIC_OVL void
 loot_classify(sort_item, obj)
 Loot *sort_item;
@@ -62,16 +72,12 @@ struct obj *obj;
        with sortloot instead of only when the 'sortpack' option isn't
        set; it is similar to sortpack's inv_order but items most
        likely to be picked up are moved to the front */
-    static char def_srt_order[MAXOCLASSES] = {
-        COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS, POTION_CLASS,
-        SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
-        WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, 0,
-    };
-    static char armcat[8];
+    /* def_srt_order: per-env nh_g->l_invent_c_loot_classify_def_srt_order */
+    /* armcat: per-env nh_g->l_invent_c_loot_classify_armcat */
     const char *classorder;
     char *p;
     int k, otyp = obj->otyp, oclass = obj->oclass;
-    boolean seen, discovered = objects[otyp].oc_name_known ? TRUE : FALSE;
+    boolean seen, discovered = NH_G(objects)[otyp].oc_name_known ? TRUE : FALSE;
 
     /*
      * For the value types assigned by this classification, sortloot()
@@ -81,7 +87,7 @@ struct obj *obj;
         obj->dknown = 1; /* xname(obj) does this; we want it sooner */
     seen = obj->dknown ? TRUE : FALSE,
     /* class order */
-    classorder = flags.sortpack ? flags.inv_order : def_srt_order;
+    classorder = NH_G(flags).sortpack ? NH_G(flags).inv_order : NH_G(l_invent_c_loot_classify_def_srt_order);
     p = index(classorder, oclass);
     if (p)
         k = 1 + (int) (p - classorder);
@@ -92,30 +98,30 @@ struct obj *obj;
        and the non-armor ones we use are fairly arbitrary */
     switch (oclass) {
     case ARMOR_CLASS:
-        if (!armcat[7]) {
+        if (!NH_G(l_invent_c_loot_classify_armcat)[7]) {
             /* one-time init; we use a different order than the subclass
                values defined by objclass.h */
-            armcat[ARM_HELM]   = 1; /* [2] */
-            armcat[ARM_GLOVES] = 2; /* [3] */
-            armcat[ARM_BOOTS]  = 3; /* [4] */
-            armcat[ARM_SHIELD] = 4; /* [1] */
-            armcat[ARM_CLOAK]  = 5; /* [5] */
-            armcat[ARM_SHIRT]  = 6; /* [6] */
-            armcat[ARM_SUIT]   = 7; /* [0] */
-            armcat[7]          = 8; /* sanity protection */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_HELM]   = 1; /* [2] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_GLOVES] = 2; /* [3] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_BOOTS]  = 3; /* [4] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_SHIELD] = 4; /* [1] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_CLOAK]  = 5; /* [5] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_SHIRT]  = 6; /* [6] */
+            NH_G(l_invent_c_loot_classify_armcat)[ARM_SUIT]   = 7; /* [0] */
+            NH_G(l_invent_c_loot_classify_armcat)[7]          = 8; /* sanity protection */
         }
-        k = objects[otyp].oc_armcat;
+        k = NH_G(objects)[otyp].oc_armcat;
         /* oc_armcat overloads oc_subtyp which is an 'schar' so guard
            against somebody assigning something unexpected to it */
         if (k < 0 || k >= 7)
             k = 7;
-        k = armcat[k];
+        k = NH_G(l_invent_c_loot_classify_armcat)[k];
         break;
     case WEAPON_CLASS:
         /* for weapons, group by ammo (arrows, bolts), launcher (bows),
            missile (darts, boomerangs), stackable (daggers, knives, spears),
            'other' (swords, axes, &c), polearms */
-        k = objects[otyp].oc_skill;
+        k = NH_G(objects)[otyp].oc_skill;
         k = (k < 0) ? ((k >= -P_CROSSBOW && k <= -P_BOW) ? 1 : 3)
                     : ((k >= P_BOW && k <= P_CROSSBOW) ? 2
                        : (k == P_SPEAR || k == P_DAGGER || k == P_KNIFE) ? 4
@@ -185,7 +191,7 @@ struct obj *obj;
          *  7) discovered gray stones ("touchstone"),
          *  8) seen rocks ("rock").
          */
-        switch (objects[obj->otyp].oc_material) {
+        switch (NH_G(objects)[obj->otyp].oc_material) {
         case GEMSTONE:
             k = !seen ? 1 : !discovered ? 2 : 3;
             break;
@@ -206,8 +212,8 @@ struct obj *obj;
     sort_item->subclass = (xchar) k;
     /* discovery status */
     k = !seen ? 1 /* unseen */
-        : (discovered || !OBJ_DESCR(objects[otyp])) ? 4
-          : (objects[otyp].oc_uname) ? 3 /* named (partially discovered) */
+        : (discovered || !OBJ_DESCR(NH_G(objects)[otyp])) ? 4
+          : (NH_G(objects)[otyp].oc_uname) ? 3 /* named (partially discovered) */
             : 2; /* undiscovered */
     sort_item->disco = (xchar) k;
 }
@@ -231,7 +237,7 @@ struct obj *obj;
     saveo.spe = obj->spe;
     saveo.owt = obj->owt;
     save_oname = has_oname(obj) ? ONAME(obj) : 0;
-    save_debug = flags.debug;
+    save_debug = NH_G(flags).debug;
     /* suppress "diluted" for potions and "holy/unholy" for water;
        sortloot() will deal with them using other criteria than name */
     if (obj->oclass == POTION_CLASS) {
@@ -255,15 +261,15 @@ struct obj *obj;
     if (wizard) { /* flags.debug */
         /* paranoia:  before toggling off wizard mode, guard against a
            panic in xname() producing a normal mode panic save file */
-        program_state.something_worth_saving = 0;
-        flags.debug = FALSE;
+        NH_G(program_state).something_worth_saving = 0;
+        NH_G(flags).debug = FALSE;
     }
 
     res = cxname_singular(obj);
 
     if (save_debug) {
-        flags.debug = TRUE;
-        program_state.something_worth_saving = 1;
+        NH_G(flags).debug = TRUE;
+        NH_G(program_state).something_worth_saving = 1;
     }
     /* restore the object */
     if (obj->oclass == POTION_CLASS) {
@@ -297,7 +303,7 @@ struct obj *obj;
 }
 
 /* set by sortloot() for use by sortloot_cmp(); reset by sortloot when done */
-static unsigned sortlootmode = 0;
+#define sortlootmode (nh_g->s_invent_c_sortlootmode)
 
 /* qsort comparison routine for sortloot() */
 STATIC_OVL int CFDECLSPEC
@@ -419,7 +425,7 @@ const genericptr vptr2;
        below the range of obj->spe.  oc_uses_known means that obj->known
        matters, which usually indirectly means that obj->spe is relevant.
        Lots of objects use obj->spe for some other purpose (see obj.h). */
-    if (objects[obj1->otyp].oc_uses_known
+    if (NH_G(objects)[obj1->otyp].oc_uses_known
         /* exclude eggs (laid by you) and tins (homemade, pureed, &c) */
         && obj1->oclass != FOOD_CLASS) {
         val1 = obj1->known ? obj1->spe : -1000;
@@ -921,10 +927,10 @@ struct obj *obj;
         }
     /* didn't merge, so insert into chain */
     assigninvlet(obj);
-    if (flags.invlet_constant || !prev) {
+    if (NH_G(flags).invlet_constant || !prev) {
         obj->nobj = invent; /* insert at beginning */
         invent = obj;
-        if (flags.invlet_constant)
+        if (NH_G(flags).invlet_constant)
             reorder_invent();
     } else {
         prev->nobj = obj; /* insert at end */
@@ -933,7 +939,7 @@ struct obj *obj;
     obj->where = OBJ_INVENT;
 
     /* fill empty quiver if obj was thrown */
-    if (flags.pickup_thrown && !uquiver && obj_was_thrown
+    if (NH_G(flags).pickup_thrown && !uquiver && obj_was_thrown
         /* if Mjollnir is thrown and fails to return, we want to
            auto-pick it when we move to its spot, but not into quiver;
            aklyses behave like Mjollnir when thrown while wielded, but
@@ -1035,7 +1041,7 @@ const char *drop_fmt, *drop_arg, *hold_msg;
                 obj = splitobj(obj, oquan);
             goto drop_it;
         } else {
-            if (flags.autoquiver && !uquiver && !obj->owornmask
+            if (NH_G(flags).autoquiver && !uquiver && !obj->owornmask
                 && (is_missile(obj) || ammo_and_launcher(obj, uwep)
                     || ammo_and_launcher(obj, uswapwep)))
                 setuqwep(obj);
@@ -1162,7 +1168,7 @@ int x, y;
 {
     struct obj *otmp, *otmp2;
 
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp2) {
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp2) {
         if (otmp == uball)
             unpunish();
         /* after unpunish(), or might get deallocated chain */
@@ -1206,7 +1212,7 @@ int x, y;
 {
     register struct obj *otmp;
 
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
         if (otmp->otyp == otyp)
             break;
 
@@ -1330,7 +1336,7 @@ int x, y;
 {
     register struct obj *otmp;
 
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
         if (obj == otmp)
             return TRUE;
     return FALSE;
@@ -1340,7 +1346,7 @@ struct obj *
 g_at(x, y)
 register int x, y;
 {
-    register struct obj *obj = level.objects[x][y];
+    register struct obj *obj = NH_G(level).objects[x][y];
 
     while (obj) {
         if (obj->oclass == COIN_CLASS)
@@ -1477,7 +1483,7 @@ register const char *let, *word;
         *bp++ = HANDS_SYM, *bp++ = ' '; /* '-' */
     ap = altlets;
 
-    if (!flags.invlet_constant)
+    if (!NH_G(flags).invlet_constant)
         reassign();
 
     /* force invent to be in invlet order before collecting candidate
@@ -1552,13 +1558,13 @@ register const char *let, *word;
                          /* only applicable potion is oil, and it will only
                             be offered as a choice when already discovered */
                          && (otyp != POT_OIL || !otmp->dknown
-                             || !objects[POT_OIL].oc_name_known))
+                             || !NH_G(objects)[POT_OIL].oc_name_known))
                      || (otmp->oclass == FOOD_CLASS
                          && otyp != CREAM_PIE && otyp != EUCALYPTUS_LEAF)
                      || (otmp->oclass == GEM_CLASS && !is_graystone(otmp))))
              || (!strcmp(word, "invoke")
                  && !otmp->oartifact
-                 && !objects[otyp].oc_unique
+                 && !NH_G(objects)[otyp].oc_unique
                  && (otyp != FAKE_AMULET_OF_YENDOR || otmp->known)
                  && otyp != CRYSTAL_BALL /* synonym for apply */
                  /* note: presenting the possibility of invoking non-artifact
@@ -1566,18 +1572,18 @@ register const char *let, *word;
                  && otyp != MIRROR
                  && otyp != MAGIC_LAMP
                  && (otyp != OIL_LAMP /* don't list known oil lamp */
-                     || (otmp->dknown && objects[OIL_LAMP].oc_name_known)))
+                     || (otmp->dknown && NH_G(objects)[OIL_LAMP].oc_name_known)))
              || (!strcmp(word, "untrap with")
                  && ((otmp->oclass == TOOL_CLASS && otyp != CAN_OF_GREASE)
                      || (otmp->oclass == POTION_CLASS
                          /* only applicable potion is oil, and it will only
                             be offered as a choice when already discovered */
                          && (otyp != POT_OIL || !otmp->dknown
-                             || !objects[POT_OIL].oc_name_known))))
+                             || !NH_G(objects)[POT_OIL].oc_name_known))))
              || (!strcmp(word, "tip") && !Is_container(otmp)
                  /* include horn of plenty if sufficiently discovered */
                  && (otmp->otyp != HORN_OF_PLENTY || !otmp->dknown
-                     || !objects[HORN_OF_PLENTY].oc_name_known))
+                     || !NH_G(objects)[HORN_OF_PLENTY].oc_name_known))
              || (!strcmp(word, "charge") && !is_chargeable(otmp))
              || (!strcmp(word, "open") && otyp != TIN)
              || (!strcmp(word, "call") && !objtyp_is_callable(otyp))
@@ -1600,7 +1606,7 @@ register const char *let, *word;
              /* or unsuitable items rubbed on known touchstone */
              || (!strncmp(word, "rub on the stone", 16)
                  && *let == GEM_CLASS && otmp->dknown
-                 && objects[otyp].oc_name_known)
+                 && NH_G(objects)[otyp].oc_name_known)
              /* suppress corpses on astral, amulets elsewhere */
              || (!strcmp(word, "sacrifice")
                  /* (!astral && amulet) || (astral && !amulet) */
@@ -1614,7 +1620,7 @@ register const char *let, *word;
                                       (boolean) (otmp->oclass == RING_CLASS)))
              || (!strcmp(word, "write on")
                  && (!(otyp == SCR_BLANK_PAPER || otyp == SPE_BLANK_PAPER)
-                     || !otmp->dknown || !objects[otyp].oc_name_known))
+                     || !otmp->dknown || !NH_G(objects)[otyp].oc_name_known))
              ) {
                 /* acceptable but not listed as likely candidate */
                 foo--;
@@ -1683,7 +1689,7 @@ register const char *let, *word;
             }
         }
         if (index(quitchars, ilet)) {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline1(Never_mind);
             return (struct obj *) 0;
         }
@@ -1740,7 +1746,7 @@ register const char *let, *word;
             if (ilet == HANDS_SYM)
                 return (struct obj *) &zeroobj; /* cast away 'const' */
             if (ilet == '\033') {
-                if (flags.verbose)
+                if (NH_G(flags).verbose)
                     pline1(Never_mind);
                 return (struct obj *) 0;
             }
@@ -1895,10 +1901,7 @@ struct obj *otmp;
 }
 
 /* extra xprname() input that askchain() can't pass through safe_qbuf() */
-STATIC_VAR struct xprnctx {
-    char let;
-    boolean dot;
-} safeq_xprn_ctx;
+#define safeq_xprn_ctx (nh_g->s_invent_c_safeq_xprn_ctx)
 
 /* safe_qbuf() -> short_oname() callback */
 STATIC_PTR char *
@@ -2078,7 +2081,7 @@ unsigned *resultflags;
         return (allflag
                 || (!oletct && ckfn != ckunpaid && ckfn != ckvalidcat))
                ? -2 : -3;
-    } else if (flags.menu_style != MENU_TRADITIONAL && combo && !allflag) {
+    } else if (NH_G(flags).menu_style != MENU_TRADITIONAL && combo && !allflag) {
         return 0;
 #if 0
     /* !!!! test gold dropping */
@@ -2364,7 +2367,7 @@ boolean learning_id; /* true if we just read unknown identify scroll */
     } else {
         /* identify up to `id_limit' items */
         n = 0;
-        if (flags.menu_style == MENU_TRADITIONAL)
+        if (NH_G(flags).menu_style == MENU_TRADITIONAL)
             do {
                 n = ggetobj("identify", identify, id_limit, FALSE,
                             (unsigned *) 0);
@@ -2425,7 +2428,7 @@ STATIC_OVL char
 obj_to_let(obj)
 struct obj *obj;
 {
-    if (!flags.invlet_constant) {
+    if (!NH_G(flags).invlet_constant) {
         obj->invlet = NOINVSYM;
         reassign();
     }
@@ -2460,9 +2463,9 @@ long quan;       /* if non-0, print this quantity, not obj->quan */
 #ifdef LINT /* handle static char li[BUFSZ]; */
     char li[BUFSZ];
 #else
-    static char li[BUFSZ];
+    /* li: per-env nh_g->l_invent_c_xprname_li */
 #endif
-    boolean use_invlet = (flags.invlet_constant
+    boolean use_invlet = (NH_G(flags).invlet_constant
                           && let != CONTAINED_SYM && let != HANDS_SYM);
     long savequan = 0;
 
@@ -2478,20 +2481,20 @@ long quan;       /* if non-0, print this quantity, not obj->quan */
      */
     if (cost != 0 || let == '*') {
         /* if dot is true, we're doing Iu, otherwise Ix */
-        Sprintf(li,
+        Sprintf(NH_G(l_invent_c_xprname_li),
                 iflags.menu_tab_sep ? "%c - %s\t%6ld %s"
                                     : "%c - %-45s %6ld %s",
                 (dot && use_invlet ? obj->invlet : let),
                 (txt ? txt : doname(obj)), cost, currency(cost));
     } else {
         /* ordinary inventory display or pickup message */
-        Sprintf(li, "%c - %s%s", (use_invlet ? obj->invlet : let),
+        Sprintf(NH_G(l_invent_c_xprname_li), "%c - %s%s", (use_invlet ? obj->invlet : let),
                 (txt ? txt : doname(obj)), (dot ? "." : ""));
     }
     if (savequan)
         obj->quan = savequan;
 
-    return li;
+    return NH_G(l_invent_c_xprname_li);
 }
 
 /* the 'i' command */
@@ -2538,7 +2541,9 @@ struct obj *list, **last_found;
 /* for perm_invent when operating on a partial inventory display, so that
    the persistent one doesn't get shrunk during filtering for item selection
    then regrown to full inventory, possibly being resized in the process */
-static winid cached_pickinv_win = WIN_ERR;
+#define cached_pickinv_win (nh_g->s_invent_c_cached_pickinv_win)
+const winid nh_tmpl_s_invent_c_cached_pickinv_win =
+WIN_ERR;
 
 void
 free_pickinv_cache()
@@ -2565,7 +2570,7 @@ long *out_cnt;
     static const char not_carrying_anything[] = "Not carrying anything";
     struct obj *otmp, wizid_fakeobj;
     char ilet, ret;
-    char *invlet = flags.inv_order;
+    char *invlet = NH_G(flags).inv_order;
     int n, classcount;
     winid win;                        /* windows being used */
     anything any;
@@ -2617,7 +2622,7 @@ long *out_cnt;
     }
 
     /* oxymoron? temporarily assign permanent inventory letters */
-    if (!flags.invlet_constant)
+    if (!NH_G(flags).invlet_constant)
         reassign();
 
     if (n == 1 && !iflags.force_invmenu) {
@@ -2646,8 +2651,8 @@ long *out_cnt;
         return ret;
     }
 
-    sortflags = (flags.sortloot == 'f') ? SORTLOOT_LOOT : SORTLOOT_INVLET;
-    if (flags.sortpack)
+    sortflags = (NH_G(flags).sortloot == 'f') ? SORTLOOT_LOOT : SORTLOOT_INVLET;
+    if (NH_G(flags).sortpack)
         sortflags |= SORTLOOT_PACK;
     sortedinvent = sortloot(&invent, sortflags, FALSE,
                             (boolean FDECL((*), (OBJ_P))) 0);
@@ -2688,7 +2693,7 @@ long *out_cnt;
         }
    } else if (xtra_choice) {
         /* wizard override ID and xtra_choice are mutually exclusive */
-        if (flags.sortpack)
+        if (NH_G(flags).sortpack)
             add_menu(win, NO_GLYPH, &any, 0, 0, iflags.menu_headings,
                      "Miscellaneous", MENU_UNSELECTED);
         any.a_char = HANDS_SYM; /* '-' */
@@ -2701,12 +2706,12 @@ long *out_cnt;
     for (srtinv = sortedinvent; (otmp = srtinv->obj) != 0; ++srtinv) {
         if (lets && !index(lets, otmp->invlet))
             continue;
-        if (!flags.sortpack || otmp->oclass == *invlet) {
+        if (!NH_G(flags).sortpack || otmp->oclass == *invlet) {
             if (wizid && !not_fully_identified(otmp))
                 continue;
             any = zeroany; /* all bits zero */
             ilet = otmp->invlet;
-            if (flags.sortpack && !classcount) {
+            if (NH_G(flags).sortpack && !classcount) {
                 add_menu(win, NO_GLYPH, &any, 0, 0, iflags.menu_headings,
                          let_to_name(*invlet, FALSE,
                                      (want_reply && iflags.menu_head_objsym)),
@@ -2723,7 +2728,7 @@ long *out_cnt;
             gotsomething = TRUE;
         }
     }
-    if (flags.sortpack) {
+    if (NH_G(flags).sortpack) {
         if (*++invlet)
             goto nextclass;
         if (--invlet != venom_inv) {
@@ -2812,7 +2817,7 @@ char avoidlet;
 {
     struct obj *otmp;
     char ilet, ret = 0;
-    char *invlet = flags.inv_order;
+    char *invlet = NH_G(flags).inv_order;
     int n, classcount, invdone = 0;
     winid win;
     anything any;
@@ -2828,8 +2833,8 @@ char avoidlet;
                 ilet = otmp->invlet;
                 if (ilet == avoidlet)
                     continue;
-                if (!flags.sortpack || otmp->oclass == *invlet) {
-                    if (flags.sortpack && !classcount) {
+                if (!NH_G(flags).sortpack || otmp->oclass == *invlet) {
+                    if (NH_G(flags).sortpack && !classcount) {
                         any = zeroany; /* zero */
                         add_menu(win, NO_GLYPH, &any, 0, 0,
                                  iflags.menu_headings,
@@ -2843,7 +2848,7 @@ char avoidlet;
                              doname(otmp), MENU_UNSELECTED);
                 }
             }
-            if (flags.sortpack && *++invlet)
+            if (NH_G(flags).sortpack && *++invlet)
                 continue;
             invdone = 1;
         }
@@ -2999,7 +3004,7 @@ dounpaid()
     winid win;
     struct obj *otmp, *marker, *contnr;
     register char ilet;
-    char *invlet = flags.inv_order;
+    char *invlet = NH_G(flags).inv_order;
     int classcount, count, num_so_far;
     long cost, totcost;
 
@@ -3024,7 +3029,7 @@ dounpaid()
     win = create_nhwindow(NHW_MENU);
     cost = totcost = 0;
     num_so_far = 0; /* count of # printed so far */
-    if (!flags.invlet_constant)
+    if (!NH_G(flags).invlet_constant)
         reassign();
 
     do {
@@ -3032,8 +3037,8 @@ dounpaid()
         for (otmp = invent; otmp; otmp = otmp->nobj) {
             ilet = otmp->invlet;
             if (otmp->unpaid) {
-                if (!flags.sortpack || otmp->oclass == *invlet) {
-                    if (flags.sortpack && !classcount) {
+                if (!NH_G(flags).sortpack || otmp->oclass == *invlet) {
+                    if (NH_G(flags).sortpack && !classcount) {
                         putstr(win, 0, let_to_name(*invlet, TRUE, FALSE));
                         classcount++;
                     }
@@ -3047,11 +3052,11 @@ dounpaid()
                 }
             }
         }
-    } while (flags.sortpack && (*++invlet));
+    } while (NH_G(flags).sortpack && (*++invlet));
 
     if (count > num_so_far) {
         /* something unpaid is contained */
-        if (flags.sortpack)
+        if (NH_G(flags).sortpack)
             putstr(win, 0, let_to_name(CONTAINED_SYM, TRUE, FALSE));
         /*
          * Search through the container objects in the inventory for
@@ -3095,7 +3100,7 @@ dounpaid()
 }
 
 /* query objlist callback: return TRUE if obj type matches "this_type" */
-static int this_type;
+#define this_type (nh_g->s_invent_c_this_type)
 
 STATIC_OVL boolean
 this_type_only(obj)
@@ -3150,9 +3155,9 @@ dotypeinv()
     unpaid_count = count_unpaid(invent);
     tally_BUCX(invent, FALSE, &bcnt, &ucnt, &ccnt, &xcnt, &ocnt);
 
-    if (flags.menu_style != MENU_TRADITIONAL) {
-        if (flags.menu_style == MENU_FULL
-            || flags.menu_style == MENU_PARTIAL) {
+    if (NH_G(flags).menu_style != MENU_TRADITIONAL) {
+        if (NH_G(flags).menu_style == MENU_FULL
+            || NH_G(flags).menu_style == MENU_PARTIAL) {
             traditional = FALSE;
             i = UNPAID_TYPES;
             if (billx)
@@ -3289,7 +3294,7 @@ dotypeinv()
         this_type = oclass;
     }
     if (query_objlist((char *) 0, &invent,
-                      ((flags.invlet_constant ? USE_INVLET : 0)
+                      ((NH_G(flags).invlet_constant ? USE_INVLET : 0)
                        | INVORDER_SORT),
                       &pick_list, PICK_NONE, this_type_only) > 0)
         free((genericptr_t) pick_list);
@@ -3306,7 +3311,7 @@ char *buf;
     struct rm *lev = &levl[x][y];
     int ltyp = lev->typ, cmap = -1;
     const char *dfeature = 0;
-    static char altbuf[BUFSZ];
+    /* altbuf: per-env nh_g->l_invent_c_dfeature_at_altbuf */
 
     if (IS_DOOR(ltyp)) {
         switch (lev->doormask) {
@@ -3339,14 +3344,14 @@ char *buf;
     else if (IS_SINK(ltyp))
         cmap = S_sink; /* "sink" */
     else if (IS_ALTAR(ltyp)) {
-        Sprintf(altbuf, "%saltar to %s (%s)",
+        Sprintf(NH_G(l_invent_c_dfeature_at_altbuf), "%saltar to %s (%s)",
                 ((lev->altarmask & AM_SHRINE)
                  && (Is_astralevel(&u.uz) || Is_sanctum(&u.uz)))
                     ? "high "
                     : "",
                 a_gname(),
                 align_str(Amask2align(lev->altarmask & ~AM_SHRINE)));
-        dfeature = altbuf;
+        dfeature = NH_G(l_invent_c_dfeature_at_altbuf);
     } else if ((x == xupstair && y == yupstair)
                || (x == sstairs.sx && y == sstairs.sy && sstairs.up))
         cmap = S_upstair; /* "staircase up" */
@@ -3392,7 +3397,7 @@ boolean picked_some;
 
     /* default pile_limit is 5; a value of 0 means "never skip"
        (and 1 effectively forces "always skip") */
-    skip_objects = (flags.pile_limit > 0 && obj_cnt >= flags.pile_limit);
+    skip_objects = (NH_G(flags).pile_limit > 0 && obj_cnt >= NH_G(flags).pile_limit);
     if (u.uswallow && u.ustuck) {
         struct monst *mtmp = u.ustuck;
 
@@ -3437,7 +3442,7 @@ boolean picked_some;
         There("is %s here.",
               an(defsyms[trap_to_defsym(trap->ttyp)].explanation));
 
-    otmp = level.objects[u.ux][u.uy];
+    otmp = NH_G(level).objects[u.ux][u.uy];
     dfeature = dfeature_at(u.ux, u.uy, fbuf2);
     if (dfeature && !strcmp(dfeature, "pool of water") && Underwater)
         dfeature = 0;
@@ -3606,7 +3611,7 @@ struct obj *obj;
 {
     struct obj *otmp;
 
-    for (otmp = level.objects[obj->ox][obj->oy]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[obj->ox][obj->oy]; otmp; otmp = otmp->nexthere)
         if (otmp != obj && merged(&obj, &otmp))
             break;
     return;
@@ -3622,7 +3627,7 @@ register struct obj *otmp, *obj;
     /* fail if already the same object, if different types, if either is
        explicitly marked to prevent merge, or if not mergable in general */
     if (obj == otmp || obj->otyp != otmp->otyp
-        || obj->nomerge || otmp->nomerge || !objects[obj->otyp].oc_merge)
+        || obj->nomerge || otmp->nomerge || !NH_G(objects)[obj->otyp].oc_merge)
         return FALSE;
 
     /* coins of the same kind will always merge */
@@ -3700,8 +3705,8 @@ register struct obj *otmp, *obj;
     if (obj->oartifact != otmp->oartifact)
         return FALSE;
 
-    if (obj->known == otmp->known || !objects[otmp->otyp].oc_uses_known) {
-        return (boolean) objects[obj->otyp].oc_merge;
+    if (obj->known == otmp->known || !NH_G(objects)[otmp->otyp].oc_uses_known) {
+        return (boolean) NH_G(objects)[obj->otyp].oc_merge;
     } else
         return FALSE;
 }
@@ -3917,8 +3922,8 @@ STATIC_VAR NEARDATA const char *names[] = {
 STATIC_VAR NEARDATA const char oth_symbols[] = { CONTAINED_SYM, '\0' };
 STATIC_VAR NEARDATA const char *oth_names[] = { "Bagged/Boxed items" };
 
-STATIC_VAR NEARDATA char *invbuf = (char *) 0;
-STATIC_VAR NEARDATA unsigned invbufsiz = 0;
+#define invbuf (nh_g->s_invent_c_invbuf)
+#define invbufsiz (nh_g->s_invent_c_invbufsiz)
 
 char *
 let_to_name(let, unpaid, showsym)
@@ -4072,7 +4077,7 @@ doorganize() /* inventory organizer by Del Lamb */
         return 0;
     }
 
-    if (!flags.invlet_constant)
+    if (!NH_G(flags).invlet_constant)
         reassign();
     /* get object the user wants to organize (the 'from' slot) */
     allowall[0] = ALLOW_COUNT;
@@ -4113,7 +4118,7 @@ doorganize() /* inventory organizer by Del Lamb */
     lets[OVRFLW_INDX] = ' ';
     lets[sizeof lets - 1] = '\0';
     /* for floating inv letters, truncate list after the first open slot */
-    if (!flags.invlet_constant && (ix = inv_cnt(FALSE)) < 52)
+    if (!NH_G(flags).invlet_constant && (ix = inv_cnt(FALSE)) < 52)
         lets[ix + (splitting ? 0 : 1)] = '\0';
 
     /* blank out all the letters currently in use in the inventory
@@ -4414,7 +4419,7 @@ register struct obj *obj;
 }
 
 /* query objlist callback: return TRUE if obj is at given location */
-static coord only;
+#define only (nh_g->s_invent_c_only)
 
 STATIC_OVL boolean
 only_here(obj)
@@ -4439,7 +4444,7 @@ boolean as_if_seen;
     int n;
 
     /* count # of objects here */
-    for (n = 0, obj = level.buriedobjlist; obj; obj = obj->nobj)
+    for (n = 0, obj = NH_G(level).buriedobjlist; obj; obj = obj->nobj)
         if (obj->ox == x && obj->oy == y) {
             if (as_if_seen)
                 obj->dknown = 1;
@@ -4450,7 +4455,7 @@ boolean as_if_seen;
         only.x = x;
         only.y = y;
         if (query_objlist("Things that are buried here:",
-                          &level.buriedobjlist, INVORDER_SORT,
+                          &NH_G(level).buriedobjlist, INVORDER_SORT,
                           &selected, PICK_NONE, only_here) > 0)
             free((genericptr_t) selected);
         only.x = only.y = 0;

@@ -88,7 +88,7 @@ struct permonst *ptr;
 {
     /* non-stone golems turn into stone golems unless latter is genocided */
     return (boolean) (is_golem(ptr) && ptr != &mons[PM_STONE_GOLEM]
-                      && !(mvitals[PM_STONE_GOLEM].mvflags & G_GENOD));
+                      && !(NH_G(mvitals)[PM_STONE_GOLEM].mvflags & G_GENOD));
     /* allow G_EXTINCT */
 }
 
@@ -137,7 +137,7 @@ struct monst *mon;
         slotmask |= W_SWAPWEP;
     for (; o; o = o->nobj)
         if (((o->owornmask & slotmask) != 0L
-             && objects[o->otyp].oc_oprop == ANTIMAGIC)
+             && NH_G(objects)[o->otyp].oc_oprop == ANTIMAGIC)
             || (o->oartifact && defends_when_carried(AD_MAGM, o)))
             return TRUE;
     return FALSE;
@@ -175,7 +175,7 @@ struct monst *mon;
         slotmask |= W_SWAPWEP;
     for (; o; o = o->nobj)
         if (((o->owornmask & slotmask) != 0L
-             && objects[o->otyp].oc_oprop == BLINDED)
+             && NH_G(objects)[o->otyp].oc_oprop == BLINDED)
             || (o->oartifact && defends_when_carried(AD_BLND, o)))
             return TRUE;
     return FALSE;
@@ -262,7 +262,7 @@ struct obj *obj; /* aatyp == AT_WEAP, AT_SPIT */
         o = (mdef == &youmonst) ? invent : mdef->minvent;
         for (; o; o = o->nobj)
             if ((o->owornmask & W_ARMH)
-                && (s = OBJ_DESCR(objects[o->otyp])) != (char *) 0
+                && (s = OBJ_DESCR(NH_G(objects)[o->otyp])) != (char *) 0
                 && !strcmp(s, "visored helmet"))
                 return FALSE;
     }

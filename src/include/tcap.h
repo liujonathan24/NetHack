@@ -32,20 +32,21 @@ extern struct tc_gbl_data { /* also declared in decl.h; defined in decl.c */
 #define CO tc_gbl_data.tc_CO
 #endif
 
-extern struct tc_lcl_data { /* defined and set up in termcap.c */
+struct tc_lcl_data { /* defined and set up in termcap.c */
     char *tc_CM, *tc_ND, *tc_CD;
     char *tc_HI, *tc_HE, *tc_US, *tc_UE;
     boolean tc_ul_hack;
-} tc_lcl_data;
+};
+/* tc_lcl_data: per-env, see nh_globals.h */
 /* some curses.h declare CM etc. */
-#define nh_CM tc_lcl_data.tc_CM
-#define nh_ND tc_lcl_data.tc_ND
-#define nh_CD tc_lcl_data.tc_CD
-#define nh_HI tc_lcl_data.tc_HI
-#define nh_HE tc_lcl_data.tc_HE
-#define nh_US tc_lcl_data.tc_US
-#define nh_UE tc_lcl_data.tc_UE
-#define ul_hack tc_lcl_data.tc_ul_hack
+#define nh_CM NH_G(tc_lcl_data).tc_CM
+#define nh_ND NH_G(tc_lcl_data).tc_ND
+#define nh_CD NH_G(tc_lcl_data).tc_CD
+#define nh_HI NH_G(tc_lcl_data).tc_HI
+#define nh_HE NH_G(tc_lcl_data).tc_HE
+#define nh_US NH_G(tc_lcl_data).tc_US
+#define nh_UE NH_G(tc_lcl_data).tc_UE
+#define ul_hack NH_G(tc_lcl_data).tc_ul_hack
 
 extern short ospeed; /* set up in termcap.c */
 
@@ -53,7 +54,7 @@ extern short ospeed; /* set up in termcap.c */
 #ifdef TOS
 extern const char *hilites[CLR_MAX];
 #else
-extern NEARDATA char *hilites[CLR_MAX];
+/* hilites: per-env, see nh_globals.h */
 #endif
 #endif
 

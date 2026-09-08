@@ -9,12 +9,13 @@
     (martial_bonus() || is_bigfoot(youmonst.data) \
      || (uarmf && uarmf->otyp == KICKING_BOOTS))
 
-static NEARDATA struct rm *maploc, nowhere;
-static NEARDATA const char *gate_str;
+#define maploc (nh_g->s_dokick_c_maploc)
+#define nowhere (nh_g->s_dokick_c_nowhere)
+#define gate_str (nh_g->s_dokick_c_gate_str)
 
 /* kickedobj (decl.c) tracks a kicked object until placed or destroyed */
 
-extern boolean notonhead; /* for long worms */
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
 
 STATIC_DCL void FDECL(kickdmg, (struct monst *, BOOLEAN_P));
 STATIC_DCL boolean FDECL(maybe_kick_monster, (struct monst *,
@@ -244,7 +245,7 @@ xchar x, y;
     if (Fumbling)
         clumsy = TRUE;
 
-    else if (uarm && objects[uarm->otyp].oc_bulky && ACURR(A_DEX) < rnd(25))
+    else if (uarm && NH_G(objects)[uarm->otyp].oc_bulky && ACURR(A_DEX) < rnd(25))
         clumsy = TRUE;
  doit:
     You("kick %s.", mon_nam(mon));
@@ -263,7 +264,7 @@ xchar x, y;
             if (mon->mx != x || mon->my != y) {
                 (void) unmap_invisible(x, y);
                 pline("%s %s, %s evading your %skick.", Monnam(mon),
-                      (!level.flags.noteleport && can_teleport(mon->data))
+                      (!NH_G(level).flags.noteleport && can_teleport(mon->data))
                           ? "teleports"
                           : is_floater(mon->data)
                                 ? "floats"
@@ -303,7 +304,7 @@ register struct obj *gold;
             msg_given = TRUE;
         }
     } else {
-        long umoney, value = gold->quan * objects[gold->otyp].oc_cost;
+        long umoney, value = gold->quan * NH_G(objects)[gold->otyp].oc_cost;
 
         mtmp->msleeping = 0;
         finish_meating(mtmp);
@@ -415,7 +416,7 @@ xchar x, y; /* coordinates where object was before the impact, not after */
         const char *result = (char *) 0;
 
         otmp2 = otmp->nobj;
-        if (objects[otmp->otyp].oc_material == GLASS
+        if (NH_G(objects)[otmp->otyp].oc_material == GLASS
             && otmp->oclass != GEM_CLASS && !obj_resists(otmp, 33, 100)) {
             result = "shatter";
         } else if (otmp->otyp == EGG && !rn2(3)) {
@@ -467,7 +468,7 @@ char *kickobjnam;
 
     *kickobjnam = '\0';
     /* if a pile, the "top" object gets kicked */
-    kickedobj = level.objects[x][y];
+    kickedobj = NH_G(level).objects[x][y];
     if (kickedobj) {
         /* kick object; if doing is fatal, done() will clean up kickedobj */
         Strcpy(kickobjnam, killer_xname(kickedobj)); /* matters iff res==0 */
@@ -523,9 +524,9 @@ xchar x, y;
             ; /* hero has been transformed but kick continues */
         } else {
             /* normalize body shape here; foot, not body_part(FOOT) */
-            Sprintf(killer.name, "kicking %s barefoot",
+            Sprintf(NH_G(killer).name, "kicking %s barefoot",
                     killer_xname(kickedobj));
-            instapetrify(killer.name);
+            instapetrify(NH_G(killer).name);
         }
     }
 
@@ -1108,7 +1109,7 @@ dokick()
 
             /* nothing, fruit or trouble? 75:23.5:1.5% */
             if (rn2(3)) {
-                if (!rn2(6) && !(mvitals[PM_KILLER_BEE].mvflags & G_GONE))
+                if (!rn2(6) && !(NH_G(mvitals)[PM_KILLER_BEE].mvflags & G_GONE))
                     You_hear("a low buzzing."); /* a warning */
                 goto ouch;
             }
@@ -1176,7 +1177,7 @@ dokick()
                 exercise(A_DEX, TRUE);
                 return 1;
             } else if (!(maploc->looted & S_LPUDDING) && !rn2(3)
-                       && !(mvitals[PM_BLACK_PUDDING].mvflags & G_GONE)) {
+                       && !(NH_G(mvitals)[PM_BLACK_PUDDING].mvflags & G_GONE)) {
                 if (Blind)
                     You_hear("a gushing sound.");
                 else
@@ -1188,7 +1189,7 @@ dokick()
                 maploc->looted |= S_LPUDDING;
                 return 1;
             } else if (!(maploc->looted & S_LDWASHER) && !rn2(3)
-                       && !(mvitals[washerndx].mvflags & G_GONE)) {
+                       && !(NH_G(mvitals)[washerndx].mvflags & G_GONE)) {
                 /* can't resist... */
                 pline("%s returns!", (Blind ? Something : "The dish washer"));
                 if (makemon(&mons[washerndx], x, y, NO_MM_FLAGS))
@@ -1277,7 +1278,7 @@ dokick()
         boolean shopdoor = *in_rooms(x, y, SHOPBASE) ? TRUE : FALSE;
         /* break the door */
         if (maploc->doormask & D_TRAPPED) {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 You("kick the door.");
             exercise(A_STR, FALSE);
             maploc->doormask = D_NODOOR;
@@ -1418,7 +1419,7 @@ xchar dlev;          /* if !0 send to dlev near player */
 
     isrock = (missile && missile->otyp == ROCK);
     oct = dct = 0L;
-    for (obj = level.objects[x][y]; obj; obj = obj2) {
+    for (obj = NH_G(level).objects[x][y]; obj; obj = obj2) {
         obj2 = obj->nexthere;
         if (obj == missile)
             continue;
@@ -1528,7 +1529,7 @@ boolean shop_floor_obj;
     unpaid = is_unpaid(otmp);
 
     if (OBJ_AT(x, y)) {
-        for (obj = level.objects[x][y]; obj; obj = obj->nexthere)
+        for (obj = NH_G(level).objects[x][y]; obj; obj = obj->nexthere)
             if (obj != otmp)
                 n += obj->quan;
         if (n)
@@ -1578,7 +1579,7 @@ boolean shop_floor_obj;
     if (breaktest(otmp)) {
         const char *result;
 
-        if (objects[otmp->otyp].oc_material == GLASS
+        if (NH_G(objects)[otmp->otyp].oc_material == GLASS
             || otmp->otyp == EXPENSIVE_CAMERA) {
             if (otmp->otyp == MIRROR)
                 change_luck(-2);

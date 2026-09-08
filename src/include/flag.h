@@ -26,10 +26,10 @@ struct flag {
     boolean confirm;   /* confirm before hitting tame monsters */
     boolean dark_room; /* show shadows in lit rooms */
     boolean debug;     /* in debugging mode */
-#define wizard flags.debug
+#define wizard NH_G(flags).debug
     boolean end_own; /* list all own scores */
     boolean explore; /* in exploration mode */
-#define discover flags.explore
+#define discover NH_G(flags).explore
     boolean female;
     boolean friday13;        /* it's Friday the 13th */
     boolean help;            /* look in data file for info about stuff */
@@ -467,11 +467,11 @@ struct instance_flags {
 #endif
 #define preload_tiles wc_preload_tiles
 
-extern NEARDATA struct flag flags;
+/* flags: per-env, see nh_globals.h */
 #ifdef SYSFLAGS
 extern NEARDATA struct sysflag sysflags;
 #endif
-extern NEARDATA struct instance_flags iflags;
+/* iflags: per-env, see nh_globals.h */
 
 /* last_msg values
  * Usage:
@@ -501,29 +501,29 @@ enum runmode_types {
 
 /* paranoid confirmation prompting */
 /* any yes confirmations also require explicit no (or ESC) to reject */
-#define ParanoidConfirm ((flags.paranoia_bits & PARANOID_CONFIRM) != 0)
+#define ParanoidConfirm ((NH_G(flags).paranoia_bits & PARANOID_CONFIRM) != 0)
 /* quit: yes vs y for "Really quit?" and "Enter explore mode?" */
-#define ParanoidQuit ((flags.paranoia_bits & PARANOID_QUIT) != 0)
+#define ParanoidQuit ((NH_G(flags).paranoia_bits & PARANOID_QUIT) != 0)
 /* die: yes vs y for "Die?" (dying in explore mode or wizard mode) */
-#define ParanoidDie ((flags.paranoia_bits & PARANOID_DIE) != 0)
+#define ParanoidDie ((NH_G(flags).paranoia_bits & PARANOID_DIE) != 0)
 /* hit: yes vs y for "Save bones?" in wizard mode */
-#define ParanoidBones ((flags.paranoia_bits & PARANOID_BONES) != 0)
+#define ParanoidBones ((NH_G(flags).paranoia_bits & PARANOID_BONES) != 0)
 /* hit: yes vs y for "Really attack <the peaceful monster>?" */
-#define ParanoidHit ((flags.paranoia_bits & PARANOID_HIT) != 0)
+#define ParanoidHit ((NH_G(flags).paranoia_bits & PARANOID_HIT) != 0)
 /* pray: ask "Really pray?" (accepts y answer, doesn't require yes),
    taking over for the old prayconfirm boolean option */
-#define ParanoidPray ((flags.paranoia_bits & PARANOID_PRAY) != 0)
+#define ParanoidPray ((NH_G(flags).paranoia_bits & PARANOID_PRAY) != 0)
 /* remove: remove ('R') and takeoff ('T') commands prompt for an inventory
    item even when only one accessory or piece of armor is currently worn */
-#define ParanoidRemove ((flags.paranoia_bits & PARANOID_REMOVE) != 0)
+#define ParanoidRemove ((NH_G(flags).paranoia_bits & PARANOID_REMOVE) != 0)
 /* breakwand: Applying a wand */
-#define ParanoidBreakwand ((flags.paranoia_bits & PARANOID_BREAKWAND) != 0)
+#define ParanoidBreakwand ((NH_G(flags).paranoia_bits & PARANOID_BREAKWAND) != 0)
 /* werechange: accepting randomly timed werecreature change to transform
    from human to creature or vice versa while having polymorph control */
-#define ParanoidWerechange ((flags.paranoia_bits & PARANOID_WERECHANGE) != 0)
+#define ParanoidWerechange ((NH_G(flags).paranoia_bits & PARANOID_WERECHANGE) != 0)
 /* continue eating: prompt given _after_first_bite_ when eating something
    while satiated */
-#define ParanoidEating ((flags.paranoia_bits & PARANOID_EATING) != 0)
+#define ParanoidEating ((NH_G(flags).paranoia_bits & PARANOID_EATING) != 0)
 
 /* command parsing, mainly dealing with number_pad handling;
    not saved and restored */
@@ -616,6 +616,6 @@ struct cmd {
     char spkeys[NUM_NHKF];
 };
 
-extern NEARDATA struct cmd Cmd;
+/* Cmd: per-env, see nh_globals.h */
 
 #endif /* FLAG_H */

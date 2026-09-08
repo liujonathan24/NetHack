@@ -6,13 +6,7 @@
 #include "hack.h"
 
 /* at most one of `door' and `box' should be non-null at any given time */
-STATIC_VAR NEARDATA struct xlock_s {
-    struct rm *door;
-    struct obj *box;
-    int picktyp, /* key|pick|card for unlock, sharp vs blunt for #force */
-        chance, usedtime;
-    boolean magic_key;
-} xlock;
+#define xlock (nh_g->s_lock_c_xlock)
 
 /* occupation callbacks */
 STATIC_PTR int NDECL(picklock);
@@ -302,6 +296,8 @@ struct obj *container; /* passed from obfree() */
 #define PICKLOCK_DID_SOMETHING 1
 
 /* player is applying a key, lock pick, or credit card */
+const char nh_tmpl_l_lock_c_pick_lock_no_longer[] = "Unfortunately, you can no longer %s %s.";
+
 int
 pick_lock(pick)
 struct obj *pick;
@@ -316,18 +312,18 @@ struct obj *pick;
 
     /* check whether we're resuming an interrupted previous attempt */
     if (xlock.usedtime && picktyp == xlock.picktyp) {
-        static char no_longer[] = "Unfortunately, you can no longer %s %s.";
+        /* no_longer: per-env nh_g->l_lock_c_pick_lock_no_longer */
 
         if (nohands(youmonst.data)) {
             const char *what = (picktyp == LOCK_PICK) ? "pick" : "key";
 
             if (picktyp == CREDIT_CARD)
                 what = "card";
-            pline(no_longer, "hold the", what);
+            pline(NH_G(l_lock_c_pick_lock_no_longer), "hold the", what);
             reset_pick();
             return PICKLOCK_LEARNED_SOMETHING;
         } else if (u.uswallow || (xlock.box && !can_reach_floor(TRUE))) {
-            pline(no_longer, "reach the", "lock");
+            pline(NH_G(l_lock_c_pick_lock_no_longer), "reach the", "lock");
             reset_pick();
             return PICKLOCK_LEARNED_SOMETHING;
         } else {
@@ -380,7 +376,7 @@ struct obj *pick;
 
         count = 0;
         c = 'n'; /* in case there are no boxes here */
-        for (otmp = level.objects[cc.x][cc.y]; otmp; otmp = otmp->nexthere)
+        for (otmp = NH_G(level).objects[cc.x][cc.y]; otmp; otmp = otmp->nexthere)
             if (Is_box(otmp)) {
                 ++count;
                 if (!can_reach_floor(TRUE)) {
@@ -540,9 +536,9 @@ doforce()
     }
     if (!uwep /* proper type test */
         || ((uwep->oclass == WEAPON_CLASS || is_weptool(uwep))
-               ? (objects[uwep->otyp].oc_skill < P_DAGGER
-                  || objects[uwep->otyp].oc_skill == P_FLAIL
-                  || objects[uwep->otyp].oc_skill > P_LANCE)
+               ? (NH_G(objects)[uwep->otyp].oc_skill < P_DAGGER
+                  || NH_G(objects)[uwep->otyp].oc_skill == P_FLAIL
+                  || NH_G(objects)[uwep->otyp].oc_skill > P_LANCE)
                : uwep->oclass != ROCK_CLASS)) {
         You_cant("force anything %s weapon.",
                  !uwep ? "when not wielding a"
@@ -565,7 +561,7 @@ doforce()
 
     /* A lock is made only for the honest man, the thief will break it. */
     xlock.box = (struct obj *) 0;
-    for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere)
         if (Is_box(otmp)) {
             if (otmp->obroken || !otmp->olocked) {
                 /* force doname() to omit known "broken" or "unlocked"
@@ -593,7 +589,7 @@ doforce()
             else
                 You("start bashing it with %s.", yname(uwep));
             xlock.box = otmp;
-            xlock.chance = objects[uwep->otyp].oc_wldam * 2;
+            xlock.chance = NH_G(objects)[uwep->otyp].oc_wldam * 2;
             xlock.picktyp = picktyp;
             xlock.magic_key = FALSE;
             xlock.usedtime = 0;
@@ -1021,7 +1017,7 @@ int x, y;
             if (door->doormask & D_TRAPPED) {
                 if (MON_AT(x, y))
                     (void) mb_trapped(m_at(x, y));
-                else if (flags.verbose) {
+                else if (NH_G(flags).verbose) {
                     if (cansee(x, y))
                         pline("KABOOM!!  You see a door explode.");
                     else
@@ -1034,7 +1030,7 @@ int x, y;
                 break;
             }
             door->doormask = D_BROKEN;
-            if (flags.verbose) {
+            if (NH_G(flags).verbose) {
                 if (cansee(x, y))
                     pline_The("door crashes open!");
                 else
@@ -1090,7 +1086,7 @@ struct obj *otmp;
     Blinded = 1;
     thing = singular(otmp, xname);
     Blinded = save_Blinded;
-    switch (objects[otmp->otyp].oc_material) {
+    switch (NH_G(objects)[otmp->otyp].oc_material) {
     case PAPER:
         disposition = "is torn to shreds";
         break;

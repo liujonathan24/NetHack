@@ -142,6 +142,6 @@ struct context_info {
     struct novel_tracking novel;
 };
 
-extern NEARDATA struct context_info context;
+/* context: per-env, see nh_globals.h */
 
 #endif /* CONTEXT_H */

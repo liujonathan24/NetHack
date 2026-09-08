@@ -26,7 +26,7 @@ STATIC_DCL void NDECL(domove_core);
 #define TRAVP_GUESS  1
 #define TRAVP_VALID  2
 
-static anything tmp_anything;
+#define tmp_anything (nh_g->s_hack_c_tmp_anything)
 
 anything *
 uint_to_any(ui)
@@ -74,7 +74,7 @@ const char *msg;
     coord cc;
     boolean revived = FALSE;
 
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp2) {
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp2) {
         otmp2 = otmp->nexthere;
         if (otmp->otyp == CORPSE
             && (is_rider(&mons[otmp->corpsenm])
@@ -112,7 +112,7 @@ moverock()
     sx = u.ux + u.dx, sy = u.uy + u.dy; /* boulder starting position */
     while ((otmp = sobj_at(BOULDER, sx, sy)) != 0) {
         /* make sure that this boulder is visible as the top object */
-        if (otmp != level.objects[sx][sy])
+        if (otmp != NH_G(level).objects[sx][sy])
             movobj(otmp, sx, sy);
 
         rx = u.ux + 2 * u.dx; /* boulder destination position */
@@ -166,7 +166,7 @@ moverock()
                         deliver_part1 = TRUE;
                     map_invisible(rx, ry);
                 }
-                if (flags.verbose) {
+                if (NH_G(flags).verbose) {
                     char you_or_steed[BUFSZ];
 
                     Strcpy(you_or_steed,
@@ -297,11 +297,11 @@ moverock()
                 lastmovetime = 0;
 #else
                 /* note: reset to zero after save/restore cycle */
-                static NEARDATA long lastmovetime;
+                /* lastmovetime: per-env nh_g->l_hack_c_moverock_lastmovetime */
 #endif
  dopush:
                 if (!u.usteed) {
-                    if (moves > lastmovetime + 2 || moves < lastmovetime)
+                    if (moves > NH_G(l_hack_c_moverock_lastmovetime) + 2 || moves < NH_G(l_hack_c_moverock_lastmovetime))
                         pline("With %s effort you move %s.",
                               throws_rocks(youmonst.data) ? "little"
                                                           : "great",
@@ -310,7 +310,7 @@ moverock()
                 } else
                     pline("%s moves %s.", upstart(y_monnam(u.usteed)),
                           the(xname(otmp)));
-                lastmovetime = moves;
+                NH_G(l_hack_c_moverock_lastmovetime) = moves;
             }
 
             /* Move the boulder *after* the message. */
@@ -437,7 +437,7 @@ xchar x, y;
         watch_dig((struct monst *) 0, x, y, FALSE);
         return 1;
     } else if ((context.digging.effort += (30 + u.udaminc)) <= 100) {
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             You("%s chewing on the %s.",
                 context.digging.chew ? "continue" : "begin",
                 boulder
@@ -484,9 +484,9 @@ xchar x, y;
             dmgtxt = "damage";
         }
         digtxt = "chew a hole in the wall.";
-        if (level.flags.is_maze_lev) {
+        if (NH_G(level).flags.is_maze_lev) {
             lev->typ = ROOM;
-        } else if (level.flags.is_cavernous_lev && !in_town(x, y)) {
+        } else if (NH_G(level).flags.is_cavernous_lev && !in_town(x, y)) {
             lev->typ = CORR;
         } else {
             lev->typ = DOOR;
@@ -582,7 +582,7 @@ dosinkfall()
         losehp(Maybe_Half_Phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
         exercise(A_DEX, FALSE);
         selftouch("Falling, you");
-        for (obj = level.objects[u.ux][u.uy]; obj; obj = obj->nexthere)
+        for (obj = NH_G(level).objects[u.ux][u.uy]; obj; obj = obj->nexthere)
             if (obj->oclass == WEAPON_CLASS || is_weptool(obj)) {
                 You("fell on %s.", doname(obj));
                 losehp(Maybe_Half_Phys(rnd(3)), fell_on_sink,
@@ -751,7 +751,7 @@ int mode;
             /* Eat the rock. */
             if (mode == DO_MOVE && still_chewing(x, y))
                 return FALSE;
-        } else if (flags.autodig && !context.run && !context.nopick && uwep
+        } else if (NH_G(flags).autodig && !context.run && !context.nopick && uwep
                    && is_pick(uwep)) {
             /* MRKR: Automatic digging when wielding the appropriate tool */
             if (mode == DO_MOVE)
@@ -795,7 +795,7 @@ int mode;
                     if (amorphous(youmonst.data))
                         You(
    "try to ooze under the door, but can't squeeze your possessions through.");
-                    if (flags.autoopen && !context.run && !Confusion
+                    if (NH_G(flags).autoopen && !context.run && !Confusion
                         && !Stunned && !Fumbling) {
                         context.door_opened = context.move =
                             doopen_indir(x, y);
@@ -911,7 +911,7 @@ int mode;
                     && !(tunnels(youmonst.data) && !needspick(youmonst.data))
                     && !carrying(PICK_AXE) && !carrying(DWARVISH_MATTOCK)
                     && !((obj = carrying(WAN_DIGGING))
-                         && !objects[obj->otyp].oc_name_known))
+                         && !NH_G(objects)[obj->otyp].oc_name_known))
                     return FALSE;
             }
         }
@@ -1086,7 +1086,7 @@ int mode;
                     tmp_at(travelstepx[1 - set][i], travelstepy[1 - set][i]);
                 }
                 delay_output();
-                if (flags.runmode == RUN_CRAWL) {
+                if (NH_G(flags).runmode == RUN_CRAWL) {
                     delay_output();
                     delay_output();
                 }
@@ -1140,7 +1140,7 @@ int mode;
                 tmp_at(DISP_ALL, warning_to_glyph(2));
                 tmp_at(px, py);
                 delay_output();
-                if (flags.runmode == RUN_CRAWL) {
+                if (NH_G(flags).runmode == RUN_CRAWL) {
                     delay_output();
                     delay_output();
                     delay_output();
@@ -1211,7 +1211,7 @@ struct trap *desttrap; /* nonnull if another trap at <x,y> */
 
     switch (u.utraptype) {
     case TT_BEARTRAP:
-        if (flags.verbose) {
+        if (NH_G(flags).verbose) {
             predicament = "caught in a bear trap";
             if (u.usteed)
                 Norep("%s is %s.", upstart(steedname), predicament);
@@ -1239,7 +1239,7 @@ struct trap *desttrap; /* nonnull if another trap at <x,y> */
             break;
         }
         if (--u.utrap) {
-            if (flags.verbose) {
+            if (NH_G(flags).verbose) {
                 predicament = "stuck to the web";
                 if (u.usteed)
                     Norep("%s is %s.", upstart(steedname), predicament);
@@ -1254,7 +1254,7 @@ struct trap *desttrap; /* nonnull if another trap at <x,y> */
         }
         break;
     case TT_LAVA:
-        if (flags.verbose) {
+        if (NH_G(flags).verbose) {
             predicament = "stuck in the lava";
             if (u.usteed)
                 Norep("%s is %s.", upstart(steedname), predicament);
@@ -1290,13 +1290,13 @@ struct trap *desttrap; /* nonnull if another trap at <x,y> */
                    our next attempt to move out of tether range
                    after this successful move would have its
                    can't-do-that message suppressed by Norep */
-                if (flags.verbose)
+                if (NH_G(flags).verbose)
                     Norep("You move within the chain's reach.");
                 return TRUE;
             }
         }
         if (--u.utrap) {
-            if (flags.verbose) {
+            if (NH_G(flags).verbose) {
                 if (anchored) {
                     predicament = "chained to the";
                     culprit = "buried ball";
@@ -1421,11 +1421,11 @@ domove_core()
         /* check slippery ice */
         on_ice = !Levitation && is_ice(u.ux, u.uy);
         if (on_ice) {
-            static int skates = 0;
+            /* skates: per-env nh_g->l_hack_c_domove_core_skates */
 
-            if (!skates)
-                skates = find_skates();
-            if ((uarmf && uarmf->otyp == skates) || resists_cold(&youmonst)
+            if (!NH_G(l_hack_c_domove_core_skates))
+                NH_G(l_hack_c_domove_core_skates) = find_skates();
+            if ((uarmf && uarmf->otyp == NH_G(l_hack_c_domove_core_skates)) || resists_cold(&youmonst)
                 || Flying || is_floater(youmonst.data)
                 || is_clinger(youmonst.data) || is_whirly(youmonst.data)) {
                 on_ice = FALSE;
@@ -1871,7 +1871,7 @@ domove_core()
 
                     u.uconduct.killer++;
                     mndx = monsndx(mtmp->data);
-                    tmp = experience(mtmp, (int) mvitals[mndx].died);
+                    tmp = experience(mtmp, (int) NH_G(mvitals)[mndx].died);
                     more_experienced(tmp, 0);
                     newexplevel(); /* will decide if you go up */
                 }
@@ -1941,14 +1941,14 @@ domove_core()
         nomovemsg = "";
     }
 
-    if (context.run && flags.runmode != RUN_TPORT) {
+    if (context.run && NH_G(flags).runmode != RUN_TPORT) {
         /* display every step or every 7th step depending upon mode */
-        if (flags.runmode != RUN_LEAP || !(moves % 7L)) {
-            if (flags.time)
+        if (NH_G(flags).runmode != RUN_LEAP || !(moves % 7L)) {
+            if (NH_G(flags).time)
                 context.botl = 1;
             curs_on_u();
             delay_output();
-            if (flags.runmode == RUN_CRAWL) {
+            if (NH_G(flags).runmode == RUN_CRAWL) {
                 delay_output();
                 delay_output();
                 delay_output();
@@ -2142,15 +2142,17 @@ boolean newspot;             /* true if called by spoteffects */
     return FALSE;
 }
 
+const unsigned int nh_tmpl_l_hack_c_spoteffects_spottraptyp = NO_TRAP;
+
 void
 spoteffects(pick)
 boolean pick;
 {
-    static int inspoteffects = 0;
-    static coord spotloc;
-    static int spotterrain;
-    static struct trap *spottrap = (struct trap *) 0;
-    static unsigned spottraptyp = NO_TRAP;
+    /* inspoteffects: per-env nh_g->l_hack_c_spoteffects_inspoteffects */
+    /* spotloc: per-env nh_g->l_hack_c_spoteffects_spotloc */
+    /* spotterrain: per-env nh_g->l_hack_c_spoteffects_spotterrain */
+    /* spottrap: per-env nh_g->l_hack_c_spoteffects_spottrap */
+    /* spottraptyp: per-env nh_g->l_hack_c_spoteffects_spottraptyp */
 
     struct monst *mtmp;
     struct trap *trap = t_at(u.ux, u.uy);
@@ -2159,19 +2161,19 @@ boolean pick;
     /* prevent recursion from affecting the hero all over again
        [hero poly'd to iron golem enters water here, drown() inflicts
        damage that triggers rehumanize() which calls spoteffects()...] */
-    if (inspoteffects && u.ux == spotloc.x && u.uy == spotloc.y
+    if (NH_G(l_hack_c_spoteffects_inspoteffects) && u.ux == NH_G(l_hack_c_spoteffects_spotloc).x && u.uy == NH_G(l_hack_c_spoteffects_spotloc).y
         /* except when reason is transformed terrain (ice -> water) */
-        && spotterrain == levl[u.ux][u.uy].typ
+        && NH_G(l_hack_c_spoteffects_spotterrain) == levl[u.ux][u.uy].typ
         /* or transformed trap (land mine -> pit) */
-        && (!spottrap || !trap || trap->ttyp == spottraptyp))
+        && (!NH_G(l_hack_c_spoteffects_spottrap) || !trap || trap->ttyp == NH_G(l_hack_c_spoteffects_spottraptyp)))
         return;
 
-    ++inspoteffects;
-    spotterrain = levl[u.ux][u.uy].typ;
-    spotloc.x = u.ux, spotloc.y = u.uy;
+    ++NH_G(l_hack_c_spoteffects_inspoteffects);
+    NH_G(l_hack_c_spoteffects_spotterrain) = levl[u.ux][u.uy].typ;
+    NH_G(l_hack_c_spoteffects_spotloc).x = u.ux, NH_G(l_hack_c_spoteffects_spotloc).y = u.uy;
 
     /* moving onto different terrain might cause Lev or Fly to toggle */
-    if (spotterrain != levl[u.ux0][u.uy0].typ || !on_level(&u.uz, &u.uz0))
+    if (NH_G(l_hack_c_spoteffects_spotterrain) != levl[u.ux0][u.uy0].typ || !on_level(&u.uz, &u.uz0))
         switch_terrain();
 
     if (pooleffects(TRUE))
@@ -2217,12 +2219,12 @@ boolean pick;
              * (landmine to pit) and any new trap type
              * should get triggered.
              */
-            if (!spottrap || spottraptyp != trap->ttyp) {
-                spottrap = trap;
-                spottraptyp = trap->ttyp;
+            if (!NH_G(l_hack_c_spoteffects_spottrap) || NH_G(l_hack_c_spoteffects_spottraptyp) != trap->ttyp) {
+                NH_G(l_hack_c_spoteffects_spottrap) = trap;
+                NH_G(l_hack_c_spoteffects_spottraptyp) = trap->ttyp;
                 dotrap(trap, trapflag); /* fall into arrow trap, etc. */
-                spottrap = (struct trap *) 0;
-                spottraptyp = NO_TRAP;
+                NH_G(l_hack_c_spoteffects_spottrap) = (struct trap *) 0;
+                NH_G(l_hack_c_spoteffects_spottraptyp) = NO_TRAP;
             }
         }
         if (pick && pit)
@@ -2282,9 +2284,9 @@ boolean pick;
         mnexto(mtmp); /* have to move the monster */
     }
  spotdone:
-    if (!--inspoteffects) {
-        spotterrain = STONE; /* 0 */
-        spotloc.x = spotloc.y = 0;
+    if (!--NH_G(l_hack_c_spoteffects_inspoteffects)) {
+        NH_G(l_hack_c_spoteffects_spotterrain) = STONE; /* 0 */
+        NH_G(l_hack_c_spoteffects_spotloc).x = NH_G(l_hack_c_spoteffects_spotloc).y = 0;
     }
     return;
 }
@@ -2312,8 +2314,8 @@ in_rooms(x, y, typewanted)
 register xchar x, y;
 register int typewanted;
 {
-    static char buf[5];
-    char rno, *ptr = &buf[4];
+    /* buf: per-env nh_g->l_hack_c_in_rooms_buf */
+    char rno, *ptr = &NH_G(l_hack_c_in_rooms_buf)[4];
     int typefound, min_x, min_y, max_x, max_y_offset, step;
     register struct rm *lev;
 
@@ -2537,25 +2539,25 @@ register boolean newlev;
                 /* No more room of that type */
                 switch (rt) {
                 case COURT:
-                    level.flags.has_court = 0;
+                    NH_G(level).flags.has_court = 0;
                     break;
                 case SWAMP:
-                    level.flags.has_swamp = 0;
+                    NH_G(level).flags.has_swamp = 0;
                     break;
                 case MORGUE:
-                    level.flags.has_morgue = 0;
+                    NH_G(level).flags.has_morgue = 0;
                     break;
                 case ZOO:
-                    level.flags.has_zoo = 0;
+                    NH_G(level).flags.has_zoo = 0;
                     break;
                 case BARRACKS:
-                    level.flags.has_barracks = 0;
+                    NH_G(level).flags.has_barracks = 0;
                     break;
                 case TEMPLE:
-                    level.flags.has_temple = 0;
+                    NH_G(level).flags.has_temple = 0;
                     break;
                 case BEEHIVE:
-                    level.flags.has_beehive = 0;
+                    NH_G(level).flags.has_beehive = 0;
                     break;
                 }
             }
@@ -3009,9 +3011,9 @@ boolean k_format;
         context.travel = context.travel1 = context.mv = context.run = 0;
     context.botl = 1;
     if (u.uhp < 1) {
-        killer.format = k_format;
-        if (killer.name != knam) /* the thing that killed you */
-            Strcpy(killer.name, knam ? knam : "");
+        NH_G(killer).format = k_format;
+        if (NH_G(killer).name != knam) /* the thing that killed you */
+            Strcpy(NH_G(killer).name, knam ? knam : "");
         You("die...");
         done(DIED);
     } else if (n > 0 && u.uhp * 10 < u.uhpmax) {
@@ -3074,7 +3076,7 @@ weight_cap()
     return (int) carrcap;
 }
 
-static int wc; /* current weight_cap(); valid after call to inv_weight() */
+#define wc (nh_g->s_hack_c_wc) /* current weight_cap(); valid after call to inv_weight() */
 
 /* returns how far beyond the normal capacity the player is currently. */
 /* inv_weight() is negative if the player is below normal capacity. */

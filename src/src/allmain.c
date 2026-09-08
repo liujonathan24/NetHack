@@ -50,15 +50,15 @@ boolean resuming;
         (void) enter_explore_mode();
 
     /* side-effects from the real world */
-    flags.moonphase = phase_of_the_moon();
-    if (flags.moonphase == FULL_MOON) {
+    NH_G(flags).moonphase = phase_of_the_moon();
+    if (NH_G(flags).moonphase == FULL_MOON) {
         You("are lucky!  Full moon tonight.");
         change_luck(1);
-    } else if (flags.moonphase == NEW_MOON) {
+    } else if (NH_G(flags).moonphase == NEW_MOON) {
         pline("Be careful!  New moon tonight.");
     }
-    flags.friday13 = friday_13th();
-    if (flags.friday13) {
+    NH_G(flags).friday13 = friday_13th();
+    if (NH_G(flags).friday13) {
         pline("Watch out!  Bad things can happen on Friday the 13th.");
         change_luck(-1);
     }
@@ -85,10 +85,10 @@ boolean resuming;
     youmonst.movement = NORMAL_SPEED; /* give the hero some movement points */
     context.move = 0;
 
-    program_state.in_moveloop = 1;
+    NH_G(program_state).in_moveloop = 1;
     for (;;) {
 #ifdef SAFERHANGUP
-        if (program_state.done_hup)
+        if (NH_G(program_state).done_hup)
             end_of_input();
 #endif
         get_nh_event();
@@ -190,7 +190,7 @@ boolean resuming;
 
                     if (u.ublesscnt)
                         u.ublesscnt--;
-                    if (flags.time && !context.run)
+                    if (NH_G(flags).time && !context.run)
                         iflags.time_botl = TRUE;
 
                     /* One possible result of prayer is healing.  Whether or
@@ -422,7 +422,7 @@ boolean resuming;
             if (!multi) {
                 /* lookaround may clear multi */
                 context.move = 0;
-                if (flags.time)
+                if (NH_G(flags).time)
                     context.botl = TRUE;
                 continue;
             }
@@ -444,15 +444,15 @@ boolean resuming;
         if (u.utotype)       /* change dungeon level */
             deferred_goto(); /* after rhack() */
         /* !context.move here: multiple movement command stopped */
-        else if (flags.time && (!context.move || !context.mv))
+        else if (NH_G(flags).time && (!context.move || !context.mv))
             context.botl = TRUE;
 
         if (vision_full_recalc)
             vision_recalc(0); /* vision! */
         /* when running in non-tport mode, this gets done through domove() */
-        if ((!context.run || flags.runmode == RUN_TPORT)
+        if ((!context.run || NH_G(flags).runmode == RUN_TPORT)
             && (multi && (!context.travel ? !(multi % 7) : !(moves % 7L)))) {
-            if (flags.time && context.run)
+            if (NH_G(flags).time && context.run)
                 context.botl = TRUE;
             /* [should this be flush_screen() instead?] */
             display_nhwindow(WIN_MAP, FALSE);
@@ -599,11 +599,11 @@ newgame()
     context.tribute.tributesz = sizeof(struct tribute_info);
 
     for (i = LOW_PM; i < NUMMONS; i++)
-        mvitals[i].mvflags = mons[i].geno & G_NOCORPSE;
+        NH_G(mvitals)[i].mvflags = mons[i].geno & G_NOCORPSE;
 
     init_objects(); /* must be before u_init() */
 
-    flags.pantheon = -1; /* role_init() will reset this */
+    NH_G(flags).pantheon = -1; /* role_init() will reset this */
     role_init();         /* must be before init_dungeons(), u_init(),
                           * and init_artifacts() */
 
@@ -636,7 +636,7 @@ newgame()
     (void) makedog();
     docrt();
 
-    if (flags.legacy) {
+    if (NH_G(flags).legacy) {
         flush_screen(1);
         com_pager(1);
     }
@@ -646,7 +646,7 @@ newgame()
 #ifdef INSURANCE
     save_currentstate();
 #endif
-    program_state.something_worth_saving++; /* useful data now exists */
+    NH_G(program_state).something_worth_saving++; /* useful data now exists */
 
     /* Success! */
     welcome(TRUE);
@@ -659,7 +659,7 @@ welcome(new_game)
 boolean new_game; /* false => restoring an old game */
 {
     char buf[BUFSZ];
-    boolean currentgend = Upolyd ? u.mfemale : flags.female;
+    boolean currentgend = Upolyd ? u.mfemale : NH_G(flags).female;
 
     /* skip "welcome back" if restoring a doomed character */
     if (!new_game && Upolyd && ugenocided()) {
@@ -682,7 +682,7 @@ boolean new_game; /* false => restoring an old game */
     if (!urole.name.f
         && (new_game
                 ? (urole.allow & ROLE_GENDMASK) == (ROLE_MALE | ROLE_FEMALE)
-                : currentgend != flags.initgend))
+                : currentgend != NH_G(flags).initgend))
         Sprintf(eos(buf), " %s", genders[currentgend].adj);
 
     pline(new_game ? "%s %s, welcome to NetHack!  You are a%s %s %s."
@@ -753,7 +753,7 @@ const char *msg;
 {
     if (multi > 0 && !context.travel && !context.run) {
         nomul(0);
-        if (flags.verbose && msg)
+        if (NH_G(flags).verbose && msg)
             Norep("%s", msg);
     }
 }

@@ -72,10 +72,12 @@ extern short glyph2tile[];
 #define HUPSKIP_RESULT(RES) /*empty*/
 #endif /* ?HANGUP_HANDLING */
 
-extern char mapped_menu_cmds[]; /* from options.c */
+/* mapped_menu_cmds: per-env, see nh_globals.h */ /* from options.c */
 
 /* Interface definition, for windows.c */
-struct window_procs tty_procs = {
+/* tty_procs: per-env, see nh_globals.h */
+const struct window_procs nh_tmpl_tty_procs =
+{
     "tty",
     (0
 #ifdef MSDOS
@@ -137,9 +139,9 @@ struct window_procs tty_procs = {
     genl_can_suspend_yes,
 };
 
-winid BASE_WINDOW;
-struct WinDesc *wins[MAXWIN];
-struct DisplayDesc *ttyDisplay; /* the tty display descriptor */
+/* BASE_WINDOW: per-env, see nh_globals.h */
+/* wins: per-env, see nh_globals.h */
+/* ttyDisplay: per-env, see nh_globals.h */ /* the tty display descriptor */
 
 extern void FDECL(cmov, (int, int));   /* from termcap.c */
 extern void FDECL(nocmov, (int, int)); /* from termcap.c */
@@ -149,8 +151,12 @@ static char obuf[BUFSIZ]; /* BUFSIZ is defined in stdio.h */
 #endif
 #endif
 
-static char winpanicstr[] = "Bad window id %d";
-char defmorestr[] = "--More--";
+#define winpanicstr (nh_g->s_wintty_c_winpanicstr)
+const char nh_tmpl_s_wintty_c_winpanicstr[] =
+"Bad window id %d";
+/* defmorestr: per-env, see nh_globals.h */
+const char nh_tmpl_defmorestr[] =
+"--More--";
 
 #ifdef CLIPPING
 #if defined(USE_TILES) && defined(MSDOS)
@@ -472,10 +478,10 @@ const char *pref;
 }
 
 /* try to reduce clutter in the code below... */
-#define ROLE flags.initrole
-#define RACE flags.initrace
-#define GEND flags.initgend
-#define ALGN flags.initalign
+#define ROLE NH_G(flags).initrole
+#define RACE NH_G(flags).initrace
+#define GEND NH_G(flags).initgend
+#define ALGN NH_G(flags).initalign
 
 void
 tty_player_selection()
@@ -499,7 +505,7 @@ tty_player_selection()
     /* Used for '-@';
      * choose randomly without asking for all unspecified facets.
      */
-    if (flags.randomall && picksomething) {
+    if (NH_G(flags).randomall && picksomething) {
         if (ROLE == ROLE_NONE)
             ROLE = ROLE_RANDOM;
         if (RACE == ROLE_NONE)
@@ -931,7 +937,7 @@ tty_player_selection()
      *           q - quit
      *           (end)
      */
-    getconfirmation = (picksomething && pick4u != 'a' && !flags.randomall);
+    getconfirmation = (picksomething && pick4u != 'a' && !NH_G(flags).randomall);
     while (getconfirmation) {
         tty_clear_nhwindow(BASE_WINDOW);
         role_selection_prolog(ROLE_NONE, BASE_WINDOW);
@@ -1345,12 +1351,12 @@ getret()
 {
     HUPSKIP();
     xputs("\n");
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutbeg();
     xputs("Hit ");
     xputs(iflags.cbreak ? "space" : "return");
     xputs(" to continue: ");
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutend();
     xwaitforspace(" ");
 }
@@ -1706,11 +1712,11 @@ const char *s; /* valid responses */
     HUPSKIP();
     tty_curs(BASE_WINDOW, (int) ttyDisplay->curx + offset,
              (int) ttyDisplay->cury);
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutbeg();
     xputs(prompt);
     ttyDisplay->curx += strlen(prompt);
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutend();
 
     xwaitforspace(s);
@@ -2591,14 +2597,14 @@ STATIC_OVL const char *
 compress_str(str)
 const char *str;
 {
-    static char cbuf[BUFSZ];
+    /* cbuf: per-env nh_g->l_wintty_c_compress_str_cbuf */
 
     /* compress out consecutive spaces if line is too long;
        topline wrapping converts space at wrap point into newline,
        we reverse that here */
     if ((int) strlen(str) >= CO || index(str, '\n')) {
         const char *in_str = str;
-        char c, *outstr = cbuf, *outend = &cbuf[sizeof cbuf - 1];
+        char c, *outstr = NH_G(l_wintty_c_compress_str_cbuf), *outend = &NH_G(l_wintty_c_compress_str_cbuf)[sizeof NH_G(l_wintty_c_compress_str_cbuf) - 1];
         boolean was_space = TRUE; /* True discards all leading spaces;
                                      False would retain one if present */
 
@@ -2610,10 +2616,10 @@ const char *str;
             *outstr++ = c;
             was_space = (c == ' ');
         }
-        if ((was_space && outstr > cbuf) || outstr == outend)
+        if ((was_space && outstr > NH_G(l_wintty_c_compress_str_cbuf)) || outstr == outend)
             --outstr; /* remove trailing space or make room for terminator */
         *outstr = '\0';
-        str = cbuf;
+        str = NH_G(l_wintty_c_compress_str_cbuf);
     }
     return str;
 }
@@ -3193,7 +3199,7 @@ tty_wait_synch()
         if (ttyDisplay->inmore) {
             addtopl("--More--");
             (void) fflush(stdout);
-        } else if (ttyDisplay->inread > program_state.gameover) {
+        } else if (ttyDisplay->inread > NH_G(program_state).gameover) {
             /* this can only happen if we were reading and got interrupted */
             ttyDisplay->toplin = 3;
             /* do this twice; 1st time gets the Quit? message again */
@@ -3492,7 +3498,7 @@ tty_nhgetch()
      * is non-reentrant code in the internal _filbuf() routine, called by
      * getc().
      */
-    static volatile int nesting = 0;
+    /* nesting: per-env nh_g->l_wintty_c_tty_nhgetch_nesting */
     char nestbuf;
 #endif
 
@@ -3510,11 +3516,11 @@ tty_nhgetch()
         i = randomkey();
     } else {
 #ifdef UNIX
-        i = (++nesting == 1)
+        i = (++NH_G(l_wintty_c_tty_nhgetch_nesting) == 1)
               ? tgetch()
               : (read(fileno(stdin), (genericptr_t) &nestbuf, 1) == 1)
                   ? (int) nestbuf : EOF;
-        --nesting;
+        --NH_G(l_wintty_c_tty_nhgetch_nesting);
 #else
         i = tgetch();
 #endif
@@ -3653,20 +3659,21 @@ char *posbar;
  * src/windows.c and as such are considered to be on the window-port
  * "side" of things, rather than the NetHack-core "side" of things.
  */
-extern const char *status_fieldfmt[MAXBLSTATS];
-extern char *status_vals[MAXBLSTATS];
-extern boolean status_activefields[MAXBLSTATS];
-extern winid WIN_STATUS;
+/* status_fieldfmt: per-env, see nh_globals.h */
+/* status_vals: per-env, see nh_globals.h */
+/* status_activefields: per-env, see nh_globals.h */
+/* WIN_STATUS: per-env, see nh_globals.h */
 
 #ifdef STATUS_HILITES
 #ifdef TEXTCOLOR
 STATIC_DCL int FDECL(condcolor, (long, unsigned long *));
 #endif
 STATIC_DCL int FDECL(condattr, (long, unsigned long *));
-static unsigned long *tty_colormasks;
-static long tty_condition_bits;
-static struct tty_status_fields tty_status[2][MAXBLSTATS]; /* 2: NOW,BEFORE */
-static int hpbar_percent, hpbar_color;
+#define tty_colormasks (nh_g->s_wintty_c_tty_colormasks)
+#define tty_condition_bits (nh_g->s_wintty_c_tty_condition_bits)
+#define tty_status (*(struct tty_status_fields (*)[2][23]) nh_g->s_wintty_c_tty_status) /* 2: NOW,BEFORE */
+#define hpbar_percent (nh_g->s_wintty_c_hpbar_percent)
+#define hpbar_color (nh_g->s_wintty_c_hpbar_color)
 static struct condition_t {
     long mask;
     const char *text[3]; /* 3: potential display vals, progressively shorter */
@@ -3715,14 +3722,15 @@ static const enum statusfields
     { BL_LEVELDESC, BL_TIME, BL_CONDITION, BL_FLUSH, blPAD, blPAD,
       blPAD, blPAD, blPAD, blPAD, blPAD, blPAD, blPAD, blPAD, blPAD }
 };
-static const enum statusfields (*fieldorder)[MAX_PER_ROW];
+#define fieldorder (nh_g->s_wintty_c_fieldorder)
 
-static int finalx[3][2];    /* [rows][NOW or BEFORE] */
-static boolean windowdata_init = FALSE;
-static int cond_shrinklvl = 0;
-static int enclev = 0, enc_shrinklvl = 0;
-static int dlvl_shrinklvl = 0;
-static boolean truncation_expected = FALSE;
+#define finalx (nh_g->s_wintty_c_finalx)    /* [rows][NOW or BEFORE] */
+#define windowdata_init (nh_g->s_wintty_c_windowdata_init)
+#define cond_shrinklvl (nh_g->s_wintty_c_cond_shrinklvl)
+#define enclev (nh_g->s_wintty_c_enclev)
+#define enc_shrinklvl (nh_g->s_wintty_c_enc_shrinklvl)
+#define dlvl_shrinklvl (nh_g->s_wintty_c_dlvl_shrinklvl)
+#define truncation_expected (nh_g->s_wintty_c_truncation_expected)
 #define FORCE_RESET TRUE
 #define NO_RESET FALSE
 
@@ -4139,7 +4147,7 @@ STATIC_OVL void
 status_sanity_check(VOID_ARGS)
 {
     int i;
-    static boolean in_sanity_check = FALSE;
+    /* in_sanity_check: per-env nh_g->l_wintty_c_status_sanity_check_in_sanity_check */
     static const char *const idxtext[] = {
         "BL_TITLE", "BL_STR", "BL_DX", "BL_CO", "BL_IN", "BL_WI", /* 0.. 5   */
         "BL_CH","BL_ALIGN", "BL_SCORE", "BL_CAP", "BL_GOLD",     /* 6.. 10  */
@@ -4148,9 +4156,9 @@ status_sanity_check(VOID_ARGS)
         "BL_LEVELDESC", "BL_EXP", "BL_CONDITION"              /* 20.. 22 */
     };
 
-    if (in_sanity_check)
+    if (NH_G(l_wintty_c_status_sanity_check_in_sanity_check))
         return;
-    in_sanity_check = TRUE;
+    NH_G(l_wintty_c_status_sanity_check_in_sanity_check) = TRUE;
     /*
      * Make sure that every field made it down to the
      * bottom of the render_status() for-loop.
@@ -4176,7 +4184,7 @@ status_sanity_check(VOID_ARGS)
              */
         }
     }
-    in_sanity_check = FALSE;
+    NH_G(l_wintty_c_status_sanity_check_in_sanity_check) = FALSE;
 }
 #endif /* NHDEVEL_STATUS */
 
@@ -4484,9 +4492,9 @@ render_status(VOID_ARGS)
                        are now positioned at data[N-1], the terminator;
                        that's ok as long as we don't write there */
                     if (x > cw->cols) {
-                        static unsigned once_only = 0;
+                        /* once_only: per-env nh_g->l_wintty_c_render_status_once_only */
 
-                        if (!truncation_expected && !once_only++)
+                        if (!truncation_expected && !NH_G(l_wintty_c_render_status_once_only)++)
                             paniclog("render_status()",
                                      " unexpected truncation.");
                         x = cw->cols;

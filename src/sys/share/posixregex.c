@@ -70,16 +70,16 @@ regex_compile(const char *s, struct nhregex *re)
 const char *
 regex_error_desc(struct nhregex *re)
 {
-    static char buf[BUFSZ];
+    /* buf: per-env nh_g->l_posixregex_c_regex_error_desc_buf */
 
     if (!re || !re->err)
         return (const char *) 0;
 
     /* FIXME: Using a static buffer here is not ideal, but avoids memory
      * leaks. Consider the allocation more carefully. */
-    regerror(re->err, &re->re, buf, BUFSZ);
+    regerror(re->err, &re->re, NH_G(l_posixregex_c_regex_error_desc_buf), BUFSZ);
 
-    return buf;
+    return NH_G(l_posixregex_c_regex_error_desc_buf);
 }
 
 boolean

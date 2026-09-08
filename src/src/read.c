@@ -12,7 +12,7 @@
     ((mndx) == urace.malenum \
      || (urace.femalenum != NON_PM && (mndx) == urace.femalenum))
 
-boolean known;
+/* known: per-env nh_g->known */
 
 static NEARDATA const char readable[] = { ALL_CLASSES, SCROLL_CLASS,
                                           SPBOOK_CLASS, 0 };
@@ -41,7 +41,7 @@ STATIC_OVL boolean
 learnscrolltyp(scrolltyp)
 short scrolltyp;
 {
-    if (!objects[scrolltyp].oc_name_known) {
+    if (!NH_G(objects)[scrolltyp].oc_name_known) {
         makeknown(scrolltyp);
         more_experienced(0, 10);
         return TRUE;
@@ -189,7 +189,7 @@ doread()
     register struct obj *scroll;
     boolean confused, nodisappear;
 
-    known = FALSE;
+    NH_G(known) = FALSE;
     if (check_capacity((char *) 0))
         return 0;
     scroll = getobj(readable, "read");
@@ -198,7 +198,7 @@ doread()
 
     /* outrumor has its own blindness check */
     if (scroll->otyp == FORTUNE_COOKIE) {
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             You("break up the cookie and throw away the pieces.");
         outrumor(bcsign(scroll), BY_COOKIE);
         if (!Blind)
@@ -225,7 +225,7 @@ doread()
         mesg = (scroll->otyp == T_SHIRT) ? tshirt_text(scroll, buf)
                                          : apron_text(scroll, buf);
         endpunct = "";
-        if (flags.verbose) {
+        if (NH_G(flags).verbose) {
             int ln = (int) strlen(mesg);
 
             /* we will be displaying a sentence; need ending punctuation */
@@ -256,7 +256,7 @@ doread()
         if (Blind) {
             You("feel the embossed numbers:");
         } else {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline("It reads:");
             pline("\"%s\"",
                   scroll->oartifact
@@ -271,7 +271,7 @@ doread()
               ((int) scroll->o_id % 10),
               (!((int) scroll->o_id % 3)),
               (((int) scroll->o_id * 7) % 10),
-              (flags.verbose || Blind) ? "." : "");
+              (NH_G(flags).verbose || Blind) ? "." : "");
         u.uconduct.literate++;
         return 1;
     } else if (scroll->otyp == CAN_OF_GREASE) {
@@ -282,7 +282,7 @@ doread()
             You_cant("feel any Braille writing.");
             return 0;
         }
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             pline("It reads:");
         pline("\"Magic Marker(TM) Red Ink Marker Pen.  Water Soluble.\"");
         u.uconduct.literate++;
@@ -290,7 +290,7 @@ doread()
     } else if (scroll->oclass == COIN_CLASS) {
         if (Blind)
             You("feel the embossed words:");
-        else if (flags.verbose)
+        else if (NH_G(flags).verbose)
             You("read:");
         pline("\"1 Zorkmid.  857 GUE.  In Frobs We Trust.\"");
         u.uconduct.literate++;
@@ -395,10 +395,10 @@ doread()
         }
     }
     if (!seffects(scroll)) {
-        if (!objects[scroll->otyp].oc_name_known) {
-            if (known)
+        if (!NH_G(objects)[scroll->otyp].oc_name_known) {
+            if (NH_G(known))
                 learnscroll(scroll);
-            else if (!objects[scroll->otyp].oc_uname)
+            else if (!NH_G(objects)[scroll->otyp].oc_uname)
                 docall(scroll);
         }
         scroll->in_use = FALSE;
@@ -450,14 +450,14 @@ struct obj *obj;
         return TRUE;
     /* known && !oc_name_known is possible after amnesia/mind flayer */
     if (obj->oclass == RING_CLASS)
-        return (boolean) (objects[obj->otyp].oc_charged
+        return (boolean) (NH_G(objects)[obj->otyp].oc_charged
                           && (obj->known
                               || (obj->dknown
-                                  && objects[obj->otyp].oc_name_known)));
+                                  && NH_G(objects)[obj->otyp].oc_name_known)));
     if (is_weptool(obj)) /* specific check before general tools */
         return FALSE;
     if (obj->oclass == TOOL_CLASS)
-        return (boolean) objects[obj->otyp].oc_charged;
+        return (boolean) NH_G(objects)[obj->otyp].oc_charged;
     return FALSE; /* why are weapons/armor considered charged anyway? */
 }
 
@@ -477,7 +477,7 @@ int curse_bless;
     if (obj->oclass == WAND_CLASS) {
         int lim = (obj->otyp == WAN_WISHING)
                       ? 3
-                      : (objects[obj->otyp].oc_dir != NODIR) ? 8 : 15;
+                      : (NH_G(objects)[obj->otyp].oc_dir != NODIR) ? 8 : 15;
 
         /* undo any prior cancellation, even when is_cursed */
         if (obj->spe == -1)
@@ -533,7 +533,7 @@ int curse_bless;
 #endif
         }
 
-    } else if (obj->oclass == RING_CLASS && objects[obj->otyp].oc_charged) {
+    } else if (obj->oclass == RING_CLASS && NH_G(objects)[obj->otyp].oc_charged) {
         /* charging does not affect ring's curse/bless status */
         int s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1;
         boolean is_on = (obj == uleft || obj == uright);
@@ -570,7 +570,7 @@ int curse_bless;
     } else if (obj->oclass == TOOL_CLASS) {
         int rechrg = (int) obj->recharged;
 
-        if (objects[obj->otyp].oc_charged) {
+        if (NH_G(objects)[obj->otyp].oc_charged) {
             /* tools don't have a limit, but the counter used does */
             if (rechrg < 7) /* recharge_limit */
                 obj->recharged++;
@@ -718,11 +718,11 @@ STATIC_OVL void
 forget_single_object(obj_id)
 int obj_id;
 {
-    objects[obj_id].oc_name_known = 0;
-    objects[obj_id].oc_pre_discovered = 0; /* a discovery when relearned */
-    if (objects[obj_id].oc_uname) {
-        free((genericptr_t) objects[obj_id].oc_uname);
-        objects[obj_id].oc_uname = 0;
+    NH_G(objects)[obj_id].oc_name_known = 0;
+    NH_G(objects)[obj_id].oc_pre_discovered = 0; /* a discovery when relearned */
+    if (NH_G(objects)[obj_id].oc_uname) {
+        free((genericptr_t) NH_G(objects)[obj_id].oc_uname);
+        NH_G(objects)[obj_id].oc_uname = 0;
     }
     undiscover_object(obj_id); /* after clearing oc_name_known */
 
@@ -777,8 +777,8 @@ int percent;
 
     indices[0] = 0; /* lint suppression */
     for (count = 0, i = 1; i < NUM_OBJECTS; i++)
-        if (OBJ_DESCR(objects[i])
-            && (objects[i].oc_name_known || objects[i].oc_uname))
+        if (OBJ_DESCR(NH_G(objects)[i])
+            && (NH_G(objects)[i].oc_name_known || NH_G(objects)[i].oc_uname))
             indices[count++] = i;
 
     if (count > 0) {
@@ -801,7 +801,7 @@ int howmuch;
     if (Sokoban)
         return;
 
-    known = TRUE;
+    NH_G(known) = TRUE;
     for (zx = 0; zx < COLNO; zx++)
         for (zy = 0; zy < ROWNO; zy++)
             if (howmuch & ALL_MAP || rn2(7)) {
@@ -1005,10 +1005,10 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
             new_erodeproof;
     struct obj *otmp;
 
-    if (objects[otyp].oc_magic)
+    if (NH_G(objects)[otyp].oc_magic)
         exercise(A_WIS, TRUE);                       /* just for trying */
     already_known = (sobj->oclass == SPBOOK_CLASS /* spell */
-                     || objects[otyp].oc_name_known);
+                     || NH_G(objects)[otyp].oc_name_known);
 
     switch (otyp) {
 #ifdef MAIL
@@ -1142,7 +1142,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
         if (s) {
             otmp->spe += s;
             adj_abon(otmp, s);
-            known = otmp->known;
+            NH_G(known) = otmp->known;
             /* update shop bill to reflect new higher price */
             if (s > 0 && otmp->unpaid)
                 alter_cost(otmp, 0L);
@@ -1184,7 +1184,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
                 exercise(A_CON, FALSE);
                 break;
             } else
-                known = TRUE;
+                NH_G(known) = TRUE;
         } else { /* armor and scroll both cursed */
             pline("%s.", Yobjnam2(otmp, "vibrate"));
             if (otmp->spe >= -6) {
@@ -1264,7 +1264,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
             You("don't remember there being any magic words on this scroll.");
         else
             pline("This scroll seems to be blank.");
-        known = TRUE;
+        NH_G(known) = TRUE;
         break;
     case SCR_REMOVE_CURSE:
     case SPE_REMOVE_CURSE: {
@@ -1301,7 +1301,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
                         if (obj->oclass == WEAPON_CLASS) {
                             /* mergeable weapon test covers ammo,
                                missiles, spears, daggers & knives */
-                            if (!objects[obj->otyp].oc_merge)
+                            if (!NH_G(objects)[obj->otyp].oc_merge)
                                 wornmask = 0L;
                         } else if (obj->oclass == GEM_CLASS) {
                             /* possibly ought to check whether
@@ -1354,7 +1354,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
                             confused ? &mons[PM_ACID_BLOB]
                                      : (struct permonst *) 0,
                             FALSE))
-            known = TRUE;
+            NH_G(known) = TRUE;
         /* no need to flush monsters; we ask for identification only if the
          * monsters are not visible
          */
@@ -1434,14 +1434,14 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
                       vis_results ? "is" : "seems",
                       (results < 0) ? "un" : "");
             if (vis_results > 0)
-                known = TRUE;
+                NH_G(known) = TRUE;
         }
         break;
     }
     case SCR_GENOCIDE:
         if (!already_known)
             You("have found a scroll of genocide!");
-        known = TRUE;
+        NH_G(known) = TRUE;
         if (sblessed)
             do_class_genocide();
         else
@@ -1450,11 +1450,11 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
     case SCR_LIGHT:
         if (!confused || rn2(5)) {
             if (!Blind)
-                known = TRUE;
+                NH_G(known) = TRUE;
             litroom(!confused && !scursed, sobj);
             if (!confused && !scursed) {
                 if (lightdamage(sobj, TRUE, 5))
-                    known = TRUE;
+                    NH_G(known) = TRUE;
             }
         } else {
             /* could be scroll of create monster, don't set known ...*/
@@ -1467,7 +1467,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
         if (confused || scursed) {
             level_tele();
         } else {
-            known = scrolltele(sobj);
+            NH_G(known) = scrolltele(sobj);
         }
         break;
     case SCR_GOLD_DETECTION:
@@ -1542,7 +1542,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
             recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
         break;
     case SCR_MAGIC_MAPPING:
-        if (level.flags.nommap) {
+        if (NH_G(level).flags.nommap) {
             Your("mind is filled with crazy lines!");
             if (Hallucination)
                 pline("Wow!  Modern art.");
@@ -1560,10 +1560,10 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
                         cvt_sdoor_to_door(&levl[x][y]);
             /* do_mapping() already reveals secret passages */
         }
-        known = TRUE;
+        NH_G(known) = TRUE;
         /*FALLTHRU*/
     case SPE_MAGIC_MAPPING:
-        if (level.flags.nommap) {
+        if (NH_G(level).flags.nommap) {
             Your("%s spins as %s blocks the spell!", body_part(HEAD),
                  something);
             make_confused(HConfusion + rnd(30), FALSE);
@@ -1580,7 +1580,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
         }
         break;
     case SCR_AMNESIA:
-        known = TRUE;
+        NH_G(known) = TRUE;
         forget((!sblessed ? ALL_SPELLS : 0)
                | (!confused || scursed ? ALL_MAP : 0));
         if (Hallucination) /* Ommmmmm! */
@@ -1661,7 +1661,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
             else
                 pline_The("%s rumbles %s you!", ceiling(u.ux, u.uy),
                           sblessed ? "around" : "above");
-            known = 1;
+            NH_G(known) = 1;
             sokoban_guilt();
 
             /* Loop through the surrounding squares */
@@ -1686,7 +1686,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
         }
         break;
     case SCR_PUNISHMENT:
-        known = TRUE;
+        NH_G(known) = TRUE;
         if (confused || sblessed) {
             You_feel("guilty.");
             break;
@@ -1698,7 +1698,7 @@ struct obj *sobj; /* scroll, or fake spellbook object for scroll-like spell */
 
         if (!already_known)
             You("have found a scroll of stinking cloud!");
-        known = TRUE;
+        NH_G(known) = TRUE;
         pline("Where do you want to center the %scloud?",
               already_known ? "stinking " : "");
         cc.x = u.ux;
@@ -1753,7 +1753,7 @@ boolean confused, helmet_protects, byu, skip_uswallow;
                 pline("Fortunately, you are wearing a hard helmet.");
                 if (dmg > 2)
                     dmg = 2;
-            } else if (flags.verbose) {
+            } else if (NH_G(flags).verbose) {
                 pline("%s does not protect you.", Yname2(uarmh));
             }
         }
@@ -1895,11 +1895,8 @@ int chg; /* recharging */
 
 /* used to collect gremlins being hit by light so that they can be processed
    after vision for the entire lit area has been brought up to date */
-struct litmon {
-    struct monst *mon;
-    struct litmon *nxt;
-};
-STATIC_VAR struct litmon *gremlins = 0;
+/* struct litmon moved to nh_globals.h */
+#define gremlins (nh_g->s_read_c_gremlins)
 
 /*
  * Low-level lit-field update routine.
@@ -2060,7 +2057,7 @@ do_class_genocide()
             if (mons[i].mlet == class) {
                 if (!(mons[i].geno & G_GENO))
                     immunecnt++;
-                else if (mvitals[i].mvflags & G_GENOD)
+                else if (NH_G(mvitals)[i].mvflags & G_GENOD)
                     gonecnt++;
                 else
                     goodcnt++;
@@ -2101,11 +2098,11 @@ do_class_genocide()
                  */
                 if (Your_Own_Role(i) || Your_Own_Race(i)
                     || ((mons[i].geno & G_GENO)
-                        && !(mvitals[i].mvflags & G_GENOD))) {
+                        && !(NH_G(mvitals)[i].mvflags & G_GENOD))) {
                     /* This check must be first since player monsters might
                      * have G_GENOD or !G_GENO.
                      */
-                    mvitals[i].mvflags |= (G_GENOD | G_NOCORPSE);
+                    NH_G(mvitals)[i].mvflags |= (G_GENOD | G_NOCORPSE);
                     reset_rndmonst(i);
                     kill_genocided_monsters();
                     update_inventory(); /* eggs & tins */
@@ -2135,7 +2132,7 @@ do_class_genocide()
                             gameover = TRUE;
                         }
                     }
-                } else if (mvitals[i].mvflags & G_GENOD) {
+                } else if (NH_G(mvitals)[i].mvflags & G_GENOD) {
                     if (!gameover)
                         pline("All %s are already nonexistent.", nam);
                 } else if (!gameover) {
@@ -2167,8 +2164,8 @@ do_class_genocide()
             }
         }
         if (gameover || u.uhp == -1) {
-            killer.format = KILLED_BY_AN;
-            Strcpy(killer.name, "scroll of genocide");
+            NH_G(killer).format = KILLED_BY_AN;
+            Strcpy(NH_G(killer).name, "scroll of genocide");
             if (gameover)
                 done(GENOCIDED);
         }
@@ -2222,7 +2219,7 @@ int how;
             }
 
             mndx = name_to_mon(buf);
-            if (mndx == NON_PM || (mvitals[mndx].mvflags & G_GENOD)) {
+            if (mndx == NON_PM || (NH_G(mvitals)[mndx].mvflags & G_GENOD)) {
                 pline("Such creatures %s exist in this world.",
                       (mndx == NON_PM) ? "do not" : "no longer");
                 continue;
@@ -2246,7 +2243,7 @@ int how;
                      * circumstances.  Who's speaking?  Divine pronouncements
                      * aren't supposed to be hampered by deafness....
                      */
-                    if (flags.verbose)
+                    if (NH_G(flags).verbose)
                         pline("A thunderous voice booms through the caverns:");
                     verbalize("No, mortal!  That will not be done.");
                 }
@@ -2265,7 +2262,7 @@ int how;
         if (Upolyd)
             Strcpy(buf, youmonst.data->mname);
         else {
-            Strcpy(buf, (flags.female && urole.name.f) ? urole.name.f
+            Strcpy(buf, (NH_G(flags).female && urole.name.f) ? urole.name.f
                                                        : urole.name.m);
             buf[0] = lowc(buf[0]);
         }
@@ -2276,39 +2273,39 @@ int how;
     }
     if (how & REALLY) {
         /* setting no-corpse affects wishing and random tin generation */
-        mvitals[mndx].mvflags |= (G_GENOD | G_NOCORPSE);
+        NH_G(mvitals)[mndx].mvflags |= (G_GENOD | G_NOCORPSE);
         pline("Wiped out %s%s.", which,
               (*which != 'a') ? buf : makeplural(buf));
 
         if (killplayer) {
             /* might need to wipe out dual role */
             if (urole.femalenum != NON_PM && mndx == urole.malenum)
-                mvitals[urole.femalenum].mvflags |= (G_GENOD | G_NOCORPSE);
+                NH_G(mvitals)[urole.femalenum].mvflags |= (G_GENOD | G_NOCORPSE);
             if (urole.femalenum != NON_PM && mndx == urole.femalenum)
-                mvitals[urole.malenum].mvflags |= (G_GENOD | G_NOCORPSE);
+                NH_G(mvitals)[urole.malenum].mvflags |= (G_GENOD | G_NOCORPSE);
             if (urace.femalenum != NON_PM && mndx == urace.malenum)
-                mvitals[urace.femalenum].mvflags |= (G_GENOD | G_NOCORPSE);
+                NH_G(mvitals)[urace.femalenum].mvflags |= (G_GENOD | G_NOCORPSE);
             if (urace.femalenum != NON_PM && mndx == urace.femalenum)
-                mvitals[urace.malenum].mvflags |= (G_GENOD | G_NOCORPSE);
+                NH_G(mvitals)[urace.malenum].mvflags |= (G_GENOD | G_NOCORPSE);
 
             u.uhp = -1;
             if (how & PLAYER) {
-                killer.format = KILLED_BY;
-                Strcpy(killer.name, "genocidal confusion");
+                NH_G(killer).format = KILLED_BY;
+                Strcpy(NH_G(killer).name, "genocidal confusion");
             } else if (how & ONTHRONE) {
                 /* player selected while on a throne */
-                killer.format = KILLED_BY_AN;
-                Strcpy(killer.name, "imperious order");
+                NH_G(killer).format = KILLED_BY_AN;
+                Strcpy(NH_G(killer).name, "imperious order");
             } else { /* selected player deliberately, not confused */
-                killer.format = KILLED_BY_AN;
-                Strcpy(killer.name, "scroll of genocide");
+                NH_G(killer).format = KILLED_BY_AN;
+                Strcpy(NH_G(killer).name, "scroll of genocide");
             }
 
             /* Polymorphed characters will die as soon as they're rehumanized.
              */
             /* KMH -- Unchanging prevents rehumanization */
             if (Upolyd && ptr != youmonst.data) {
-                delayed_killer(POLYMORPH, killer.format, killer.name);
+                delayed_killer(POLYMORPH, NH_G(killer).format, NH_G(killer).name);
                 You_feel("%s inside.", udeadinside());
             } else
                 done(GENOCIDED);
@@ -2322,12 +2319,12 @@ int how;
         int cnt = 0, census = monster_census(FALSE);
 
         if (!(mons[mndx].geno & G_UNIQ)
-            && !(mvitals[mndx].mvflags & (G_GENOD | G_EXTINCT)))
+            && !(NH_G(mvitals)[mndx].mvflags & (G_GENOD | G_EXTINCT)))
             for (i = rn1(3, 4); i > 0; i--) {
                 if (!makemon(ptr, u.ux, u.uy, NO_MINVENT))
                     break; /* couldn't make one */
                 ++cnt;
-                if (mvitals[mndx].mvflags & G_EXTINCT)
+                if (NH_G(mvitals)[mndx].mvflags & G_EXTINCT)
                     break; /* just made last one */
             }
         if (cnt) {
@@ -2592,7 +2589,7 @@ struct _create_particular_data *d;
             int count = couldsee(mx, my) ? 8 : 4;
             char saveviz = viz_array[my][mx];
 
-            if (!flags.sparkle)
+            if (!NH_G(flags).sparkle)
                 count /= 2;
             viz_array[my][mx] |= (IN_SIGHT | COULD_SEE);
             flash_glyph_at(mx, my, mon_to_glyph(mtmp, newsym_rn2), count);

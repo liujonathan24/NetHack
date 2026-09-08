@@ -10,27 +10,7 @@ STATIC_DCL void FDECL(m_dowear_type,
                       (struct monst *, long, BOOLEAN_P, BOOLEAN_P));
 STATIC_DCL int FDECL(extra_pref, (struct monst *, struct obj *));
 
-const struct worn {
-    long w_mask;
-    struct obj **w_obj;
-} worn[] = { { W_ARM, &uarm },
-             { W_ARMC, &uarmc },
-             { W_ARMH, &uarmh },
-             { W_ARMS, &uarms },
-             { W_ARMG, &uarmg },
-             { W_ARMF, &uarmf },
-             { W_ARMU, &uarmu },
-             { W_RINGL, &uleft },
-             { W_RINGR, &uright },
-             { W_WEP, &uwep },
-             { W_SWAPWEP, &uswapwep },
-             { W_QUIVER, &uquiver },
-             { W_AMUL, &uamul },
-             { W_TOOL, &ublindf },
-             { W_BALL, &uball },
-             { W_CHAIN, &uchain },
-             { 0, 0 }
-};
+/* worn: per-env nh_g->worn */
 
 /* This only allows for one blocking item per property */
 #define w_blocks(o, m) \
@@ -59,7 +39,7 @@ long mask;
     } else {
         if ((mask & W_ARMOR))
             u.uroleplay.nudist = FALSE;
-        for (wp = worn; wp->w_mask; wp++)
+        for (wp = NH_G(worn); wp->w_mask; wp++)
             if (wp->w_mask & mask) {
                 oobj = *(wp->w_obj);
                 if (oobj && !(oobj->owornmask & wp->w_mask))
@@ -71,7 +51,7 @@ long mask;
                     if (wp->w_mask & ~(W_SWAPWEP | W_QUIVER)) {
                         /* leave as "x = x <op> y", here and below, for broken
                          * compilers */
-                        p = objects[oobj->otyp].oc_oprop;
+                        p = NH_G(objects)[oobj->otyp].oc_oprop;
                         u.uprops[p].extrinsic =
                             u.uprops[p].extrinsic & ~wp->w_mask;
                         if ((p = w_blocks(oobj, mask)) != 0)
@@ -94,7 +74,7 @@ long mask;
                     if (wp->w_mask & ~(W_SWAPWEP | W_QUIVER)) {
                         if (obj->oclass == WEAPON_CLASS || is_weptool(obj)
                             || mask != W_WEP) {
-                            p = objects[obj->otyp].oc_oprop;
+                            p = NH_G(objects)[obj->otyp].oc_oprop;
                             u.uprops[p].extrinsic =
                                 u.uprops[p].extrinsic | wp->w_mask;
                             if ((p = w_blocks(obj, mask)) != 0)
@@ -122,14 +102,14 @@ register struct obj *obj;
         return;
     if (obj == uwep || obj == uswapwep)
         u.twoweap = 0;
-    for (wp = worn; wp->w_mask; wp++)
+    for (wp = NH_G(worn); wp->w_mask; wp++)
         if (obj == *(wp->w_obj)) {
             /* in case wearing or removal is in progress or removal
                is pending (via 'A' command for multiple items) */
             cancel_doff(obj, wp->w_mask);
 
             *(wp->w_obj) = 0;
-            p = objects[obj->otyp].oc_oprop;
+            p = NH_G(objects)[obj->otyp].oc_oprop;
             u.uprops[p].extrinsic = u.uprops[p].extrinsic & ~wp->w_mask;
             obj->owornmask &= ~wp->w_mask;
             if (obj->oartifact)
@@ -147,7 +127,7 @@ long wornmask;
 {
     const struct worn *wp;
 
-    for (wp = worn; wp->w_mask; wp++)
+    for (wp = NH_G(worn); wp->w_mask; wp++)
         if (wp->w_mask & wornmask)
             return *wp->w_obj;
     return (struct obj *) 0;
@@ -171,7 +151,7 @@ struct obj *obj;
         res = W_RINGL | W_RINGR; /* W_RING, BOTH_SIDES */
         break;
     case ARMOR_CLASS:
-        switch (objects[otyp].oc_armcat) {
+        switch (NH_G(objects)[otyp].oc_armcat) {
         case ARM_SUIT:
             res = W_ARM;
             break; /* WORN_ARMOR */
@@ -197,7 +177,7 @@ struct obj *obj;
         break;
     case WEAPON_CLASS:
         res = W_WEP | W_SWAPWEP;
-        if (objects[otyp].oc_merge)
+        if (NH_G(objects)[otyp].oc_merge)
             res |= W_QUIVER;
         break;
     case TOOL_CLASS:
@@ -287,7 +267,7 @@ struct obj *obj; /* item to make known if effect can be seen */
     }
 
     for (otmp = mon->minvent; otmp; otmp = otmp->nobj)
-        if (otmp->owornmask && objects[otmp->otyp].oc_oprop == FAST)
+        if (otmp->owornmask && NH_G(objects)[otmp->otyp].oc_oprop == FAST)
             break;
     if (otmp) /* speed boots */
         mon->mspeed = MFAST;
@@ -304,7 +284,7 @@ struct obj *obj; /* item to make known if effect can be seen */
         if (petrify) {
             /* mimic the player's petrification countdown; "slowing down"
                even if fast movement rate retained via worn speed boots */
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline("%s is slowing down.", Monnam(mon));
         } else if (adjust > 0 || mon->mspeed == MFAST)
             pline("%s is suddenly moving %sfaster.", Monnam(mon), howmuch);
@@ -328,7 +308,7 @@ boolean on, silently;
     int unseen;
     uchar mask;
     struct obj *otmp;
-    int which = (int) objects[obj->otyp].oc_oprop;
+    int which = (int) NH_G(objects)[obj->otyp].oc_oprop;
 
     unseen = !canseemon(mon);
     if (!which)
@@ -401,7 +381,7 @@ boolean on, silently;
             for (otmp = mon->minvent; otmp; otmp = otmp->nobj)
                 if (otmp != obj
                     && otmp->owornmask
-                    && (int) objects[otmp->otyp].oc_oprop == which)
+                    && (int) NH_G(objects)[otmp->otyp].oc_oprop == which)
                     break;
             if (!otmp)
                 mon->mextrinsics &= ~((unsigned short) mask);
@@ -607,7 +587,7 @@ outer_break:
     /* when upgrading a piece of armor, account for time spent
        taking off current one */
     if (old)
-        m_delay += objects[old->otyp].oc_delay;
+        m_delay += NH_G(objects)[old->otyp].oc_delay;
 
     if (old) /* do this first to avoid "(being worn)" */
         old->owornmask = 0L;
@@ -626,7 +606,7 @@ outer_break:
                       simpleonames(best), otense(best, "glow"),
                       hcolor(NH_BLACK));
         } /* can see it */
-        m_delay += objects[best->otyp].oc_delay;
+        m_delay += NH_G(objects)[best->otyp].oc_delay;
         mon->mfrozen = m_delay;
         if (mon->mfrozen)
             mon->mcanmove = 0;
@@ -1028,3 +1008,35 @@ struct obj *obj;
     return 0;
 }
 /*worn.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_WORN_C_DONE
+#define NH_INIT_WORN_C_DONE
+void
+nh_init_worn_c(void)
+{
+    {
+        struct worn nh_tmp[17] = { { W_ARM, &uarm },
+             { W_ARMC, &uarmc },
+             { W_ARMH, &uarmh },
+             { W_ARMS, &uarms },
+             { W_ARMG, &uarmg },
+             { W_ARMF, &uarmf },
+             { W_ARMU, &uarmu },
+             { W_RINGL, &uleft },
+             { W_RINGR, &uright },
+             { W_WEP, &uwep },
+             { W_SWAPWEP, &uswapwep },
+             { W_QUIVER, &uquiver },
+             { W_AMUL, &uamul },
+             { W_TOOL, &ublindf },
+             { W_BALL, &uball },
+             { W_CHAIN, &uchain },
+             { 0, 0 }
+};
+        memcpy(&(nh_g->worn), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

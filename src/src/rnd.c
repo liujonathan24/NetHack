@@ -11,15 +11,13 @@
 static isaac64_ctx rng_state;
 #endif
 
-struct rnglist_t {
-    int FDECL((*fn), (int));
-    boolean init;
-    isaac64_ctx rng_state;
-};
+/* struct rnglist_t moved to nh_globals.h */
 
 enum { CORE = 0, DISP = 1 };
 
-static struct rnglist_t rnglist[] = {
+#define rnglist (nh_g->s_rnd_c_rnglist)
+const struct rnglist_t nh_tmpl_s_rnd_c_rnglist[] =
+{
     { rn2, FALSE, { 0 } },                      /* CORE */
     { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };

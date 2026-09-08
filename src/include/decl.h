@@ -8,45 +8,45 @@
 
 #define E extern
 
-E int NDECL((*occupation));
-E int NDECL((*afternmv));
+/* occupation: per-env, see nh_globals.h */
+/* afternmv: per-env, see nh_globals.h */
 
-E const char *hname;
-E int hackpid;
+/* hname: per-env, see nh_globals.h */
+/* hackpid: per-env, see nh_globals.h */
 #if defined(UNIX) || defined(VMS)
-E int locknum;
+/* locknum: per-env, see nh_globals.h */
 #endif
 #ifdef DEF_PAGER
 E char *catmore;
 #endif /* DEF_PAGER */
 
-E char SAVEF[];
+/* SAVEF: per-env, see nh_globals.h */
 #ifdef MICRO
 E char SAVEP[];
 #endif
 
 /* max size of a windowtype option */
 #define WINTYPELEN 16
-E char chosen_windowtype[WINTYPELEN];
+/* chosen_windowtype: per-env, see nh_globals.h */
 
-E NEARDATA int bases[MAXOCLASSES];
+/* bases: per-env, see nh_globals.h */
 
-E NEARDATA int multi;
-E const char *multi_reason;
-E NEARDATA int nroom;
-E NEARDATA int nsubroom;
-E NEARDATA int occtime;
+/* multi: per-env, see nh_globals.h */
+/* multi_reason: per-env, see nh_globals.h */
+/* nroom: per-env, see nh_globals.h */
+/* nsubroom: per-env, see nh_globals.h */
+/* occtime: per-env, see nh_globals.h */
 
 #define WARNCOUNT 6 /* number of different warning levels */
-E nhsym warnsyms[WARNCOUNT];
-E NEARDATA int warn_obj_cnt; /* count of monsters meeting criteria */
+/* warnsyms: per-env, see nh_globals.h */
+/* warn_obj_cnt: per-env, see nh_globals.h */ /* count of monsters meeting criteria */
 
-E int x_maze_max, y_maze_max;
-E int otg_temp;
+/* x_maze_max, y_maze_max: per-env, see nh_globals.h */
+/* otg_temp: per-env, see nh_globals.h */
 
-E NEARDATA int in_doagain;
+/* in_doagain: per-env, see nh_globals.h */
 
-E struct dgn_topology { /* special dungeon levels for speed */
+struct dgn_topology { /* special dungeon levels for speed */
     d_level d_oracle_level;
     d_level d_bigroom_level; /* unused */
     d_level d_rogue_level;
@@ -74,7 +74,8 @@ E struct dgn_topology { /* special dungeon levels for speed */
     d_level d_knox_level;
     d_level d_mineend_level;
     d_level d_sokoend_level;
-} dungeon_topology;
+};
+/* dungeon_topology: per-env, see nh_globals.h */
 /* macros for accessing the dungeon levels by their old names */
 /* clang-format off */
 #define oracle_level            (dungeon_topology.d_oracle_level)
@@ -109,42 +110,42 @@ E struct dgn_topology { /* special dungeon levels for speed */
 #define sokoend_level           (dungeon_topology.d_sokoend_level)
 /* clang-format on */
 
-E NEARDATA stairway dnstair, upstair; /* stairs up and down */
+/* dnstair, upstair: per-env, see nh_globals.h */ /* stairs up and down */
 #define xdnstair (dnstair.sx)
 #define ydnstair (dnstair.sy)
 #define xupstair (upstair.sx)
 #define yupstair (upstair.sy)
 
-E NEARDATA stairway dnladder, upladder; /* ladders up and down */
+/* dnladder, upladder: per-env, see nh_globals.h */ /* ladders up and down */
 #define xdnladder (dnladder.sx)
 #define ydnladder (dnladder.sy)
 #define xupladder (upladder.sx)
 #define yupladder (upladder.sy)
 
-E NEARDATA stairway sstairs;
+/* sstairs: per-env, see nh_globals.h */
 
-E NEARDATA dest_area updest, dndest; /* level-change destination areas */
+/* updest, dndest: per-env, see nh_globals.h */ /* level-change destination areas */
 
-E NEARDATA coord inv_pos;
-E NEARDATA dungeon dungeons[];
-E NEARDATA s_level *sp_levchn;
+/* inv_pos: per-env, see nh_globals.h */
+/* dungeons: per-env, see nh_globals.h */
+/* sp_levchn: per-env, see nh_globals.h */
 #define dunlev_reached(x) (dungeons[(x)->dnum].dunlev_ureached)
 
 #include "quest.h"
-E struct q_score quest_status;
+/* quest_status: per-env, see nh_globals.h */
 
-E NEARDATA char pl_character[PL_CSIZ];
-E NEARDATA char pl_race; /* character's race */
+/* pl_character: per-env, see nh_globals.h */
+/* pl_race: per-env, see nh_globals.h */ /* character's race */
 
-E NEARDATA char pl_fruit[PL_FSIZ];
-E NEARDATA struct fruit *ffruit;
+/* pl_fruit: per-env, see nh_globals.h */
+/* ffruit: per-env, see nh_globals.h */
 
-E NEARDATA char tune[6];
+/* tune: per-env, see nh_globals.h */
 
 #define MAXLINFO (MAXDUNGEON * MAXLEVEL)
-E struct linfo level_info[MAXLINFO];
+/* level_info: per-env, see nh_globals.h */
 
-E NEARDATA struct sinfo {
+struct sinfo {
     int gameover;  /* self explanatory? */
     int stopprint; /* inhibit further end of game disclosure */
 #ifdef HANGUPHANDLING
@@ -161,10 +162,11 @@ E NEARDATA struct sinfo {
     int in_paniclog;
 #endif
     int wizkit_wishing;
-} program_state;
+};
+/* program_state: per-env, see nh_globals.h */
 
-E boolean restoring;
-E boolean ransacked;
+/* restoring: per-env, see nh_globals.h */
+/* ransacked: per-env, see nh_globals.h */
 
 E const char quitchars[];
 E const char vowels[];
@@ -172,15 +174,15 @@ E const char ynchars[];
 E const char ynqchars[];
 E const char ynaqchars[];
 E const char ynNaqchars[];
-E NEARDATA long yn_number;
+/* yn_number: per-env, see nh_globals.h */
 
 E const char disclosure_options[];
 
-E NEARDATA int smeq[];
-E NEARDATA int doorindex;
-E NEARDATA char *save_cm;
+/* smeq: per-env, see nh_globals.h */
+/* doorindex: per-env, see nh_globals.h */
+/* save_cm: per-env, see nh_globals.h */
 
-E NEARDATA struct kinfo {
+struct kinfo {
     struct kinfo *next; /* chain of delayed killers */
     int id;             /* uprop keys to ID a delayed killer */
     int format;         /* one of the killer formats */
@@ -188,44 +190,46 @@ E NEARDATA struct kinfo {
 #define KILLED_BY 1
 #define NO_KILLER_PREFIX 2
     char name[BUFSZ]; /* actual killer name */
-} killer;
+};
+/* killer: per-env, see nh_globals.h */
 
-E long done_money;
-E NEARDATA char plname[PL_NSIZ];
-E NEARDATA char dogname[];
-E NEARDATA char catname[];
-E NEARDATA char horsename[];
-E char preferred_pet;
-E const char *occtxt; /* defined when occupation != NULL */
-E const char *nomovemsg;
-E char lock[];
+/* done_money: per-env, see nh_globals.h */
+/* plname: per-env, see nh_globals.h */
+/* dogname: per-env, see nh_globals.h */
+/* catname: per-env, see nh_globals.h */
+/* horsename: per-env, see nh_globals.h */
+/* preferred_pet: per-env, see nh_globals.h */
+/* occtxt: per-env, see nh_globals.h */ /* defined when occupation != NULL */
+/* nomovemsg: per-env, see nh_globals.h */
+/* lock: per-env, see nh_globals.h */
 
 E const schar xdir[], ydir[], zdir[];
 
-E NEARDATA schar tbx, tby; /* set in mthrowu.c */
+/* tbx, tby: per-env, see nh_globals.h */ /* set in mthrowu.c */
 
-E NEARDATA struct multishot {
+struct multishot {
     int n, i;
     short o;
     boolean s;
-} m_shot;
+};
+/* m_shot: per-env, see nh_globals.h */
 
-E NEARDATA long moves, monstermoves;
-E NEARDATA long wailmsg;
+/* moves, monstermoves: per-env, see nh_globals.h */
+/* wailmsg: per-env, see nh_globals.h */
 
-E NEARDATA boolean in_mklev;
-E NEARDATA boolean stoned;
-E NEARDATA boolean unweapon;
-E NEARDATA boolean mrg_to_wielded;
-E NEARDATA boolean defer_see_monsters;
+/* in_mklev: per-env, see nh_globals.h */
+/* stoned: per-env, see nh_globals.h */
+/* unweapon: per-env, see nh_globals.h */
+/* mrg_to_wielded: per-env, see nh_globals.h */
+/* defer_see_monsters: per-env, see nh_globals.h */
 
-E NEARDATA boolean in_steed_dismounting;
-E NEARDATA boolean has_strong_rngseed;
+/* in_steed_dismounting: per-env, see nh_globals.h */
+/* has_strong_rngseed: per-env, see nh_globals.h */
 
 E const int shield_static[];
 
 #include "spell.h"
-E NEARDATA struct spell spl_book[]; /* sized in decl.c */
+/* spl_book: per-env, see nh_globals.h */ /* sized in decl.c */
 
 #include "color.h"
 #ifdef TEXTCOLOR
@@ -238,15 +242,13 @@ E const struct class_sym def_monsyms[MAXMCLASSES]; /* default class symbols */
 E uchar monsyms[MAXMCLASSES];                      /* current class symbols */
 
 #include "obj.h"
-E NEARDATA struct obj *invent, *uarm, *uarmc, *uarmh, *uarms, *uarmg, *uarmf,
-    *uarmu, /* under-wear, so to speak */
-    *uskin, *uamul, *uleft, *uright, *ublindf, *uwep, *uswapwep, *uquiver;
+/* invent, uarm, uarmc, uarmh, uarms, uarmg, uarmf, uarmu, uskin, uamul, uleft, uright, ublindf, uwep, uswapwep, uquiver: per-env, see nh_globals.h */
 
-E NEARDATA struct obj *uchain; /* defined only when punished */
-E NEARDATA struct obj *uball;
-E NEARDATA struct obj *migrating_objs;
-E NEARDATA struct obj *billobjs;
-E NEARDATA struct obj *current_wand, *thrownobj, *kickedobj;
+/* uchain: per-env, see nh_globals.h */ /* defined only when punished */
+/* uball: per-env, see nh_globals.h */
+/* migrating_objs: per-env, see nh_globals.h */
+/* billobjs: per-env, see nh_globals.h */
+/* current_wand, thrownobj, kickedobj: per-env, see nh_globals.h */
 
 E NEARDATA const struct obj zeroobj; /* for init; also, &zeroobj is used
                                       * as special value */
@@ -254,9 +256,9 @@ E NEARDATA const struct obj zeroobj; /* for init; also, &zeroobj is used
 E NEARDATA const anything zeroany;   /* init'd and defined in decl.c */
 
 #include "you.h"
-E NEARDATA struct you u;
-E NEARDATA time_t ubirthday;
-E NEARDATA struct u_realtime urealtime;
+/* u: per-env, see nh_globals.h */
+/* ubirthday: per-env, see nh_globals.h */
+/* urealtime: per-env, see nh_globals.h */
 
 #include "onames.h"
 #ifndef PM_H /* (pm.h has already been included via youprop.h) */
@@ -264,63 +266,66 @@ E NEARDATA struct u_realtime urealtime;
 #endif
 
 E NEARDATA const struct monst zeromonst; /* for init of new or temp monsters */
-E NEARDATA struct monst youmonst; /* monster details when hero is poly'd */
-E NEARDATA struct monst *mydogs, *migrating_mons;
+/* youmonst: per-env, see nh_globals.h */ /* monster details when hero is poly'd */
+/* mydogs, migrating_mons: per-env, see nh_globals.h */
 
-E NEARDATA struct mvitals {
+struct mvitals {
     uchar born;
     uchar died;
     uchar mvflags;
-} mvitals[NUMMONS];
+};
+/* mvitals: per-env, see nh_globals.h */
 
-E NEARDATA long domove_attempting;
-E NEARDATA long domove_succeeded;
+/* domove_attempting: per-env, see nh_globals.h */
+/* domove_succeeded: per-env, see nh_globals.h */
 #define DOMOVE_WALK         0x00000001
 #define DOMOVE_RUSH         0x00000002
 
-E NEARDATA struct c_color_names {
+struct c_color_names {
     const char *const c_black, *const c_amber, *const c_golden,
         *const c_light_blue, *const c_red, *const c_green, *const c_silver,
         *const c_blue, *const c_purple, *const c_white, *const c_orange;
-} c_color_names;
-#define NH_BLACK c_color_names.c_black
-#define NH_AMBER c_color_names.c_amber
-#define NH_GOLDEN c_color_names.c_golden
-#define NH_LIGHT_BLUE c_color_names.c_light_blue
-#define NH_RED c_color_names.c_red
-#define NH_GREEN c_color_names.c_green
-#define NH_SILVER c_color_names.c_silver
-#define NH_BLUE c_color_names.c_blue
-#define NH_PURPLE c_color_names.c_purple
-#define NH_WHITE c_color_names.c_white
-#define NH_ORANGE c_color_names.c_orange
+};
+/* c_color_names: per-env, see nh_globals.h */
+#define NH_BLACK NH_G(c_color_names).c_black
+#define NH_AMBER NH_G(c_color_names).c_amber
+#define NH_GOLDEN NH_G(c_color_names).c_golden
+#define NH_LIGHT_BLUE NH_G(c_color_names).c_light_blue
+#define NH_RED NH_G(c_color_names).c_red
+#define NH_GREEN NH_G(c_color_names).c_green
+#define NH_SILVER NH_G(c_color_names).c_silver
+#define NH_BLUE NH_G(c_color_names).c_blue
+#define NH_PURPLE NH_G(c_color_names).c_purple
+#define NH_WHITE NH_G(c_color_names).c_white
+#define NH_ORANGE NH_G(c_color_names).c_orange
 
 /* The names of the colors used for gems, etc. */
-E const char *c_obj_colors[];
+/* c_obj_colors: per-env, see nh_globals.h */
 
-E struct c_common_strings {
+struct c_common_strings {
     const char *const c_nothing_happens, *const c_thats_enough_tries,
         *const c_silly_thing_to, *const c_shudder_for_moment,
         *const c_something, *const c_Something, *const c_You_can_move_again,
         *const c_Never_mind, *c_vision_clears, *const c_the_your[2],
         *const c_fakename[2];
-} c_common_strings;
-#define nothing_happens c_common_strings.c_nothing_happens
-#define thats_enough_tries c_common_strings.c_thats_enough_tries
-#define silly_thing_to c_common_strings.c_silly_thing_to
-#define shudder_for_moment c_common_strings.c_shudder_for_moment
-#define something c_common_strings.c_something
-#define Something c_common_strings.c_Something
-#define You_can_move_again c_common_strings.c_You_can_move_again
-#define Never_mind c_common_strings.c_Never_mind
-#define vision_clears c_common_strings.c_vision_clears
-#define the_your c_common_strings.c_the_your
+};
+/* c_common_strings: per-env, see nh_globals.h */
+#define nothing_happens NH_G(c_common_strings).c_nothing_happens
+#define thats_enough_tries NH_G(c_common_strings).c_thats_enough_tries
+#define silly_thing_to NH_G(c_common_strings).c_silly_thing_to
+#define shudder_for_moment NH_G(c_common_strings).c_shudder_for_moment
+#define something NH_G(c_common_strings).c_something
+#define Something NH_G(c_common_strings).c_Something
+#define You_can_move_again NH_G(c_common_strings).c_You_can_move_again
+#define Never_mind NH_G(c_common_strings).c_Never_mind
+#define vision_clears NH_G(c_common_strings).c_vision_clears
+#define the_your NH_G(c_common_strings).c_the_your
 /* fakename[] used occasionally so vtense() won't be fooled by an assigned
    name ending in 's' */
-#define fakename c_common_strings.c_fakename
+#define fakename NH_G(c_common_strings).c_fakename
 
 /* material strings */
-E const char *materialnm[];
+/* materialnm: per-env, see nh_globals.h */
 
 /* Monster name articles */
 #define ARTICLE_NONE 0
@@ -337,13 +342,13 @@ E const char *materialnm[];
 #define SUPPRESS_NAME 0x10
 
 /* Vision */
-E NEARDATA boolean vision_full_recalc; /* TRUE if need vision recalc */
-E NEARDATA char **viz_array;           /* could see/in sight row pointers */
+/* vision_full_recalc: per-env, see nh_globals.h */ /* TRUE if need vision recalc */
+/* viz_array: per-env, see nh_globals.h */           /* could see/in sight row pointers */
 
 /* Window system stuff */
-E NEARDATA winid WIN_MESSAGE;
-E NEARDATA winid WIN_STATUS;
-E NEARDATA winid WIN_MAP, WIN_INVEN;
+/* WIN_MESSAGE: per-env, see nh_globals.h */
+/* WIN_STATUS: per-env, see nh_globals.h */
+/* WIN_MAP, WIN_INVEN: per-env, see nh_globals.h */
 
 /* pline (et al) for a single string argument (suppress compiler warning) */
 #define pline1(cstr) pline("%s", cstr)
@@ -354,16 +359,17 @@ E NEARDATA winid WIN_MAP, WIN_INVEN;
 #define Sprintf1(buf, cstr) Sprintf(buf, "%s", cstr)
 #define panic1(cstr) panic("%s", cstr)
 
-E char toplines[];
+/* toplines: per-env, see nh_globals.h */
 #ifndef TCAP_H
-E struct tc_gbl_data {   /* also declared in tcap.h */
+struct tc_gbl_data {   /* also declared in tcap.h */
     char *tc_AS, *tc_AE; /* graphics start and end (tty font swapping) */
     int tc_LI, tc_CO;    /* lines and columns */
-} tc_gbl_data;
-#define AS tc_gbl_data.tc_AS
-#define AE tc_gbl_data.tc_AE
-#define LI tc_gbl_data.tc_LI
-#define CO tc_gbl_data.tc_CO
+};
+/* tc_gbl_data: per-env, see nh_globals.h */
+#define AS NH_G(tc_gbl_data).tc_AS
+#define AE NH_G(tc_gbl_data).tc_AE
+#define LI NH_G(tc_gbl_data).tc_LI
+#define CO NH_G(tc_gbl_data).tc_CO
 #endif
 
 /* xxxexplain[] is in drawing.c */
@@ -397,15 +403,15 @@ E const char *const monexplain[], invisexplain[], *const oclass_names[];
 #define PREFIXES_IN_USE
 #endif
 
-E char *fqn_prefix[PREFIX_COUNT];
+/* fqn_prefix: per-env, see nh_globals.h */
 #ifdef WIN32
 E boolean fqn_prefix_locked[PREFIX_COUNT];
 #endif
 #ifdef PREFIXES_IN_USE
-E const char *fqn_prefix_names[PREFIX_COUNT];
+/* fqn_prefix_names: per-env, see nh_globals.h */
 #endif
 
-E NEARDATA struct savefile_info sfcap, sfrestinfo, sfsaveinfo;
+/* sfcap, sfrestinfo, sfsaveinfo: per-env, see nh_globals.h */
 
 struct opvar {
     xchar spovartyp; /* one of SPOVAR_foo */
@@ -421,7 +427,7 @@ struct autopickup_exception {
     boolean grab;
     struct autopickup_exception *next;
 };
-E struct autopickup_exception *apelist;
+/* apelist: per-env, see nh_globals.h */
 
 struct plinemsg_type {
     xchar msgtype;  /* one of MSGTYP_foo */
@@ -437,7 +443,7 @@ struct plinemsg_type {
 /* bitmask for callers of hide_unhide_msgtypes() */
 #define MSGTYP_MASK_REP_SHOW ((1 << MSGTYP_NOREP) | (1 << MSGTYP_NOSHOW))
 
-E struct plinemsg_type *plinemsg_types;
+/* plinemsg_types: per-env, see nh_globals.h */
 
 enum bcargs {override_restriction = -1};
 struct breadcrumbs {
@@ -447,7 +453,7 @@ struct breadcrumbs {
 };
 
 #ifdef PANICTRACE
-E const char *ARGV0;
+/* ARGV0: per-env, see nh_globals.h */
 #endif
 
 enum earlyarg {ARG_DEBUG, ARG_VERSION, ARG_SHOWPATHS

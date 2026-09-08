@@ -39,7 +39,7 @@ extern "C" {
  * --More-- situation that enter/return (ironically not necessarily space)
  * is required to continue.
  */
-extern bool xwaitingforspace;
+/* xwaitingforspace: per-env, see nh_globals.h */
 
 /* some hack.h macros. Can be undefined here. */
 #undef Invisible
@@ -50,7 +50,7 @@ extern bool xwaitingforspace;
 #undef wizard
 #undef yn
 
-extern unsigned long nle_seeds[];
+/* nle_seeds: per-env, see nh_globals.h */
 
 extern "C" {
 extern void *nle_yield(boolean);

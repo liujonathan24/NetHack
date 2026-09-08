@@ -42,14 +42,14 @@
 #define LSF_SHOW 0x1        /* display the light source */
 #define LSF_NEEDS_FIXUP 0x2 /* need oid fixup */
 
-static light_source *light_base = 0;
+#define light_base (nh_g->s_light_c_light_base)
 
 STATIC_DCL void FDECL(write_ls, (int, light_source *));
 STATIC_DCL int FDECL(maybe_write_ls, (int, int, BOOLEAN_P));
 
 /* imported from vision.c, for small circles */
-extern char circle_data[];
-extern char circle_start[];
+/* circle_data: per-env, see nh_globals.h */
+/* circle_start: per-env, see nh_globals.h */
 
 /* Create a new light source.  */
 void

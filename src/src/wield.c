@@ -299,7 +299,7 @@ dowield()
     /* Set your new primary weapon */
     oldwep = uwep;
     result = ready_weapon(wep);
-    if (flags.pushweapon && oldwep && uwep != oldwep)
+    if (NH_G(flags).pushweapon && oldwep && uwep != oldwep)
         setuswapwep(oldwep);
     untwoweapon();
 
@@ -370,7 +370,7 @@ dowieldquiver()
        or secondary weapon is a sling.) */
     quivee_types = (uslinging()
                     || (uswapwep
-                        && objects[uswapwep->otyp].oc_skill == P_SLING))
+                        && NH_G(objects)[uswapwep->otyp].oc_skill == P_SLING))
                    ? bullets
                    : ready_objs;
     newquiver = getobj(quivee_types, "ready");
@@ -539,7 +539,7 @@ const char *verb; /* "rub",&c */
         return FALSE;
     }
     if (welded(uwep)) {
-        if (flags.verbose) {
+        if (NH_G(flags).verbose) {
             const char *hand = body_part(HAND);
 
             if (bimanual(uwep))
@@ -582,7 +582,7 @@ const char *verb; /* "rub",&c */
             You("now wield %s.", doname(obj));
             setuwep(obj);
         }
-        if (flags.pushweapon && oldwep && uwep != oldwep)
+        if (NH_G(flags).pushweapon && oldwep && uwep != oldwep)
             setuswapwep(oldwep);
     }
     if (uwep != obj)
@@ -606,7 +606,7 @@ can_twoweapon()
             You_cant("use two weapons in your current form.");
         else
             pline("%s aren't able to use two weapons at once.",
-                  makeplural((flags.female && urole.name.f) ? urole.name.f
+                  makeplural((NH_G(flags).female && urole.name.f) ? urole.name.f
                                                             : urole.name.m));
     } else if (!uwep || !uswapwep)
         Your("%s%s%s empty.", uwep ? "left " : uswapwep ? "right " : "",

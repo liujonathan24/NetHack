@@ -170,7 +170,7 @@ typedef struct strbuf {
 #include "decl.h"
 #include "timeout.h"
 
-NEARDATA extern coord bhitpos; /* place where throw or zap hits or stops */
+/* bhitpos: per-env, see nh_globals.h */ /* place where throw or zap hits or stops */
 
 /* types of calls to bhit() */
 enum bhit_call_types {
@@ -472,11 +472,11 @@ enum bodypart_types {
     (((unsigned long) major << 24) | ((unsigned long) minor << 16) \
      | ((unsigned long) patch << 8) | ((unsigned long) 0))
 
-#define FEATURE_NOTICE_VER_MAJ (flags.suppress_alert >> 24)
+#define FEATURE_NOTICE_VER_MAJ (NH_G(flags).suppress_alert >> 24)
 #define FEATURE_NOTICE_VER_MIN \
-    (((unsigned long) (0x0000000000FF0000L & flags.suppress_alert)) >> 16)
+    (((unsigned long) (0x0000000000FF0000L & NH_G(flags).suppress_alert)) >> 16)
 #define FEATURE_NOTICE_VER_PATCH \
-    (((unsigned long) (0x000000000000FF00L & flags.suppress_alert)) >> 8)
+    (((unsigned long) (0x000000000000FF00L & NH_G(flags).suppress_alert)) >> 8)
 
 #ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -487,8 +487,8 @@ enum bodypart_types {
 #define plur(x) (((x) == 1) ? "" : "s")
 
 #define ARM_BONUS(obj)                      \
-    (objects[(obj)->otyp].a_ac + (obj)->spe \
-     - min((int) greatest_erosion(obj), objects[(obj)->otyp].a_ac))
+    (NH_G(objects)[(obj)->otyp].a_ac + (obj)->spe \
+     - min((int) greatest_erosion(obj), NH_G(objects)[(obj)->otyp].a_ac))
 
 #define makeknown(x) discover_object((x), TRUE, TRUE)
 #define distu(xx, yy) dist2((int)(xx), (int)(yy), (int) u.ux, (int) u.uy)
@@ -537,5 +537,7 @@ enum bodypart_types {
 
 #define DEVTEAM_EMAIL "devteam@nethack.org"
 #define DEVTEAM_URL "https://www.nethack.org/"
+
+#include "nh_globals.h" /* per-env globals (generated) */
 
 #endif /* HACK_H */

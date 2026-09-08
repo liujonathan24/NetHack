@@ -21,6 +21,6 @@ struct ext_func_tab {
     const char *f_text;
 };
 
-extern struct ext_func_tab extcmdlist[];
+/* extcmdlist: per-env, see nh_globals.h */
 
 #endif /* FUNC_TAB_H */

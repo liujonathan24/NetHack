@@ -177,7 +177,7 @@ register int exper, rexp;
 
     if (newexp != oldexp) {
         u.uexp = newexp;
-        if (flags.showexp)
+        if (NH_G(flags).showexp)
             context.botl = TRUE;
         /* even when experience points aren't being shown, experience level
            might be highlighted with a percentage highlight rule and that
@@ -189,12 +189,12 @@ register int exper, rexp;
     if (newrexp != oldrexp) {
         u.urexp = newrexp;
 #ifdef SCORE_ON_BOTL
-        if (flags.showscore)
+        if (NH_G(flags).showscore)
             context.botl = TRUE;
 #endif
     }
     if (u.urexp >= (Role_if(PM_WIZARD) ? 1000 : 2000))
-        flags.beginner = 0;
+        NH_G(flags).beginner = 0;
 }
 
 /* e.g., hit by drain life attack */
@@ -218,9 +218,9 @@ const char *drainer; /* cause of death, if drain should be fatal */
         reset_rndmonst(NON_PM); /* new monster selection */
     } else {
         if (drainer) {
-            killer.format = KILLED_BY;
-            if (killer.name != drainer)
-                Strcpy(killer.name, drainer);
+            NH_G(killer).format = KILLED_BY;
+            if (NH_G(killer).name != drainer)
+                Strcpy(NH_G(killer).name, drainer);
             done(DIED);
         }
         /* no drainer or lifesaved */

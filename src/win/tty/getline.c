@@ -15,8 +15,8 @@
 #include "wintty.h"
 #include "func_tab.h"
 
-char morc = 0; /* tell the outside world what char you chose */
-STATIC_VAR boolean suppress_history;
+/* morc: per-env, see nh_globals.h */ /* tell the outside world what char you chose */
+#define suppress_history (nh_g->s_getline_c_suppress_history)
 STATIC_DCL boolean FDECL(ext_cmd_getlin_hook, (char *));
 
 typedef boolean FDECL((*getlin_hook_proc), (char *));
@@ -213,7 +213,7 @@ getlin_hook_proc hook;
 /*
  * Hack for RL window proc: register if we are in xwaitforspace context.
  */
-boolean xwaitingforspace;
+/* xwaitingforspace: per-env, see nh_globals.h */
 
 void
 xwaitforspace(s)
@@ -225,7 +225,7 @@ register const char *s; /* chars allowed besides return */
     morc = 0;
     while (
 #ifdef HANGUPHANDLING
-        !program_state.done_hup &&
+        !NH_G(program_state).done_hup &&
 #endif
         (c = nhgetch()) != EOF) {
         if (c == '\n' || c == '\r')

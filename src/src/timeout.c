@@ -381,11 +381,11 @@ struct kinfo *kptr;
     }
     /* more sure killer reason is set up */
     if (kptr && kptr->name[0]) {
-        killer.format = kptr->format;
-        Strcpy(killer.name, kptr->name);
+        NH_G(killer).format = kptr->format;
+        Strcpy(NH_G(killer).name, kptr->name);
     } else {
-        killer.format = NO_KILLER_PREFIX;
-        Strcpy(killer.name, "turned into green slime");
+        NH_G(killer).format = NO_KILLER_PREFIX;
+        Strcpy(NH_G(killer).name, "turned into green slime");
     }
     dealloc_killer(kptr);
 
@@ -403,20 +403,20 @@ struct kinfo *kptr;
      */
     if (emits_light(youmonst.data))
         del_light_source(LS_MONSTER, monst_to_any(&youmonst));
-    save_mvflags = mvitals[PM_GREEN_SLIME].mvflags;
-    mvitals[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
+    save_mvflags = NH_G(mvitals)[PM_GREEN_SLIME].mvflags;
+    NH_G(mvitals)[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
     /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
     (void) polymon(PM_GREEN_SLIME);
-    mvitals[PM_GREEN_SLIME].mvflags = save_mvflags;
+    NH_G(mvitals)[PM_GREEN_SLIME].mvflags = save_mvflags;
     done_timeout(TURNED_SLIME, SLIMED);
 
     /* life-saved; even so, hero still has turned into green slime;
        player may have genocided green slimes after being infected */
-    if ((mvitals[PM_GREEN_SLIME].mvflags & G_GENOD) != 0) {
+    if ((NH_G(mvitals)[PM_GREEN_SLIME].mvflags & G_GENOD) != 0) {
         char slimebuf[BUFSZ];
 
-        killer.format = KILLED_BY;
-        Strcpy(killer.name, "slimicide");
+        NH_G(killer).format = KILLED_BY;
+        Strcpy(NH_G(killer).name, "slimicide");
         /* vary the message depending upon whether life-save was due to
            amulet or due to declining to die in explore or wizard mode */
         Strcpy(slimebuf, "green slime has been genocided...");
@@ -483,9 +483,9 @@ nh_timeout()
     boolean was_flying;
     int sleeptime;
     int m_idx;
-    int baseluck = (flags.moonphase == FULL_MOON) ? 1 : 0;
+    int baseluck = (NH_G(flags).moonphase == FULL_MOON) ? 1 : 0;
 
-    if (flags.friday13)
+    if (NH_G(flags).friday13)
         baseluck -= 1;
 
     if (u.uluck != baseluck
@@ -552,11 +552,11 @@ nh_timeout()
             switch (upp - u.uprops) {
             case STONED:
                 if (kptr && kptr->name[0]) {
-                    killer.format = kptr->format;
-                    Strcpy(killer.name, kptr->name);
+                    NH_G(killer).format = kptr->format;
+                    Strcpy(NH_G(killer).name, kptr->name);
                 } else {
-                    killer.format = NO_KILLER_PREFIX;
-                    Strcpy(killer.name, "killed by petrification");
+                    NH_G(killer).format = NO_KILLER_PREFIX;
+                    Strcpy(NH_G(killer).name, "killed by petrification");
                 }
                 dealloc_killer(kptr);
                 /* (unlike sliming, you aren't changing form here) */
@@ -571,20 +571,20 @@ nh_timeout()
             case SICK:
                 You("die from your illness.");
                 if (kptr && kptr->name[0]) {
-                    killer.format = kptr->format;
-                    Strcpy(killer.name, kptr->name);
+                    NH_G(killer).format = kptr->format;
+                    Strcpy(NH_G(killer).name, kptr->name);
                 } else {
-                    killer.format = KILLED_BY_AN;
-                    killer.name[0] = 0; /* take the default */
+                    NH_G(killer).format = KILLED_BY_AN;
+                    NH_G(killer).name[0] = 0; /* take the default */
                 }
                 dealloc_killer(kptr);
 
-                if ((m_idx = name_to_mon(killer.name)) >= LOW_PM) {
+                if ((m_idx = name_to_mon(NH_G(killer).name)) >= LOW_PM) {
                     if (type_is_pname(&mons[m_idx])) {
-                        killer.format = KILLED_BY;
+                        NH_G(killer).format = KILLED_BY;
                     } else if (mons[m_idx].geno & G_UNIQ) {
-                        Strcpy(killer.name, the(killer.name));
-                        killer.format = KILLED_BY;
+                        Strcpy(NH_G(killer).name, the(NH_G(killer).name));
+                        NH_G(killer).format = KILLED_BY;
                     }
                 }
                 done_timeout(POISONING, SICK);
@@ -688,8 +688,8 @@ nh_timeout()
                 }
                 break;
             case STRANGLED:
-                killer.format = KILLED_BY;
-                Strcpy(killer.name,
+                NH_G(killer).format = KILLED_BY;
+                Strcpy(NH_G(killer).name,
                        (u.uburied) ? "suffocation" : "strangulation");
                 done_timeout(DIED, STRANGLED);
                 /* must be declining to die in explore|wizard mode;
@@ -819,7 +819,7 @@ long timeout;
     mon = mon2 = (struct monst *) 0;
     mnum = big_to_little(egg->corpsenm);
     /* The identity of one's father is learned, not innate */
-    yours = (egg->spe || (!flags.female && carried(egg) && !rn2(2)));
+    yours = (egg->spe || (!NH_G(flags).female && carried(egg) && !rn2(2)));
     silent = (timeout != monstermoves); /* hatched while away */
 
     /* only can hatch when in INVENT, FLOOR, MINVENT */
@@ -827,7 +827,7 @@ long timeout;
         hatchcount = rnd((int) egg->quan);
         cansee_hatchspot = cansee(x, y) && !silent;
         if (!(mons[mnum].geno & G_UNIQ)
-            && !(mvitals[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
+            && !(NH_G(mvitals)[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
             for (i = hatchcount; i > 0; i--) {
                 if (!enexto(&cc, x, y, &mons[mnum])
                     || !(mon = makemon(&mons[mnum], cc.x, cc.y, NO_MINVENT)))
@@ -842,7 +842,7 @@ long timeout;
                             mon->mtame = 20;
                     }
                 }
-                if (mvitals[mnum].mvflags & G_EXTINCT)
+                if (NH_G(mvitals)[mnum].mvflags & G_EXTINCT)
                     break;  /* just made last one */
                 mon2 = mon; /* in case makemon() fails on 2nd egg */
             }
@@ -902,7 +902,7 @@ long timeout;
             if (yours) {
                 pline("%s cries sound like \"%s%s\"",
                       siblings ? "Their" : "Its",
-                      flags.female ? "mommy" : "daddy", egg->spe ? "." : "?");
+                      NH_G(flags).female ? "mommy" : "daddy", egg->spe ? "." : "?");
             } else if (mon->data->mlet == S_DRAGON && !Deaf) {
                 verbalize("Gleep!"); /* Mything eggs :-) */
             }
@@ -969,7 +969,7 @@ int mnum;
 {
     /* baby monsters hatch from grown-up eggs */
     mnum = little_to_big(mnum);
-    mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+    NH_G(mvitals)[mnum].mvflags |= MV_KNOWS_EGG;
     /* we might have just learned about other eggs being carried */
     update_inventory();
 }
@@ -1033,9 +1033,9 @@ slip_or_trip()
         }
         if (!uarmf && otmp->otyp == CORPSE
             && touch_petrifies(&mons[otmp->corpsenm]) && !Stone_resistance) {
-            Sprintf(killer.name, "tripping over %s corpse",
+            Sprintf(NH_G(killer).name, "tripping over %s corpse",
                     an(mons[otmp->corpsenm].mname));
-            instapetrify(killer.name);
+            instapetrify(NH_G(killer).name);
         }
     } else if (rn2(3) && is_ice(u.ux, u.uy)) {
         pline("%s %s%s on the ice.",
@@ -1693,8 +1693,10 @@ STATIC_DCL boolean FDECL(timer_is_local, (timer_element *));
 STATIC_DCL int FDECL(maybe_write_timer, (int, int, BOOLEAN_P));
 
 /* ordered timer list */
-static timer_element *timer_base; /* "active" */
-static unsigned long timer_id = 1;
+#define timer_base (nh_g->s_timeout_c_timer_base) /* "active" */
+#define timer_id (nh_g->s_timeout_c_timer_id)
+const unsigned long nh_tmpl_s_timeout_c_timer_id =
+1;
 
 /* If defined, then include names when printing out the timer queue */
 #define VERBOSE_TIMER

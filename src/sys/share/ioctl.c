@@ -40,7 +40,7 @@ struct ltchars ltchars0 = { -1, -1, -1, -1, -1, -1 }; /* turn all off */
 
 #ifdef POSIX_TYPES
 #include <termios.h>
-struct termios termio;
+/* termio: per-env nh_g->termio */
 #if defined(BSD) || defined(_AIX32) || defined(__linux__)
 #if defined(_AIX32) && !defined(_ALL_SOURCE)
 #define _ALL_SOURCE
@@ -123,7 +123,7 @@ getioctls()
     (void) ioctl(fileno(stdin), (int) TIOCSLTC, (char *) &ltchars0);
 #else
 #ifdef POSIX_TYPES
-    (void) tcgetattr(fileno(stdin), &termio);
+    (void) tcgetattr(fileno(stdin), &NH_G(termio));
 #else
 #if defined(TCSETS) && !defined(AIX_31)
     (void) ioctl(fileno(stdin), (int) TCGETS, &termio);
@@ -145,7 +145,7 @@ setioctls()
     (void) ioctl(fileno(stdin), (int) TIOCSLTC, (char *) &ltchars);
 #else
 #ifdef POSIX_TYPES
-    (void) tcsetattr(fileno(stdin), TCSADRAIN, &termio);
+    (void) tcsetattr(fileno(stdin), TCSADRAIN, &NH_G(termio));
 #else
 #if defined(TCSETS) && !defined(AIX_31)
     (void) ioctl(fileno(stdin), (int) TCSETSW, &termio);

@@ -457,7 +457,9 @@ generic_lvl_desc()
         return "dungeon";
 }
 
-const char *beats[] = {
+/* beats: per-env, see nh_globals.h */
+const char *const nh_tmpl_beats[] =
+{
     "stepper", "one drop", "slow two", "triple stroke roll",
     "double shuffle", "half-time shuffle", "second line", "train"
 };
@@ -480,7 +482,7 @@ struct obj *instr;
 
     /* if won't yield special effect, make sound of mundane counterpart */
     if (!do_spec || instr->spe <= 0)
-        while (objects[itmp.otyp].oc_magic) {
+        while (NH_G(objects)[itmp.otyp].oc_magic) {
             itmp.otyp -= 1;
             mundane = TRUE;
         }

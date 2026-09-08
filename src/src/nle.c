@@ -535,7 +535,7 @@ nle_set_seed(nle_ctx_t *nle, unsigned long core, unsigned long disp,
     has_strong_rngseed = reseed;
 };
 
-extern unsigned long nle_seeds[];
+/* nle_seeds: per-env, see nh_globals.h */
 
 void
 nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,

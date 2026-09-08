@@ -78,10 +78,7 @@ STATIC_DCL int FDECL(dump_select_menu, (winid, int, MENU_ITEM_P **));
 STATIC_DCL void FDECL(dump_putstr, (winid, int, const char *));
 #endif /* DUMPLOG */
 
-#ifdef HANGUPHANDLING
-volatile
-#endif
-    NEARDATA struct window_procs windowprocs;
+/* windowprocs: per-env, see nh_globals.h */
 
 #ifdef WINCHAIN
 #define CHAINR(x) , x
@@ -89,62 +86,7 @@ volatile
 #define CHAINR(x)
 #endif
 
-static struct win_choices {
-    struct window_procs *procs;
-    void FDECL((*ini_routine), (int)); /* optional (can be 0) */
-#ifdef WINCHAIN
-    void *FDECL((*chain_routine), (int, int, void *, void *, void *));
-#endif
-} winchoices[] = {
-#ifdef TTY_GRAPHICS
-    { &tty_procs, win_tty_init CHAINR(0) },
-#endif
-#ifdef CURSES_GRAPHICS
-    { &curses_procs, 0 },
-#endif
-#ifdef X11_GRAPHICS
-    { &X11_procs, win_X11_init CHAINR(0) },
-#endif
-#ifdef QT_GRAPHICS
-    { &Qt_procs, 0 CHAINR(0) },
-#endif
-#ifdef GEM_GRAPHICS
-    { &Gem_procs, win_Gem_init CHAINR(0) },
-#endif
-#ifdef MAC
-    { &mac_procs, 0 CHAINR(0) },
-#endif
-#ifdef BEOS_GRAPHICS
-    { &beos_procs, be_win_init CHAINR(0) },
-#endif
-#ifdef AMIGA_INTUITION
-    { &amii_procs,
-      ami_wininit_data CHAINR(0) }, /* Old font version of the game */
-    { &amiv_procs,
-      ami_wininit_data CHAINR(0) }, /* Tile version of the game */
-#endif
-#ifdef WIN32_GRAPHICS
-    { &win32_procs, 0 CHAINR(0) },
-#endif
-#ifdef GNOME_GRAPHICS
-    { &Gnome_procs, 0 CHAINR(0) },
-#endif
-#ifdef MSWIN_GRAPHICS
-    { &mswin_procs, 0 CHAINR(0) },
-#endif
-#ifdef RL_GRAPHICS
-    { &rl_procs, 0 CHAINR(0) },
-#endif
-#ifdef WINCHAIN
-    { &chainin_procs, chainin_procs_init, chainin_procs_chain },
-    { (struct window_procs *) &chainout_procs, chainout_procs_init,
-      chainout_procs_chain },
-
-    { (struct window_procs *) &trace_procs, trace_procs_init,
-      trace_procs_chain },
-#endif
-    { 0, 0 CHAINR(0) } /* must be last */
-};
+#define winchoices (nh_g->s_windows_c_winchoices)
 
 #ifdef WINCHAIN
 struct winlink {
@@ -192,7 +134,7 @@ wl_addtail(struct winlink *wl)
 }
 #endif /* WINCHAIN */
 
-static struct win_choices *last_winchoice = 0;
+#define last_winchoice (nh_g->s_windows_c_last_winchoice)
 
 boolean
 genl_can_suspend_no(VOID_ARGS)
@@ -597,7 +539,7 @@ static struct window_procs hup_procs = {
     genl_can_suspend_no,
 };
 
-static void FDECL((*previnterface_exit_nhwindows), (const char *)) = 0;
+#define previnterface_exit_nhwindows (nh_g->s_windows_c_previnterface_exit_nhwindows)
 
 /* hangup has occurred; switch to no-op user interface */
 void
@@ -881,10 +823,10 @@ const char *string UNUSED;
 /* genl backward compat stuff                                               */
 /****************************************************************************/
 
-const char *status_fieldnm[MAXBLSTATS];
-const char *status_fieldfmt[MAXBLSTATS];
-char *status_vals[MAXBLSTATS];
-boolean status_activefields[MAXBLSTATS];
+/* status_fieldnm: per-env, see nh_globals.h */
+/* status_fieldfmt: per-env, see nh_globals.h */
+/* status_vals: per-env, see nh_globals.h */
+/* status_activefields: per-env, see nh_globals.h */
 
 void
 genl_status_init()
@@ -928,21 +870,7 @@ boolean enable;
 }
 
 /* call once for each field, then call with BL_FLUSH to output the result */
-void
-genl_status_update(idx, ptr, chg, percent, color, colormasks)
-int idx;
-genericptr_t ptr;
-int chg UNUSED, percent UNUSED, color UNUSED;
-unsigned long *colormasks UNUSED;
-{
-    char newbot1[MAXCO], newbot2[MAXCO];
-    long cond, *condptr = (long *) ptr;
-    register int i;
-    unsigned pass, lndelta;
-    enum statusfields idx1, idx2, *fieldlist;
-    char *nb, *text = (char *) ptr;
-
-    static enum statusfields fieldorder[][15] = {
+const enum statusfields nh_tmpl_l_windows_c_genl_status_update_fieldorder[][15] = {
         /* line one */
         { BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
           BL_SCORE, BL_FLUSH, BL_FLUSH, BL_FLUSH, BL_FLUSH, BL_FLUSH,
@@ -970,6 +898,22 @@ unsigned long *colormasks UNUSED;
           BL_HUNGER, BL_CAP, BL_CONDITION,
           BL_LEVELDESC, BL_GOLD, BL_XP, BL_EXP, BL_HD, BL_TIME, BL_FLUSH },
     };
+
+void
+genl_status_update(idx, ptr, chg, percent, color, colormasks)
+int idx;
+genericptr_t ptr;
+int chg UNUSED, percent UNUSED, color UNUSED;
+unsigned long *colormasks UNUSED;
+{
+    char newbot1[MAXCO], newbot2[MAXCO];
+    long cond, *condptr = (long *) ptr;
+    register int i;
+    unsigned pass, lndelta;
+    enum statusfields idx1, idx2, *fieldlist;
+    char *nb, *text = (char *) ptr;
+
+    /* fieldorder: per-env nh_g->l_windows_c_genl_status_update_fieldorder */
 
     /* in case interface is using genl_status_update() but has not
        specified WC2_FLUSH_STATUS (status_update() for field values
@@ -1032,7 +976,7 @@ unsigned long *colormasks UNUSED;
        in the loop below because it is the only entry used to pad the
        end of the fieldorder array. We could stop on any
        negative (illegal) index, but this should be fine */
-    for (i = 0; (idx1 = fieldorder[0][i]) != BL_FLUSH; ++i) {
+    for (i = 0; (idx1 = NH_G(l_windows_c_genl_status_update_fieldorder)[0][i]) != BL_FLUSH; ++i) {
         if (status_activefields[idx1])
             Strcpy(nb = eos(nb), status_vals[idx1]);
     }
@@ -1045,7 +989,7 @@ unsigned long *colormasks UNUSED;
        of [sub]sets of them to the width of the map; we have more control
        here but currently emulate that behavior */
     for (pass = 1; pass <= 4; pass++) {
-        fieldlist = fieldorder[pass];
+        fieldlist = NH_G(l_windows_c_genl_status_update_fieldorder)[pass];
         nb = newbot2;
         *nb = '\0';
         for (i = 0; (idx2 = fieldlist[i]) != BL_FLUSH; ++i) {
@@ -1110,7 +1054,7 @@ unsigned long *colormasks UNUSED;
 }
 
 STATIC_VAR struct window_procs dumplog_windowprocs_backup;
-STATIC_VAR FILE *dumplog_file;
+#define dumplog_file (nh_g->s_windows_c_dumplog_file)
 
 #ifdef DUMPLOG
 STATIC_VAR time_t dumplog_now;
@@ -1402,7 +1346,7 @@ boolean onoff_flag;
 #ifdef TOS
 extern const char *hilites[CLR_MAX];
 #else
-extern NEARDATA char *hilites[CLR_MAX];
+/* hilites: per-env, see nh_globals.h */
 #endif
 #endif
 #endif
@@ -1422,3 +1366,67 @@ int color;
 }
 
 /*windows.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_WINDOWS_C_DONE
+#define NH_INIT_WINDOWS_C_DONE
+void
+nh_init_windows_c(void)
+{
+    {
+        struct win_choices nh_tmp[3] = {
+#ifdef TTY_GRAPHICS
+    { &tty_procs, win_tty_init CHAINR(0) },
+#endif
+#ifdef CURSES_GRAPHICS
+    { &curses_procs, 0 },
+#endif
+#ifdef X11_GRAPHICS
+    { &X11_procs, win_X11_init CHAINR(0) },
+#endif
+#ifdef QT_GRAPHICS
+    { &Qt_procs, 0 CHAINR(0) },
+#endif
+#ifdef GEM_GRAPHICS
+    { &Gem_procs, win_Gem_init CHAINR(0) },
+#endif
+#ifdef MAC
+    { &mac_procs, 0 CHAINR(0) },
+#endif
+#ifdef BEOS_GRAPHICS
+    { &beos_procs, be_win_init CHAINR(0) },
+#endif
+#ifdef AMIGA_INTUITION
+    { &amii_procs,
+      ami_wininit_data CHAINR(0) }, /* Old font version of the game */
+    { &amiv_procs,
+      ami_wininit_data CHAINR(0) }, /* Tile version of the game */
+#endif
+#ifdef WIN32_GRAPHICS
+    { &win32_procs, 0 CHAINR(0) },
+#endif
+#ifdef GNOME_GRAPHICS
+    { &Gnome_procs, 0 CHAINR(0) },
+#endif
+#ifdef MSWIN_GRAPHICS
+    { &mswin_procs, 0 CHAINR(0) },
+#endif
+#ifdef RL_GRAPHICS
+    { &rl_procs, 0 CHAINR(0) },
+#endif
+#ifdef WINCHAIN
+    { &chainin_procs, chainin_procs_init, chainin_procs_chain },
+    { (struct window_procs *) &chainout_procs, chainout_procs_init,
+      chainout_procs_chain },
+
+    { (struct window_procs *) &trace_procs, trace_procs_init,
+      trace_procs_chain },
+#endif
+    { 0, 0 CHAINR(0) } /* must be last */
+};
+        memcpy(&(nh_g->s_windows_c_winchoices), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

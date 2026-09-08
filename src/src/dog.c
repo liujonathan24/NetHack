@@ -84,7 +84,7 @@ boolean quietly;
             /* activating a figurine provides one way to exceed the
                maximum number of the target critter created--unless
                it has a special limit (erinys, Nazgul) */
-            if ((mvitals[mndx].mvflags & G_EXTINCT)
+            if ((NH_G(mvitals)[mndx].mvflags & G_EXTINCT)
                 && mbirth_limit(mndx) != MAXMONNO) {
                 if (!quietly)
                     /* have just been given "You <do something with>
@@ -155,7 +155,7 @@ makedog()
     register struct obj *otmp;
     const char *petname;
     int pettype;
-    static int petname_used = 0;
+    /* petname_used: per-env nh_g->l_dog_c_makedog_petname_used */
 
     if (preferred_pet == 'n')
         return ((struct monst *) 0);
@@ -193,7 +193,7 @@ makedog()
         put_saddle_on_mon(otmp, mtmp);
     }
 
-    if (!petname_used++ && *petname)
+    if (!NH_G(l_dog_c_makedog_petname_used)++ && *petname)
         mtmp = christen_monst(mtmp, petname);
 
     initedog(mtmp);
@@ -837,7 +837,7 @@ register struct obj *obj;
         if (obj->otyp == AMULET_OF_STRANGULATION
             || obj->otyp == RIN_SLOW_DIGESTION)
             return TABU;
-        if (mon_hates_silver(mon) && objects[obj->otyp].oc_material == SILVER)
+        if (mon_hates_silver(mon) && NH_G(objects)[obj->otyp].oc_material == SILVER)
             return TABU;
         if (mptr == &mons[PM_GELATINOUS_CUBE] && is_organic(obj))
             return ACCFOOD;
@@ -875,7 +875,7 @@ register struct obj *obj;
     /* worst case, at least it'll be peaceful. */
     mtmp->mpeaceful = 1;
     set_malign(mtmp);
-    if (flags.moonphase == FULL_MOON && night() && rn2(6) && obj
+    if (NH_G(flags).moonphase == FULL_MOON && night() && rn2(6) && obj
         && mtmp->data->mlet == S_DOG)
         return FALSE;
 

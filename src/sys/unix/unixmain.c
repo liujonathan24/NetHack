@@ -42,7 +42,7 @@ extern void NDECL(init_linux_cons);
 #endif
 
 static void NDECL(wd_message);
-static boolean wiz_error_flag = FALSE;
+#define wiz_error_flag (nh_g->s_unixmain_c_wiz_error_flag)
 static struct passwd *NDECL(get_unix_pw);
 
 int
@@ -200,7 +200,7 @@ char *argv[];
      * It seems you really want to play.
      */
     u.uhp = 1; /* prevent RIP on early quits */
-    program_state.preserve_locks = 1;
+    NH_G(program_state).preserve_locks = 1;
 #ifndef NO_SIGNAL
     sethanguphandler((SIG_RET_TYPE) hangup);
 #endif
@@ -289,7 +289,7 @@ char *argv[];
      */
     if (*plname) {
         getlock();
-        program_state.preserve_locks = 0; /* after getlock() */
+        NH_G(program_state).preserve_locks = 0; /* after getlock() */
     }
 
     if (*plname && (fd = restore_saved_game()) >= 0) {
@@ -422,23 +422,23 @@ char *argv[];
         case 'p': /* profession (role) */
             if (argv[0][2]) {
                 if ((i = str2role(&argv[0][2])) >= 0)
-                    flags.initrole = i;
+                    NH_G(flags).initrole = i;
             } else if (argc > 1) {
                 argc--;
                 argv++;
                 if ((i = str2role(argv[0])) >= 0)
-                    flags.initrole = i;
+                    NH_G(flags).initrole = i;
             }
             break;
         case 'r': /* race */
             if (argv[0][2]) {
                 if ((i = str2race(&argv[0][2])) >= 0)
-                    flags.initrace = i;
+                    NH_G(flags).initrace = i;
             } else if (argc > 1) {
                 argc--;
                 argv++;
                 if ((i = str2race(argv[0])) >= 0)
-                    flags.initrace = i;
+                    NH_G(flags).initrace = i;
             }
             break;
         case 'w': /* windowtype */
@@ -447,11 +447,11 @@ char *argv[];
             config_error_done();
             break;
         case '@':
-            flags.randomall = 1;
+            NH_G(flags).randomall = 1;
             break;
         default:
             if ((i = str2role(&argv[0][1])) >= 0) {
-                flags.initrole = i;
+                NH_G(flags).initrole = i;
                 break;
             }
             /* else raw_printf("Unknown option: %.60s", *argv); */
@@ -615,8 +615,8 @@ authorize_wizard_mode()
 {
     struct passwd *pw = get_unix_pw();
 
-    if (pw && sysopt.wizards && sysopt.wizards[0]) {
-        if (check_user_string(sysopt.wizards))
+    if (pw && NH_G(sysopt).wizards && NH_G(sysopt).wizards[0]) {
+        if (check_user_string(NH_G(sysopt).wizards))
             return TRUE;
     }
     wiz_error_flag = TRUE; /* not being allowed into wizard mode */
@@ -627,10 +627,10 @@ static void
 wd_message()
 {
     if (wiz_error_flag) {
-        if (sysopt.wizards && sysopt.wizards[0]) {
-            char *tmp = build_english_list(sysopt.wizards);
+        if (NH_G(sysopt).wizards && NH_G(sysopt).wizards[0]) {
+            char *tmp = build_english_list(NH_G(sysopt).wizards);
             pline("Only user%s %s may access debug (wizard) mode.",
-                  index(sysopt.wizards, ' ') ? "s" : "", tmp);
+                  index(NH_G(sysopt).wizards, ' ') ? "s" : "", tmp);
             free(tmp);
         } else
             pline("Entering explore/discovery mode instead.");
@@ -670,7 +670,7 @@ char *optstr;
 
     if (optstr[0] == '*')
         return TRUE; /* allow any user */
-    if (sysopt.check_plname)
+    if (NH_G(sysopt).check_plname)
         pwname = plname;
     else if ((pw = get_unix_pw()) != 0)
         pwname = pw->pw_name;
@@ -701,43 +701,43 @@ get_unix_pw()
 {
     char *user;
     unsigned uid;
-    static struct passwd *pw = (struct passwd *) 0;
+    /* pw: per-env nh_g->l_unixmain_c_get_unix_pw_pw */
 
-    if (pw)
-        return pw; /* cache answer */
+    if (NH_G(l_unixmain_c_get_unix_pw_pw))
+        return NH_G(l_unixmain_c_get_unix_pw_pw); /* cache answer */
 
     uid = (unsigned) getuid();
     user = getlogin();
     if (user) {
-        pw = getpwnam(user);
-        if (pw && ((unsigned) pw->pw_uid != uid))
-            pw = 0;
+        NH_G(l_unixmain_c_get_unix_pw_pw) = getpwnam(user);
+        if (NH_G(l_unixmain_c_get_unix_pw_pw) && ((unsigned) NH_G(l_unixmain_c_get_unix_pw_pw)->pw_uid != uid))
+            NH_G(l_unixmain_c_get_unix_pw_pw) = 0;
     }
-    if (pw == 0) {
+    if (NH_G(l_unixmain_c_get_unix_pw_pw) == 0) {
         user = nh_getenv("USER");
         if (user) {
-            pw = getpwnam(user);
-            if (pw && ((unsigned) pw->pw_uid != uid))
-                pw = 0;
+            NH_G(l_unixmain_c_get_unix_pw_pw) = getpwnam(user);
+            if (NH_G(l_unixmain_c_get_unix_pw_pw) && ((unsigned) NH_G(l_unixmain_c_get_unix_pw_pw)->pw_uid != uid))
+                NH_G(l_unixmain_c_get_unix_pw_pw) = 0;
         }
-        if (pw == 0) {
-            pw = getpwuid(uid);
+        if (NH_G(l_unixmain_c_get_unix_pw_pw) == 0) {
+            NH_G(l_unixmain_c_get_unix_pw_pw) = getpwuid(uid);
         }
     }
-    return pw;
+    return NH_G(l_unixmain_c_get_unix_pw_pw);
 }
 
 char *
 get_login_name()
 {
-    static char buf[BUFSZ];
+    /* buf: per-env nh_g->l_unixmain_c_get_login_name_buf */
     struct passwd *pw = get_unix_pw();
 
-    buf[0] = '\0';
+    NH_G(l_unixmain_c_get_login_name_buf)[0] = '\0';
     if (pw)
-        (void)strcpy(buf, pw->pw_name);
+        (void)strcpy(NH_G(l_unixmain_c_get_login_name_buf), pw->pw_name);
 
-    return buf;
+    return NH_G(l_unixmain_c_get_login_name_buf);
 }
 
 #ifdef __APPLE__

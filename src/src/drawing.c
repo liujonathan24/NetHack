@@ -17,16 +17,16 @@
 #define C(n)
 #endif
 
-struct symsetentry symset[NUM_GRAPHICS];
+/* symset: per-env, see nh_globals.h */
 
-int currentgraphics = 0;
+/* currentgraphics: per-env, see nh_globals.h */
 
-nhsym showsyms[SYM_MAX] = DUMMY; /* symbols to be displayed */
-nhsym primary_syms[SYM_MAX] = DUMMY;   /* primary symbols          */
-nhsym rogue_syms[SYM_MAX] = DUMMY;   /* rogue symbols           */
-nhsym ov_primary_syms[SYM_MAX] = DUMMY;   /* overides via config SYMBOL */
-nhsym ov_rogue_syms[SYM_MAX] = DUMMY;   /* overides via config ROGUESYMBOL */
-nhsym warnsyms[WARNCOUNT] = DUMMY; /* the current warning display symbols */
+/* showsyms: per-env, see nh_globals.h */ /* symbols to be displayed */
+/* primary_syms: per-env, see nh_globals.h */   /* primary symbols          */
+/* rogue_syms: per-env, see nh_globals.h */   /* rogue symbols           */
+/* ov_primary_syms: per-env, see nh_globals.h */   /* overides via config SYMBOL */
+/* ov_rogue_syms: per-env, see nh_globals.h */   /* overides via config ROGUESYMBOL */
+/* warnsyms: per-env, see nh_globals.h */ /* the current warning display symbols */
 const char invisexplain[] = "remembered, unseen, creature",
            altinvisexplain[] = "unseen creature"; /* for clairvoyance */
            
@@ -606,7 +606,9 @@ boolean name_too;
  * H_XXX macro in include/rm.h and add the name
  * to this array at the matching offset.
  */
-const char *known_handling[] = {
+/* known_handling: per-env, see nh_globals.h */
+const char *const nh_tmpl_known_handling[] =
+{
     "UNKNOWN", /* H_UNK  */
     "IBM",     /* H_IBM  */
     "DEC",     /* H_DEC  */
@@ -628,11 +630,15 @@ const char *known_handling[] = {
  *      under the case 5 sections of the same SYM_CONTROL idx switches.
  *    - add the field to clear_symsetentry()
  */
-const char *known_restrictions[] = {
+/* known_restrictions: per-env, see nh_globals.h */
+const char *const nh_tmpl_known_restrictions[] =
+{
     "primary", "rogue", (const char *) 0,
 };
 
-struct symparse loadsyms[] = {
+/* loadsyms: per-env, see nh_globals.h */
+const struct symparse nh_tmpl_loadsyms[] =
+{
     { SYM_CONTROL, 0, "start" },
     { SYM_CONTROL, 0, "begin" },
     { SYM_CONTROL, 1, "finish" },

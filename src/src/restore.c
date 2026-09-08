@@ -42,13 +42,9 @@ STATIC_OVL void FDECL(restore_msghistory, (int));
 STATIC_DCL void FDECL(reset_oattached_mids, (BOOLEAN_P));
 STATIC_DCL void FDECL(rest_levl, (int, BOOLEAN_P));
 
-static struct restore_procs {
-    const char *name;
-    int mread_flags;
-    void NDECL((*restore_minit));
-    void FDECL((*restore_mread), (int, genericptr_t, unsigned int));
-    void FDECL((*restore_bclose), (int));
-} restoreprocs = {
+#define restoreprocs (nh_g->s_restore_c_restoreprocs)
+const struct restore_procs nh_tmpl_s_restore_c_restoreprocs =
+{
 #if !defined(ZEROCOMP) || (defined(COMPRESS) || defined(ZLIB_COMP))
     "externalcomp", 0, def_minit, def_mread, def_bclose,
 #else
@@ -61,19 +57,13 @@ static struct restore_procs {
  * map is used by the timer routines when restoring ghost levels.
  */
 #define N_PER_BUCKET 64
-struct bucket {
-    struct bucket *next;
-    struct {
-        unsigned gid; /* ghost ID */
-        unsigned nid; /* new ID */
-    } map[N_PER_BUCKET];
-};
+/* struct bucket moved to nh_globals.h */
 
 STATIC_DCL void NDECL(clear_id_mapping);
 STATIC_DCL void FDECL(add_id_mapping, (unsigned, unsigned));
 
-static int n_ids_mapped = 0;
-static struct bucket *id_map = 0;
+#define n_ids_mapped (nh_g->s_restore_c_n_ids_mapped)
+#define id_map (nh_g->s_restore_c_id_map)
 
 #ifdef AMII_GRAPHICS
 void FDECL(amii_setpens, (int)); /* use colors from save file */
@@ -82,9 +72,9 @@ extern int amii_numcolors;
 
 #include "display.h"
 
-boolean restoring = FALSE;
-static NEARDATA struct fruit *oldfruit;
-static NEARDATA long omoves;
+/* restoring: per-env, see nh_globals.h */
+#define oldfruit (nh_g->s_restore_c_oldfruit)
+#define omoves (nh_g->s_restore_c_omoves)
 
 #define Is_IceBox(o) ((o)->otyp == ICE_BOX ? TRUE : FALSE)
 
@@ -98,7 +88,7 @@ find_lev_obj()
 
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
-            level.objects[x][y] = (struct obj *) 0;
+            NH_G(level).objects[x][y] = (struct obj *) 0;
 
     /*
      * Reverse the entire fobj chain, which is necessary so that we can
@@ -197,8 +187,8 @@ boolean ghostly;
             }
         }
         if (!shp || !*shp) {
-            tmp_dam->next = level.damagelist;
-            level.damagelist = tmp_dam;
+            tmp_dam->next = NH_G(level).damagelist;
+            NH_G(level).damagelist = tmp_dam;
             tmp_dam = (struct damage *) alloc(sizeof(*tmp_dam));
         }
     }
@@ -568,8 +558,8 @@ unsigned int *stuckid, *steedid;
     /* we want to be able to revert to command line/environment/config
        file option values instead of keeping old save file option values
        if partial restore fails and we resort to starting a new game */
-    newgameflags = flags;
-    mread(fd, (genericptr_t) &flags, sizeof (struct flag));
+    newgameflags = NH_G(flags);
+    mread(fd, (genericptr_t) &NH_G(flags), sizeof (struct flag));
     /* avoid keeping permanent inventory window up to date during restore
        (setworn() calls update_inventory); attempting to include the cost
        of unpaid items before shopkeeper's bill is available is a no-no;
@@ -629,7 +619,7 @@ unsigned int *stuckid, *steedid;
         /* revert to pre-restore option settings */
         iflags.deferred_X = FALSE;
         iflags.perm_invent = defer_perm_invent;
-        flags = newgameflags;
+        NH_G(flags) = newgameflags;
 #ifdef SYSFLAGS
         sysflags = newgamesysflags;
 #endif
@@ -658,7 +648,7 @@ unsigned int *stuckid, *steedid;
 
     migrating_objs = restobjchn(fd, FALSE, FALSE);
     migrating_mons = restmonchn(fd, FALSE);
-    mread(fd, (genericptr_t) mvitals, sizeof mvitals);
+    mread(fd, (genericptr_t) NH_G(mvitals), sizeof NH_G(mvitals));
 
     /*
      * There are some things after this that can have unintended display
@@ -896,7 +886,7 @@ register int fd;
     reset_restpref();
 
     restlevelstate(stuckid, steedid);
-    program_state.something_worth_saving = 1; /* useful data now exists */
+    NH_G(program_state).something_worth_saving = 1; /* useful data now exists */
 
     if (!wizard && !discover)
         (void) delete_savefile();
@@ -1013,7 +1003,7 @@ char *reason;
     pline("Strange, this map is not as I remember it.");
     pline("Somebody is trying some trickery here...");
     pline("This game is void.");
-    Strcpy(killer.name, reason ? reason : "");
+    Strcpy(NH_G(killer).name, reason ? reason : "");
     done(TRICKED);
 }
 
@@ -1067,7 +1057,7 @@ boolean ghostly;
             pline1(trickbuf);
         trickery(trickbuf);
     }
-    restcemetery(fd, &level.bonesinfo);
+    restcemetery(fd, &NH_G(level).bonesinfo);
     rest_levl(fd,
               (boolean) ((sfrestinfo.sfi1 & SFI1_RLECOMP) == SFI1_RLECOMP));
     mread(fd, (genericptr_t) lastseentyp, sizeof(lastseentyp));
@@ -1080,11 +1070,11 @@ boolean ghostly;
     mread(fd, (genericptr_t) &sstairs, sizeof(stairway));
     mread(fd, (genericptr_t) &updest, sizeof(dest_area));
     mread(fd, (genericptr_t) &dndest, sizeof(dest_area));
-    mread(fd, (genericptr_t) &level.flags, sizeof(level.flags));
+    mread(fd, (genericptr_t) &NH_G(level).flags, sizeof(NH_G(level).flags));
     mread(fd, (genericptr_t) doors, sizeof(doors));
     rest_rooms(fd); /* No joke :-) */
-    if (nroom)
-        doorindex = rooms[nroom - 1].fdoor + rooms[nroom - 1].doorct;
+    if (NH_G(nroom))
+        doorindex = rooms[NH_G(nroom) - 1].fdoor + rooms[NH_G(nroom) - 1].doorct;
     else
         doorindex = 0;
 
@@ -1105,14 +1095,14 @@ boolean ghostly;
     find_lev_obj();
     /* restobjchn()'s `frozen' argument probably ought to be a callback
        routine so that we can check for objects being buried under ice */
-    level.buriedobjlist = restobjchn(fd, ghostly, FALSE);
+    NH_G(level).buriedobjlist = restobjchn(fd, ghostly, FALSE);
     billobjs = restobjchn(fd, ghostly, FALSE);
     rest_engravings(fd);
 
     /* reset level.monsters for new level */
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
-            level.monsters[x][y] = (struct monst *) 0;
+            NH_G(level).monsters[x][y] = (struct monst *) 0;
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
         if (mtmp->isshk)
             set_residency(mtmp, FALSE);

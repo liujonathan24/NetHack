@@ -384,12 +384,12 @@ int otyp; /* used iff obj is null */
         corpsenm = obj->corpsenm;
     } else {
         /* just a type; caller will have to handle tins and corpses */
-        oclass = objects[otyp].oc_class;
+        oclass = NH_G(objects)[otyp].oc_class;
         corpsenm = PM_LICHEN; /* veggy standin */
     }
 
     if (oclass == FOOD_CLASS) {
-        if (objects[otyp].oc_material == VEGGY || otyp == EGG)
+        if (NH_G(objects)[otyp].oc_material == VEGGY || otyp == EGG)
             return TRUE;
         if (otyp == TIN && corpsenm == NON_PM) /* implies obj is non-null */
             return (boolean) (obj->spe == 1); /* 0 = empty, 1 = spinach */
@@ -410,12 +410,12 @@ shkveg()
     j = maxprob = 0;
     ok[0] = 0; /* lint suppression */
     for (i = bases[(int) oclass]; i < NUM_OBJECTS; ++i) {
-        if (objects[i].oc_class != oclass)
+        if (NH_G(objects)[i].oc_class != oclass)
             break;
 
         if (veggy_item((struct obj *) 0, i)) {
             ok[j++] = i;
-            maxprob += objects[i].oc_prob;
+            maxprob += NH_G(objects)[i].oc_prob;
         }
     }
     if (maxprob < 1)
@@ -424,12 +424,12 @@ shkveg()
 
     j = 0;
     i = ok[0];
-    while ((prob -= objects[i].oc_prob) > 0) {
+    while ((prob -= NH_G(objects)[i].oc_prob) > 0) {
         j++;
         i = ok[j];
     }
 
-    if (objects[i].oc_class != oclass || !OBJ_NAME(objects[i]))
+    if (NH_G(objects)[i].oc_class != oclass || !OBJ_NAME(NH_G(objects)[i]))
         panic("shkveg probtype error, oclass=%d i=%d", (int) oclass, i);
     return i;
 }
@@ -774,7 +774,7 @@ register struct mkroom *sroom;
      * monsters will sit on top of objects and not the other way around.
      */
 
-    level.flags.has_shop = TRUE;
+    NH_G(level).flags.has_shop = TRUE;
 }
 
 /* does shkp's shop stock this item type? */
@@ -851,7 +851,7 @@ struct monst *mtmp;
     } else {
         const char *shknm = ESHK(mtmp)->shknam;
 
-        if (Hallucination && !program_state.gameover) {
+        if (Hallucination && !NH_G(program_state).gameover) {
             const char *const *nlp;
             int num;
 

@@ -25,7 +25,7 @@ STATIC_DCL void FDECL(kops_gone, (BOOLEAN_P));
 
 extern const struct shclass shtypes[]; /* defined in shknam.c */
 
-STATIC_VAR NEARDATA long int followmsg; /* last time of follow message */
+#define followmsg (nh_g->s_shk_c_followmsg) /* last time of follow message */
 STATIC_VAR const char and_its_contents[] = " and its contents";
 STATIC_VAR const char the_contents_of[] = "the contents of ";
 
@@ -199,12 +199,12 @@ struct monst *mtmp;
         remove_damage(mtmp, TRUE);
         sroom->resident = (struct monst *) 0;
         if (!search_special(ANY_SHOP))
-            level.flags.has_shop = 0;
+            NH_G(level).flags.has_shop = 0;
 
         /* items on shop floor revert to ordinary objects */
         for (sx = sroom->lx; sx <= sroom->hx; sx++)
             for (sy = sroom->ly; sy <= sroom->hy; sy++)
-                for (otmp = level.objects[sx][sy]; otmp;
+                for (otmp = NH_G(level).objects[sx][sy]; otmp;
                      otmp = otmp->nexthere)
                     otmp->no_charge = 0;
 
@@ -296,7 +296,7 @@ register struct monst *shkp;
 
     clear_unpaid(shkp, invent);
     clear_unpaid(shkp, fobj);
-    clear_unpaid(shkp, level.buriedobjlist);
+    clear_unpaid(shkp, NH_G(level).buriedobjlist);
     if (thrownobj)
         clear_unpaid_obj(shkp, thrownobj);
     if (kickedobj)
@@ -347,13 +347,13 @@ register boolean nearshop;
     if (!Deaf)
         pline("An alarm sounds!");
 
-    nokops = ((mvitals[PM_KEYSTONE_KOP].mvflags & G_GONE)
-              && (mvitals[PM_KOP_SERGEANT].mvflags & G_GONE)
-              && (mvitals[PM_KOP_LIEUTENANT].mvflags & G_GONE)
-              && (mvitals[PM_KOP_KAPTAIN].mvflags & G_GONE));
+    nokops = ((NH_G(mvitals)[PM_KEYSTONE_KOP].mvflags & G_GONE)
+              && (NH_G(mvitals)[PM_KOP_SERGEANT].mvflags & G_GONE)
+              && (NH_G(mvitals)[PM_KOP_LIEUTENANT].mvflags & G_GONE)
+              && (NH_G(mvitals)[PM_KOP_KAPTAIN].mvflags & G_GONE));
 
     if (!angry_guards(!!Deaf) && nokops) {
-        if (flags.verbose && !Deaf)
+        if (NH_G(flags).verbose && !Deaf)
             pline("But no one seems to respond to it.");
         return;
     }
@@ -366,14 +366,14 @@ register boolean nearshop;
 
         if (nearshop) {
             /* Create swarm around you, if you merely "stepped out" */
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline_The("Keystone Kops appear!");
             mm.x = u.ux;
             mm.y = u.uy;
             makekops(&mm);
             return;
         }
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             pline_The("Keystone Kops are after you!");
         /* Create swarm near down staircase (hinders return to level) */
         mm.x = xdnstair;
@@ -539,17 +539,17 @@ char *enterstring;
     register int rt;
     register struct monst *shkp;
     register struct eshk *eshkp;
-    static char empty_shops[5];
+    /* empty_shops: per-env nh_g->l_shk_c_u_entered_shop_empty_shops */
 
     if (!*enterstring)
         return;
 
     if (!(shkp = shop_keeper(*enterstring))) {
-        if (!index(empty_shops, *enterstring)
+        if (!index(NH_G(l_shk_c_u_entered_shop_empty_shops), *enterstring)
             && in_rooms(u.ux, u.uy, SHOPBASE)
                    != in_rooms(u.ux0, u.uy0, SHOPBASE))
             deserted_shop(enterstring);
-        Strcpy(empty_shops, u.ushops);
+        Strcpy(NH_G(l_shk_c_u_entered_shop_empty_shops), u.ushops);
         u.ushops[0] = '\0';
         return;
     }
@@ -559,9 +559,9 @@ char *enterstring;
     if (!inhishop(shkp)) {
         /* dump core when referenced */
         eshkp->bill_p = (struct bill_x *) -1000;
-        if (!index(empty_shops, *enterstring))
+        if (!index(NH_G(l_shk_c_u_entered_shop_empty_shops), *enterstring))
             deserted_shop(enterstring);
-        Strcpy(empty_shops, u.ushops);
+        Strcpy(NH_G(l_shk_c_u_entered_shop_empty_shops), u.ushops);
         u.ushops[0] = '\0';
         return;
     }
@@ -690,11 +690,11 @@ struct obj *obj;
         return;
     shkp = shop_keeper(*u.ushops);
     if (shkp && inhishop(shkp)) {
-        static NEARDATA long pickmovetime = 0L;
+        /* pickmovetime: per-env nh_g->l_shk_c_pick_pick_pickmovetime */
 
         /* if you bring a sack of N picks into a shop to sell,
            don't repeat this N times when they're taken out */
-        if (moves != pickmovetime) {
+        if (moves != NH_G(l_shk_c_pick_pick_pickmovetime)) {
             if (!Deaf && !muteshk(shkp))
                 verbalize("You sneaky %s!  Get out of here with that pick!",
                       cad(FALSE));
@@ -704,7 +704,7 @@ struct obj *obj;
                       haseyes(shkp->data) ? "glares at"
                                           : "is dismayed because of");
         }
-        pickmovetime = moves;
+        NH_G(l_shk_c_pick_pick_pickmovetime) = moves;
     }
 }
 
@@ -1040,7 +1040,7 @@ register boolean killkops;
     register xchar x = ESHK(shkp)->shk.x, y = ESHK(shkp)->shk.y;
 
     (void) mnearto(shkp, x, y, TRUE);
-    level.flags.has_shop = 1;
+    NH_G(level).flags.has_shop = 1;
     if (killkops) {
         kops_gone(TRUE);
         pacify_guards();
@@ -1685,10 +1685,7 @@ boolean itemize;
     return buy;
 }
 
-static struct repo { /* repossession context */
-    struct monst *shopkeeper;
-    coord location;
-} repo;
+/* repo: per-env nh_g->s_shk_c_repo */
 
 /* routine called after dying (or quitting) */
 boolean
@@ -1712,8 +1709,8 @@ boolean silently; /* maybe avoid messages */
         which has been shut inside a statue] */
 
     /* this is where inventory will end up if any shk takes it */
-    repo.location.x = repo.location.y = 0;
-    repo.shopkeeper = 0;
+    NH_G(s_shk_c_repo).location.x = NH_G(s_shk_c_repo).location.y = 0;
+    NH_G(s_shk_c_repo).shopkeeper = 0;
 
     /*
      * Scan all shopkeepers on the level, to prioritize them:
@@ -1908,9 +1905,9 @@ struct monst *shkp;
         oy = u.uy;
     }
     /* finish_paybill will deposit invent here */
-    repo.location.x = ox;
-    repo.location.y = oy;
-    repo.shopkeeper = shkp;
+    NH_G(s_shk_c_repo).location.x = ox;
+    NH_G(s_shk_c_repo).location.y = oy;
+    NH_G(s_shk_c_repo).shopkeeper = shkp;
 }
 
 /* called at game exit, after inventory disclosure but before making bones;
@@ -1918,8 +1915,8 @@ struct monst *shkp;
 void
 finish_paybill()
 {
-    struct monst *shkp = repo.shopkeeper;
-    int ox = repo.location.x, oy = repo.location.y;
+    struct monst *shkp = NH_G(s_shk_c_repo).shopkeeper;
+    int ox = NH_G(s_shk_c_repo).location.x, oy = NH_G(s_shk_c_repo).location.y;
 
 #if 0 /* don't bother */
     if (ox == 0 && oy == 0)
@@ -1971,7 +1968,7 @@ unsigned id;
         return obj;
     if ((obj = o_on(id, fobj)) != 0)
         return obj;
-    if ((obj = o_on(id, level.buriedobjlist)) != 0)
+    if ((obj = o_on(id, NH_G(level).buriedobjlist)) != 0)
         return obj;
     if ((obj = o_on(id, migrating_objs)) != 0)
         return obj;
@@ -2035,7 +2032,7 @@ struct obj *obj;
 
     if (obj->globby) {
         /* globs must be sold by weight not by volume */
-        long unit_weight = (long) objects[obj->otyp].oc_weight,
+        long unit_weight = (long) NH_G(objects)[obj->otyp].oc_weight,
              wt = (obj->owt > 0) ? (long) obj->owt : (long) weight(obj);
 
         if (unit_weight)
@@ -2053,8 +2050,8 @@ unsigned oid;
 {
     int res = 0, otyp = obj->otyp;
 
-    if (!(obj->dknown && objects[otyp].oc_name_known)
-        && (obj->oclass != GEM_CLASS || objects[otyp].oc_material != GLASS)) {
+    if (!(obj->dknown && NH_G(objects)[otyp].oc_name_known)
+        && (obj->oclass != GEM_CLASS || NH_G(objects)[otyp].oc_material != GLASS)) {
         res = ((oid % 4) == 0); /* id%4 ==0 -> +1, ==1..3 -> 0 */
     }
     return res;
@@ -2075,9 +2072,9 @@ register struct monst *shkp; /* if angry, impose a surcharge */
         tmp = 5L;
     /* shopkeeper may notice if the player isn't very knowledgeable -
        especially when gem prices are concerned */
-    if (!obj->dknown || !objects[obj->otyp].oc_name_known) {
+    if (!obj->dknown || !NH_G(objects)[obj->otyp].oc_name_known) {
         if (obj->oclass == GEM_CLASS
-            && objects[obj->otyp].oc_material == GLASS) {
+            && NH_G(objects)[obj->otyp].oc_material == GLASS) {
             int i;
             /* get a value that's 'random' from game to game, but the
                same within the same game */
@@ -2118,7 +2115,7 @@ register struct monst *shkp; /* if angry, impose a surcharge */
                 i = STRANGE_OBJECT;
                 break;
             }
-            tmp = (long) objects[i].oc_cost;
+            tmp = (long) NH_G(objects)[i].oc_cost;
         } else if (oid_price_adjustment(obj, obj->o_id) > 0) {
             /* unid'd, arbitrarily impose surcharge: tmp *= 4/3 */
             multiplier *= 4L;
@@ -2204,7 +2201,7 @@ boolean unpaid_only;
                 && otmp->oclass != BALL_CLASS
                 && !(otmp->oclass == FOOD_CLASS && otmp->oeaten)
                 && !(Is_candle(otmp)
-                     && otmp->age < 20L * (long) objects[otmp->otyp].oc_cost))
+                     && otmp->age < 20L * (long) NH_G(objects)[otmp->otyp].oc_cost))
                 price += set_cost(otmp, shkp);
         } else {
             /* no_charge is only set for floor items (including
@@ -2339,11 +2336,11 @@ register struct monst *shkp;
 
     /* shopkeeper may notice if the player isn't very knowledgeable -
        especially when gem prices are concerned */
-    if (!obj->dknown || !objects[obj->otyp].oc_name_known) {
+    if (!obj->dknown || !NH_G(objects)[obj->otyp].oc_name_known) {
         if (obj->oclass == GEM_CLASS) {
             /* different shop keepers give different prices */
-            if (objects[obj->otyp].oc_material == GEMSTONE
-                || objects[obj->otyp].oc_material == GLASS) {
+            if (NH_G(objects)[obj->otyp].oc_material == GEMSTONE
+                || NH_G(objects)[obj->otyp].oc_material == GLASS) {
                 tmp = (obj->otyp % (6 - shkp->m_id % 3));
                 tmp = (tmp + 3) * obj->quan;
             }
@@ -2564,11 +2561,11 @@ const char *arg;
      * scrolls/books (that is, blank and mail), but only if the
      * object is within the shk's area of interest/expertise.
      */
-    if (!objects[obj->otyp].oc_magic && saleable(shkp, obj)
+    if (!NH_G(objects)[obj->otyp].oc_magic && saleable(shkp, obj)
         && (obj->oclass == WEAPON_CLASS || obj->oclass == ARMOR_CLASS
             || obj->oclass == SCROLL_CLASS || obj->oclass == SPBOOK_CLASS
             || obj->otyp == MIRROR)) {
-        was_unknown |= !objects[obj->otyp].oc_name_known;
+        was_unknown |= !NH_G(objects)[obj->otyp].oc_name_known;
         makeknown(obj->otyp);
     }
     obj_name = doname(obj);
@@ -2737,12 +2734,12 @@ char *buf;
 
     Strcat(buf, honored[rn2(SIZE(honored) - 1) + u.uevent.udemigod]);
     if (is_vampire(youmonst.data))
-        Strcat(buf, (flags.female) ? " dark lady" : " dark lord");
+        Strcat(buf, (NH_G(flags).female) ? " dark lady" : " dark lord");
     else if (is_elf(youmonst.data))
-        Strcat(buf, (flags.female) ? " hiril" : " hir");
+        Strcat(buf, (NH_G(flags).female) ? " hiril" : " hir");
     else
         Strcat(buf, !is_human(youmonst.data) ? " creature"
-                                             : (flags.female) ? " lady"
+                                             : (NH_G(flags).female) ? " lady"
                                                               : " sir");
 }
 
@@ -3000,11 +2997,15 @@ boolean peaceful, silent;
 }
 
 /* auto-response flag for/from "sell foo?" 'a' => 'y', 'q' => 'n' */
-static char sell_response = 'a';
-static int sell_how = SELL_NORMAL;
+#define sell_response (nh_g->s_shk_c_sell_response)
+const char nh_tmpl_s_shk_c_sell_response =
+'a';
+#define sell_how (nh_g->s_shk_c_sell_how)
+const int nh_tmpl_s_shk_c_sell_how =
+SELL_NORMAL;
 /* can't just use sell_response='y' for auto_credit because the 'a' response
    shouldn't carry over from ordinary selling to credit selling */
-static boolean auto_credit = FALSE;
+#define auto_credit (nh_g->s_shk_c_auto_credit)
 
 void
 sellobj_state(deliberate)
@@ -3152,7 +3153,7 @@ xchar x, y;
         || obj->oclass == BALL_CLASS || obj->oclass == CHAIN_CLASS
         || offer == 0L || (obj->oclass == FOOD_CLASS && obj->oeaten)
         || (Is_candle(obj)
-            && obj->age < 20L * (long) objects[obj->otyp].oc_cost)) {
+            && obj->age < 20L * (long) NH_G(objects)[obj->otyp].oc_cost)) {
         pline("%s seems uninterested%s.", Shknam(shkp),
               cgold ? " in the rest" : "");
         if (container)
@@ -3391,7 +3392,7 @@ getprice(obj, shk_buying)
 register struct obj *obj;
 boolean shk_buying;
 {
-    register long tmp = (long) objects[obj->otyp].oc_cost;
+    register long tmp = (long) NH_G(objects)[obj->otyp].oc_cost;
 
     if (obj->oartifact) {
         tmp = arti_cost(obj);
@@ -3421,7 +3422,7 @@ boolean shk_buying;
         break;
     case TOOL_CLASS:
         if (Is_candle(obj)
-            && obj->age < 20L * (long) objects[obj->otyp].oc_cost)
+            && obj->age < 20L * (long) NH_G(objects)[obj->otyp].oc_cost)
             tmp /= 2L;
         break;
     }
@@ -3481,7 +3482,7 @@ long cost;
         if (!*shops)
             return;
     }
-    for (tmp_dam = level.damagelist; tmp_dam; tmp_dam = tmp_dam->next)
+    for (tmp_dam = NH_G(level).damagelist; tmp_dam; tmp_dam = tmp_dam->next)
         if (tmp_dam->place.x == x && tmp_dam->place.y == y) {
             tmp_dam->cost += cost;
             tmp_dam->when = monstermoves; /* needed by pay_for_damage() */
@@ -3494,8 +3495,8 @@ long cost;
     tmp_dam->place.y = y;
     tmp_dam->cost = cost;
     tmp_dam->typ = levl[x][y].typ;
-    tmp_dam->next = level.damagelist;
-    level.damagelist = tmp_dam;
+    tmp_dam->next = NH_G(level).damagelist;
+    NH_G(level).damagelist = tmp_dam;
     /* If player saw damage, display as a wall forever */
     if (cansee(x, y))
         levl[x][y].seenv = SVALL;
@@ -3523,7 +3524,7 @@ boolean croaked;
     char trapmsg[BUFSZ];
 
     feedback = !croaked; /* 1 => give feedback, 0 => don't or already did */
-    tmp_dam = level.damagelist;
+    tmp_dam = NH_G(level).damagelist;
     tmp2_dam = 0;
     while (tmp_dam) {
         register xchar x = tmp_dam->place.x, y = tmp_dam->place.y;
@@ -3578,8 +3579,8 @@ boolean croaked;
 
         tmp_dam = tmp_dam->next;
         if (!tmp2_dam) {
-            free((genericptr_t) level.damagelist);
-            level.damagelist = tmp_dam;
+            free((genericptr_t) NH_G(level).damagelist);
+            NH_G(level).damagelist = tmp_dam;
         } else {
             free((genericptr_t) tmp2_dam->next);
             tmp2_dam->next = tmp_dam;
@@ -3727,7 +3728,7 @@ boolean catchup; /* restoring a level */
 #define horiz(i) ((i % 3) - 1)
 #define vert(i) ((i / 3) - 1)
     k = 0; /* number of adjacent shop spots */
-    if (level.objects[x][y] && !IS_ROOM(levl[x][y].typ)) {
+    if (NH_G(level).objects[x][y] && !IS_ROOM(levl[x][y].typ)) {
         for (i = 0; i < 9; i++) {
             ix = x + horiz(i);
             iy = y + vert(i);
@@ -3763,7 +3764,7 @@ boolean catchup; /* restoring a level */
             unplacebc(); /* pick 'em up */
             placebc();   /* put 'em down */
         }
-        while ((otmp = level.objects[x][y]) != 0)
+        while ((otmp = NH_G(level).objects[x][y]) != 0)
             /* Don't mess w/ boulders -- just merge into wall */
             if (otmp->otyp == BOULDER || otmp->otyp == ROCK) {
                 obj_extract_self(otmp);
@@ -3987,10 +3988,10 @@ register int fall;
                 if (u.utraptype == TT_PIT)
                     verbalize(
                         "Be careful, %s, or you might fall through the floor.",
-                        flags.female ? "madam" : "sir");
+                        NH_G(flags).female ? "madam" : "sir");
                 else
                     verbalize("%s, do not damage the floor here!",
-                        flags.female ? "Madam" : "Sir");
+                        NH_G(flags).female ? "Madam" : "Sir");
             }
         }
         if (Role_if(PM_KNIGHT)) {
@@ -4065,7 +4066,7 @@ coord *mm;
         if ((cnt = k_cnt[k]) == 0)
             break;
         mndx = k_mndx[k];
-        if (mvitals[mndx].mvflags & G_GONE)
+        if (NH_G(mvitals)[mndx].mvflags & G_GONE)
             continue;
 
         while (cnt--)
@@ -4093,7 +4094,7 @@ boolean cant_mollify;
                  nearest_damage = nearest_shk;
     int picks = 0;
 
-    for (tmp_dam = level.damagelist; tmp_dam; tmp_dam = tmp_dam->next) {
+    for (tmp_dam = NH_G(level).damagelist; tmp_dam; tmp_dam = tmp_dam->next) {
         char *shp;
 
         if (tmp_dam->when != monstermoves || !tmp_dam->cost)
@@ -4263,7 +4264,7 @@ register xchar x, y;
     struct monst *shkp;
     struct eshk *eshkp;
 
-    if (!level.flags.has_shop)
+    if (!NH_G(level).flags.has_shop)
         return FALSE;
     shkp = shop_keeper(*in_rooms(x, y, SHOPBASE));
     if (!shkp || !inhishop(shkp))
@@ -4285,7 +4286,7 @@ register xchar x, y;
     if (!(shkp = shop_keeper(*in_rooms(x, y, SHOPBASE))) || !inhishop(shkp))
         return (struct obj *) 0;
 
-    for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
         if (otmp->oclass != COIN_CLASS)
             break;
     /* note: otmp might have ->no_charge set, but that's ok */
@@ -4369,8 +4370,8 @@ long cost;
                 o = itm->oclass;
             if (o == FOOD_CLASS)
                 return ", gourmets' delight!";
-            if (objects[itm->otyp].oc_name_known
-                    ? objects[itm->otyp].oc_magic
+            if (NH_G(objects)[itm->otyp].oc_name_known
+                    ? NH_G(objects)[itm->otyp].oc_magic
                     : (o == AMULET_CLASS || o == RING_CLASS || o == WAND_CLASS
                        || o == POTION_CLASS || o == SCROLL_CLASS
                        || o == SPBOOK_CLASS))
@@ -4392,7 +4393,9 @@ long cost;
 }
 
 /* First 4 supplied by Ronen and Tamar, remainder by development team */
-const char *Izchak_speaks[] = {
+/* Izchak_speaks: per-env, see nh_globals.h */
+const char *const nh_tmpl_Izchak_speaks[] =
+{
     "%s says: 'These shopping malls give me a headache.'",
     "%s says: 'Slow down.  Think clearly.'",
     "%s says: 'You need to take things one at a time.'",
@@ -4522,7 +4525,7 @@ boolean altusage; /* some items have an "alternate" use with different cost */
            what is charged for an ordinary lamp (don't bother with
            angry shk surcharge) */
         if (!altusage)
-            tmp = (long) objects[OIL_LAMP].oc_cost;
+            tmp = (long) NH_G(objects)[OIL_LAMP].oc_cost;
         else
             tmp += tmp / 3L;                 /* djinni is being released */
     } else if (otmp->otyp == MAGIC_MARKER) { /* 70 - 100 */
@@ -4570,7 +4573,7 @@ boolean altusage;
     long tmp;
 
     if (!otmp->unpaid || !*u.ushops
-        || (otmp->spe <= 0 && objects[otmp->otyp].oc_charged))
+        || (otmp->spe <= 0 && NH_G(objects)[otmp->otyp].oc_charged))
         return;
     if (!(shkp = shop_keeper(*u.ushops)) || !inhishop(shkp))
         return;

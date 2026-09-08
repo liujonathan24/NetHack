@@ -31,7 +31,9 @@ static const char *artifact_names[] = {
 #define     STUN(a,b)   {0,AD_STUN,a,b}         /* magical attack */
 /* clang-format on */
 
-STATIC_OVL NEARDATA struct artifact artilist[] = {
+#define artilist (nh_g->s_artilist_h_artilist)
+const struct artifact nh_tmpl_s_artilist_h_artilist[] =
+{
 #endif /* MAKEDEFS_C */
 
     /* Artifact cost rationale:

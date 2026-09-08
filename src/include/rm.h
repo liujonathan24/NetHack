@@ -88,7 +88,7 @@ enum levl_typ_types {
 #define IS_DOOR(typ) ((typ) == DOOR)
 #define IS_DOORJOIN(typ) (IS_ROCK(typ) || (typ) == IRONBARS)
 #define IS_TREE(typ)                                            \
-    ((typ) == TREE || (level.flags.arboreal && (typ) == STONE))
+    ((typ) == TREE || (NH_G(level).flags.arboreal && (typ) == STONE))
 #define ACCESSIBLE(typ) ((typ) >= DOOR) /* good position */
 #define IS_ROOM(typ) ((typ) >= ROOM)    /* ROOM, STAIRS, furniture.. */
 #define ZAP_POS(typ) ((typ) >= POOL)
@@ -306,14 +306,14 @@ struct symsetentry {
 
 extern const struct symdef defsyms[MAXPCHARS]; /* defaults */
 extern const struct symdef def_warnsyms[WARNCOUNT];
-extern int currentgraphics; /* from drawing.c */
-extern nhsym showsyms[];
-extern nhsym primary_syms[];
-extern nhsym rogue_syms[];
-extern nhsym ov_primary_syms[];
-extern nhsym ov_rogue_syms[];
+/* currentgraphics: per-env, see nh_globals.h */ /* from drawing.c */
+/* showsyms: per-env, see nh_globals.h */
+/* primary_syms: per-env, see nh_globals.h */
+/* rogue_syms: per-env, see nh_globals.h */
+/* ov_primary_syms: per-env, see nh_globals.h */
+/* ov_rogue_syms: per-env, see nh_globals.h */
 
-extern struct symsetentry symset[NUM_GRAPHICS]; /* from drawing.c */
+/* symset: per-env, see nh_globals.h */ /* from drawing.c */
 #define SYMHANDLING(ht) (symset[currentgraphics].handling == (ht))
 
 /*
@@ -608,16 +608,16 @@ typedef struct {
     struct levelflags flags;
 } dlevel_t;
 
-extern schar lastseentyp[COLNO][ROWNO]; /* last seen/touched dungeon typ */
+/* lastseentyp: per-env, see nh_globals.h */ /* last seen/touched dungeon typ */
 
-extern dlevel_t level; /* structure describing the current level */
+/* level: per-env, see nh_globals.h */ /* structure describing the current level */
 
 /*
  * Macros for compatibility with old code. Someday these will go away.
  */
-#define levl level.locations
-#define fobj level.objlist
-#define fmon level.monlist
+#define levl NH_G(level).locations
+#define fobj NH_G(level).objlist
+#define fmon NH_G(level).monlist
 
 /*
  * Covert a trap number into the defsym graphics array.
@@ -627,7 +627,7 @@ extern dlevel_t level; /* structure describing the current level */
 #define trap_to_defsym(t) (S_arrow_trap + (t) -1)
 #define defsym_to_trap(d) ((d) -S_arrow_trap + 1)
 
-#define OBJ_AT(x, y) (level.objects[x][y] != (struct obj *) 0)
+#define OBJ_AT(x, y) (NH_G(level).objects[x][y] != (struct obj *) 0)
 /*
  * Macros for encapsulation of level.monsters references.
  */
@@ -639,7 +639,7 @@ extern dlevel_t level; /* structure describing the current level */
     (level.monsters[x][y] != (struct monst *) 0 \
      && (level.monsters[x][y])->mburied)
 #else   /* without 'mburied' */
-#define MON_AT(x, y) (level.monsters[x][y] != (struct monst *) 0)
+#define MON_AT(x, y) (NH_G(level).monsters[x][y] != (struct monst *) 0)
 #endif
 #ifdef EXTRA_SANITY_CHECKS
 #define place_worm_seg(m, x, y) \
@@ -655,14 +655,14 @@ extern dlevel_t level; /* structure describing the current level */
         level.monsters[x][y] = (struct monst *) 0;      \
     } while(0)
 #else
-#define place_worm_seg(m, x, y) level.monsters[x][y] = m
-#define remove_monster(x, y) level.monsters[x][y] = (struct monst *) 0
+#define place_worm_seg(m, x, y) NH_G(level).monsters[x][y] = m
+#define remove_monster(x, y) NH_G(level).monsters[x][y] = (struct monst *) 0
 #endif
-#define m_at(x, y) (MON_AT(x, y) ? level.monsters[x][y] : (struct monst *) 0)
+#define m_at(x, y) (MON_AT(x, y) ? NH_G(level).monsters[x][y] : (struct monst *) 0)
 #define m_buried_at(x, y) \
     (MON_BURIED_AT(x, y) ? level.monsters[x][y] : (struct monst *) 0)
 
 /* restricted movement, potential luck penalties */
-#define Sokoban level.flags.sokoban_rules
+#define Sokoban NH_G(level).flags.sokoban_rules
 
 #endif /* RM_H */

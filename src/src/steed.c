@@ -114,11 +114,11 @@ struct obj *otmp;
     }
     if (Confusion || Fumbling || Glib)
         chance -= 20;
-    else if (uarmg && (s = OBJ_DESCR(objects[uarmg->otyp])) != (char *) 0
+    else if (uarmg && (s = OBJ_DESCR(NH_G(objects)[uarmg->otyp])) != (char *) 0
              && !strncmp(s, "riding ", 7))
         /* Bonus for wearing "riding" (but not fumbling) gloves */
         chance += 10;
-    else if (uarmf && (s = OBJ_DESCR(objects[uarmf->otyp])) != (char *) 0
+    else if (uarmf && (s = OBJ_DESCR(NH_G(objects)[uarmf->otyp])) != (char *) 0
              && !strncmp(s, "riding ", 7))
         /* ... or for "riding boots" */
         chance += 10;
@@ -764,7 +764,7 @@ int x, y;
                    mon->mstate, buf);
         return;
     }
-    if ((othermon = level.monsters[x][y]) != 0) {
+    if ((othermon = NH_G(level).monsters[x][y]) != 0) {
         describe_level(buf);
         monnm = minimal_monnam(mon, FALSE);
         othnm = (mon != othermon) ? minimal_monnam(othermon, TRUE) : "itself";
@@ -772,7 +772,7 @@ int x, y;
                    monnm, othnm, x, y, othermon->mstate, mon->mstate, buf);
     }
     mon->mx = x, mon->my = y;
-    level.monsters[x][y] = mon;
+    NH_G(level).monsters[x][y] = mon;
     mon->mstate &= ~(MON_OFFMAP | MON_MIGRATING | MON_LIMBO | MON_BUBBLEMOVE
                      | MON_ENDGAME_FREE | MON_ENDGAME_MIGR);
 }

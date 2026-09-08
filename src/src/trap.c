@@ -40,7 +40,7 @@ STATIC_DCL boolean FDECL(thitm, (int, struct monst *, struct obj *, int,
 STATIC_DCL void NDECL(maybe_finish_sokoban);
 
 /* mintrap() should take a flags argument, but for time being we use this */
-STATIC_VAR int force_mintrap = 0;
+#define force_mintrap (nh_g->s_trap_c_force_mintrap)
 
 STATIC_VAR const char *const a_your[2] = { "a", "your" };
 STATIC_VAR const char *const A_Your[2] = { "A", "Your" };
@@ -83,7 +83,7 @@ struct monst *victim;
         case 0:
             item = hitting_u ? uarmh : which_armor(victim, W_ARMH);
             if (item) {
-                mat_idx = objects[item->otyp].oc_material;
+                mat_idx = NH_G(objects)[item->otyp].oc_material;
                 Sprintf(buf, "%s %s", materialnm[mat_idx],
                         helm_simple_name(item));
             }
@@ -202,13 +202,13 @@ int ef_flags;
     } else if (!erosion_matters(otmp)) {
         return ER_NOTHING;
     } else if (!vulnerable || (otmp->oerodeproof && otmp->rknown)) {
-        if (flags.verbose && print && (uvictim || vismon))
+        if (NH_G(flags).verbose && print && (uvictim || vismon))
             pline("%s %s %s not affected by %s.",
                   uvictim ? "Your" : s_suffix(Monnam(victim)),
                   ostr, vtense(ostr, "are"), bythe[type]);
         return ER_NOTHING;
     } else if (otmp->oerodeproof || (otmp->blessed && !rnl(4))) {
-        if (flags.verbose && (print || otmp->oerodeproof)
+        if (NH_G(flags).verbose && (print || otmp->oerodeproof)
             && (uvictim || vismon || visobj))
             pline("Somehow, %s %s %s not affected by the %s.",
                   uvictim ? "your"
@@ -266,7 +266,7 @@ int ef_flags;
         delobj(otmp);
         return ER_DESTROYED;
     } else {
-        if (flags.verbose && print) {
+        if (NH_G(flags).verbose && print) {
             if (uvictim)
                 Your("%s %s completely %s.",
                      ostr, vtense(ostr, Blind ? "feel" : "look"), msg[type]);
@@ -421,9 +421,9 @@ int x, y, typ;
         else if (lev->typ == STONE || lev->typ == SCORR)
             lev->typ = CORR;
         else if (IS_WALL(lev->typ) || lev->typ == SDOOR)
-            lev->typ = level.flags.is_maze_lev
+            lev->typ = NH_G(level).flags.is_maze_lev
                            ? ROOM
-                           : level.flags.is_cavernous_lev ? CORR : DOOR;
+                           : NH_G(level).flags.is_cavernous_lev ? CORR : DOOR;
 
         unearth_objs(x, y);
         break;
@@ -1037,7 +1037,7 @@ unsigned trflags;
                 if (is_metallic(uarmh)) {
                     pline("Fortunately, you are wearing a hard helmet.");
                     dmg = 2;
-                } else if (flags.verbose) {
+                } else if (NH_G(flags).verbose) {
                     pline("%s does not protect you.", Yname2(uarmh));
                 }
             }
@@ -1502,18 +1502,18 @@ unsigned trflags;
              * the ground, and you being affected again by the same
              * mine because it hasn't been deleted yet
              */
-            static boolean recursive_mine = FALSE;
+            /* recursive_mine: per-env nh_g->l_trap_c_dotrap_recursive_mine */
 
-            if (recursive_mine)
+            if (NH_G(l_trap_c_dotrap_recursive_mine))
                 break;
             feeltrap(trap);
             pline("KAABLAMM!!!  You triggered %s land mine!",
                   a_your[trap->madeby_u]);
             if (u.usteed)
                 steed_mid = u.usteed->m_id;
-            recursive_mine = TRUE;
+            NH_G(l_trap_c_dotrap_recursive_mine) = TRUE;
             (void) steedintrap(trap, (struct obj *) 0);
-            recursive_mine = FALSE;
+            NH_G(l_trap_c_dotrap_recursive_mine) = FALSE;
             saddle = sobj_at(SADDLE, u.ux, u.uy);
             set_wounded_legs(LEFT_SIDE, rn1(35, 41));
             set_wounded_legs(RIGHT_SIDE, rn1(35, 41));
@@ -1567,19 +1567,19 @@ trapnote(trap, noprefix)
 struct trap *trap;
 boolean noprefix;
 {
-    static char tnbuf[12];
+    /* tnbuf: per-env nh_g->l_trap_c_trapnote_tnbuf */
     const char *tn,
         *tnnames[12] = { "C note",  "D flat", "D note",  "E flat",
                          "E note",  "F note", "F sharp", "G note",
                          "G sharp", "A note", "B flat",  "B note" };
 
-    tnbuf[0] = '\0';
+    NH_G(l_trap_c_trapnote_tnbuf)[0] = '\0';
     tn = tnnames[trap->tnote];
     if (!noprefix)
-        Sprintf(tnbuf, "%s ",
+        Sprintf(NH_G(l_trap_c_trapnote_tnbuf), "%s ",
                 (*tn == 'A' || *tn == 'E' || *tn == 'F') ? "an" : "a");
-    Sprintf(eos(tnbuf), "%s", tn);
-    return tnbuf;
+    Sprintf(eos(NH_G(l_trap_c_trapnote_tnbuf)), "%s", tn);
+    return NH_G(l_trap_c_trapnote_tnbuf);
 }
 
 STATIC_OVL int
@@ -1706,10 +1706,7 @@ struct trap *trap;
  * prevent them from vanishing if you are killed. They
  * will reappear at the launchplace in bones files.
  */
-static struct {
-    struct obj *obj;
-    xchar x, y;
-} launchplace;
+#define launchplace (nh_g->s_trap_c_launchplace)
 
 STATIC_OVL void
 launch_drop_spot(obj, x, y)
@@ -2754,9 +2751,9 @@ const char *str;
     if (poly_when_stoned(youmonst.data) && polymon(PM_STONE_GOLEM))
         return;
     You("turn to stone...");
-    killer.format = KILLED_BY;
-    if (str != killer.name)
-        Strcpy(killer.name, str ? str : "");
+    NH_G(killer).format = KILLED_BY;
+    if (str != NH_G(killer).name)
+        Strcpy(NH_G(killer).name, str ? str : "");
     done(STONING);
 }
 
@@ -3111,7 +3108,7 @@ climb_pit()
                 : u.usteed ? "ride" : "crawl");
         fill_pit(u.ux, u.uy);
         vision_full_recalc = 1; /* vision limits change */
-    } else if (u.dz || flags.verbose) {
+    } else if (u.dz || NH_G(flags).verbose) {
         if (u.usteed)
             Norep("%s is still in a pit.", upstart(y_monnam(u.usteed)));
         else
@@ -3250,7 +3247,7 @@ domagictrap()
             if (on_level(&u.uz, &qstart_level))
                 You_feel(
                     "%slike the prodigal son.",
-                    (flags.female || (Upolyd && is_neuter(youmonst.data)))
+                    (NH_G(flags).female || (Upolyd && is_neuter(youmonst.data)))
                         ? "oddly "
                         : "");
             else
@@ -3438,9 +3435,9 @@ xchar x, y;
        and books--let fire damage deal with them), cloth, leather, wood, bone
        unless it's inherently or explicitly fireproof or contains something;
        note: potions are glass so fall through to fire_damage() and boil */
-    if (objects[otyp].oc_material < DRAGON_HIDE
+    if (NH_G(objects)[otyp].oc_material < DRAGON_HIDE
         && ocls != SCROLL_CLASS && ocls != SPBOOK_CLASS
-        && objects[otyp].oc_oprop != FIRE_RES
+        && NH_G(objects)[otyp].oc_oprop != FIRE_RES
         && otyp != WAN_FIRE && otyp != FIRE_HORN
         /* assumes oerodeproof isn't overloaded for some other purpose on
            non-eroding items */
@@ -3507,10 +3504,9 @@ struct obj *obj;
 /* context for water_damage(), managed by water_damage_chain();
    when more than one stack of potions of acid explode while processing
    a chain of objects, use alternate phrasing after the first message */
-static struct h2o_ctx {
-    int dkn_boom, unk_boom; /* track dknown, !dknown separately */
-    boolean ctx_valid;
-} acid_ctx = { 0, 0, FALSE };
+#define acid_ctx (nh_g->s_trap_c_acid_ctx)
+const struct h2o_ctx nh_tmpl_s_trap_c_acid_ctx =
+{ 0, 0, FALSE };
 
 /* Get an object wet and damage it appropriately.
  *   "ostr", if present, is used instead of the object name in some
@@ -3788,7 +3784,7 @@ drown()
 
     if (Amphibious || Swimming) {
         if (Amphibious) {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline("But you aren't drowning.");
             if (!Is_waterlevel(&u.uz)) {
                 if (Hallucination)
@@ -3810,7 +3806,7 @@ drown()
     if ((Teleportation || can_teleport(youmonst.data)) && !Unaware
         && (Teleport_control || rn2(3) < Luck + 2)) {
         You("attempt a teleport spell."); /* utcsri!carroll */
-        if (!level.flags.noteleport) {
+        if (!NH_G(level).flags.noteleport) {
             (void) dotele(FALSE);
             if (!is_pool(u.ux, u.uy))
                 return TRUE;
@@ -3874,11 +3870,11 @@ crawl:
         /* killer format and name are reconstructed every iteration
            because lifesaving resets them */
         pool_of_water = waterbody_name(u.ux, u.uy);
-        killer.format = KILLED_BY_AN;
+        NH_G(killer).format = KILLED_BY_AN;
         /* avoid "drowned in [a] water" */
         if (!strcmp(pool_of_water, "water"))
-            pool_of_water = "deep water", killer.format = KILLED_BY;
-        Strcpy(killer.name, pool_of_water);
+            pool_of_water = "deep water", NH_G(killer).format = KILLED_BY;
+        Strcpy(NH_G(killer).name, pool_of_water);
         done(DROWNING);
         /* oops, we're still alive.  better get out of the water. */
         if (safe_teleds(TRUE))
@@ -4406,7 +4402,7 @@ boolean force;
     here = (x == u.ux && y == u.uy); /* !u.dx && !u.dy */
 
     if (here) /* are there are one or more containers here? */
-        for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
+        for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
             if (Is_box(otmp)) {
                 if (++boxcnt > 1)
                     break;
@@ -4499,7 +4495,7 @@ boolean force;
         } /* end if */
 
         if (boxcnt) {
-            for (otmp = level.objects[x][y]; otmp; otmp = otmp->nexthere)
+            for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
                 if (Is_box(otmp)) {
                     (void) safe_qbuf(qbuf, "There is ",
                                      " here.  Check it for traps?", otmp,
@@ -4877,7 +4873,7 @@ boolean disarm;
                                  && uball->ox == u.ux && uball->oy == u.uy)))
                 unpunish();
 
-            for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp2) {
+            for (otmp = NH_G(level).objects[u.ux][u.uy]; otmp; otmp = otmp2) {
                 otmp2 = otmp->nexthere;
                 if (costly)
                     loss += stolen_value(otmp, otmp->ox, otmp->oy,
@@ -5284,7 +5280,7 @@ lava_effects()
         for (obj = invent; obj; obj = obj->nobj)
             if ((is_organic(obj) || obj->oclass == POTION_CLASS)
                 && !obj->oerodeproof
-                && objects[obj->otyp].oc_oprop != FIRE_RES
+                && NH_G(objects)[obj->otyp].oc_oprop != FIRE_RES
                 && obj->otyp != SCR_FIRE && obj->otyp != SPE_FIREBALL
                 && !obj_resists(obj, 0, 0)) /* for invocation items */
                 obj->in_use = 1;
@@ -5350,8 +5346,8 @@ lava_effects()
             u.uhp = -1;
             /* killer format and name are reconstructed every iteration
                because lifesaving resets them */
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, lava_killer);
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, lava_killer);
             You("%s...", boil_away ? "boil away" : "burn to a crisp");
             done(BURNING);
             if (safe_teleds(TRUE))
@@ -5405,8 +5401,8 @@ sink_into_lava()
 
         u.utrap -= (1 << 8);
         if (u.utrap < (1 << 8)) {
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, "molten lava");
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, "molten lava");
             You("sink below the surface and die.");
             burn_away_slime(); /* add insult to injury? */
             done(DISSOLVED);

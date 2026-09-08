@@ -39,7 +39,7 @@ STATIC_DCL const char *FDECL(foodword, (struct obj *));
 STATIC_DCL int FDECL(tin_variety, (struct obj *, BOOLEAN_P));
 STATIC_DCL boolean FDECL(maybe_cannibal, (int, BOOLEAN_P));
 
-char msgbuf[BUFSZ];
+/* msgbuf: per-env nh_g->msgbuf */
 
 /* also used to see if you're allowed to eat cats and dogs */
 #define CANNIBAL_ALLOWED() (Role_if(PM_CAVEMAN) || Race_if(PM_ORC))
@@ -69,10 +69,12 @@ STATIC_OVL NEARDATA const char allobj[] = {
     BALL_CLASS,   CHAIN_CLASS,  SPBOOK_CLASS, 0
 };
 
-STATIC_OVL boolean force_save_hs = FALSE;
+#define force_save_hs (nh_g->s_eat_c_force_save_hs)
 
 /* see hunger states in hack.h - texts used on bottom line */
-const char *hu_stat[] = { "Satiated", "        ", "Hungry  ", "Weak    ",
+/* hu_stat: per-env, see nh_globals.h */
+const char *const nh_tmpl_hu_stat[] =
+{ "Satiated", "        ", "Hungry  ", "Weak    ",
                           "Fainting", "Fainted ", "Starved " };
 
 /*
@@ -85,7 +87,7 @@ register struct obj *obj;
 {
     /* protect invocation tools but not Rider corpses (handled elsewhere)*/
     /* if (obj->oclass != FOOD_CLASS && obj_resists(obj, 0, 0)) */
-    if (objects[obj->otyp].oc_unique)
+    if (NH_G(objects)[obj->otyp].oc_unique)
         return FALSE;
     /* above also prevents the Amulet from being eaten, so we must never
        allow fake amulets to be eaten either [which is already the case] */
@@ -148,7 +150,7 @@ static const struct {
                 { "", 0, 0, 0 } };
 #define TTSZ SIZE(tintxts)
 
-static char *eatmbuf = 0; /* set by cpostfx() */
+#define eatmbuf (nh_g->s_eat_c_eatmbuf) /* set by cpostfx() */
 
 /* called after mimicing is over */
 STATIC_PTR int
@@ -259,7 +261,7 @@ struct obj *food;
         morehungry(1000); /* you just got *very* sick! */
         vomit();
     } else {
-        killer.format = KILLED_BY_AN;
+        NH_G(killer).format = KILLED_BY_AN;
         /*
          * Note all "killer"s below read "Choked on %s" on the
          * high score list & tombstone.  So plan accordingly.
@@ -267,14 +269,14 @@ struct obj *food;
         if (food) {
             You("choke over your %s.", foodword(food));
             if (food->oclass == COIN_CLASS) {
-                Strcpy(killer.name, "very rich meal");
+                Strcpy(NH_G(killer).name, "very rich meal");
             } else {
-                killer.format = KILLED_BY;
-                Strcpy(killer.name, killer_xname(food));
+                NH_G(killer).format = KILLED_BY;
+                Strcpy(NH_G(killer).name, killer_xname(food));
             }
         } else {
             You("choke over it.");
-            Strcpy(killer.name, "quick snack");
+            Strcpy(NH_G(killer).name, "quick snack");
         }
         You("die...");
         done(CHOKING);
@@ -318,7 +320,7 @@ struct obj *otmp;
 {
     unsigned nut = (otmp->otyp == CORPSE) ? mons[otmp->corpsenm].cnutrit
                       : otmp->globby ? otmp->owt
-                         : (unsigned) objects[otmp->otyp].oc_nutrition;
+                         : (unsigned) NH_G(objects)[otmp->otyp].oc_nutrition;
 
     if (otmp->otyp == LEMBAS_WAFER) {
         if (maybe_polyd(is_elf(youmonst.data), Race_if(PM_ELF)))
@@ -328,7 +330,7 @@ struct obj *otmp;
         /* prevent polymorph making a partly eaten wafer
            become more nutritious than an untouched one */
         if (otmp->oeaten >= nut)
-            otmp->oeaten = (otmp->oeaten < objects[LEMBAS_WAFER].oc_nutrition)
+            otmp->oeaten = (otmp->oeaten < NH_G(objects)[LEMBAS_WAFER].oc_nutrition)
                               ? (nut - 1) : nut;
     } else if (otmp->otyp == CRAM_RATION) {
         if (maybe_polyd(is_dwarf(youmonst.data), Race_if(PM_DWARF)))
@@ -552,8 +554,8 @@ int *dmg_p; /* for dishing out extra damage in lieu of Int loss */
             return MM_MISS;
         } else if (is_rider(pd)) {
             pline("Ingesting that is fatal.");
-            Sprintf(killer.name, "unwisely ate the brain of %s", pd->mname);
-            killer.format = NO_KILLER_PREFIX;
+            Sprintf(NH_G(killer).name, "unwisely ate the brain of %s", pd->mname);
+            NH_G(killer).format = NO_KILLER_PREFIX;
             done(DIED);
             /* life-saving needed to reach here */
             exercise(A_WIS, FALSE);
@@ -583,8 +585,8 @@ int *dmg_p; /* for dishing out extra damage in lieu of Int loss */
             static NEARDATA const char brainlessness[] = "brainlessness";
 
             if (Lifesaved) {
-                Strcpy(killer.name, brainlessness);
-                killer.format = KILLED_BY;
+                Strcpy(NH_G(killer).name, brainlessness);
+                NH_G(killer).format = KILLED_BY;
                 done(DIED);
                 /* amulet of life saving has now been used up */
                 pline("Unfortunately your brain is still gone.");
@@ -594,8 +596,8 @@ int *dmg_p; /* for dishing out extra damage in lieu of Int loss */
             } else {
                 Your("last thought fades away.");
             }
-            Strcpy(killer.name, brainlessness);
-            killer.format = KILLED_BY;
+            Strcpy(NH_G(killer).name, brainlessness);
+            NH_G(killer).format = KILLED_BY;
             done(DIED);
             /* can only get here when in wizard or explore mode and user has
                explicitly chosen not to die; arbitrarily boost intelligence */
@@ -643,15 +645,15 @@ maybe_cannibal(pm, allowmsg)
 int pm;
 boolean allowmsg;
 {
-    static NEARDATA long ate_brains = 0L;
+    /* ate_brains: per-env nh_g->l_eat_c_maybe_cannibal_ate_brains */
     struct permonst *fptr = &mons[pm]; /* food type */
 
     /* when poly'd into a mind flayer, multiple tentacle hits in one
        turn cause multiple digestion checks to occur; avoid giving
        multiple luck penalties for the same attack */
-    if (moves == ate_brains)
+    if (moves == NH_G(l_eat_c_maybe_cannibal_ate_brains))
         return FALSE;
-    ate_brains = moves; /* ate_anything, not just brains... */
+    NH_G(l_eat_c_maybe_cannibal_ate_brains) = moves; /* ate_anything, not just brains... */
 
     if (!CANNIBAL_ALLOWED()
         /* non-cannibalistic heroes shouldn't eat own species ever
@@ -682,8 +684,8 @@ register int pm;
         if (!Stone_resistance
             && !(poly_when_stoned(youmonst.data)
                  && polymon(PM_STONE_GOLEM))) {
-            Sprintf(killer.name, "tasting %s meat", mons[pm].mname);
-            killer.format = KILLED_BY;
+            Sprintf(NH_G(killer).name, "tasting %s meat", mons[pm].mname);
+            NH_G(killer).format = KILLED_BY;
             You("turn to stone.");
             done(STONING);
             if (context.victual.piece)
@@ -713,8 +715,8 @@ register int pm;
     case PM_PESTILENCE:
     case PM_FAMINE: {
         pline("Eating that is instantly fatal.");
-        Sprintf(killer.name, "unwisely ate the body of %s", mons[pm].mname);
-        killer.format = NO_KILLER_PREFIX;
+        Sprintf(NH_G(killer).name, "unwisely ate the body of %s", mons[pm].mname);
+        NH_G(killer).format = NO_KILLER_PREFIX;
         done(DIED);
         /* life-saving needed to reach here */
         exercise(A_WIS, FALSE);
@@ -1346,7 +1348,7 @@ const char *mesg;
 
         pline("It smells like %s.", what);
         if (yn("Eat it?") == 'n') {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 You("discard the open tin.");
             if (!Hallucination)
                 tin->dknown = tin->known = 1;
@@ -1393,7 +1395,7 @@ const char *mesg;
         }
 
         if (yn("Eat it?") == 'n') {
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 You("discard the open tin.");
             tin = costly_tin(COST_OPEN);
             goto use_up_tin;
@@ -1415,7 +1417,7 @@ const char *mesg;
                      get it if at-maximum and fixed-abil both apply */
                   : !Fixed_abil ? "Popeye"
                   /* no gain, feel like another character from Popeye */
-                  : (flags.female ? "Olive Oyl" : "Bluto"));
+                  : (NH_G(flags).female ? "Olive Oyl" : "Bluto"));
         gainstr(tin, 0, FALSE);
 
         tin = costly_tin(COST_OPEN);
@@ -1738,7 +1740,7 @@ boolean already_partly_eaten;
                 fmt_ptr((genericptr_t) otmp),
                 fmt_ptr((genericptr_t) context.victual.piece));
     debugpline1("reqtime = %d", context.victual.reqtime);
-    debugpline1("(original reqtime = %d)", objects[otmp->otyp].oc_delay);
+    debugpline1("(original reqtime = %d)", NH_G(objects)[otmp->otyp].oc_delay);
     debugpline1("nmod = %d", context.victual.nmod);
     debugpline1("oeaten = %d", otmp->oeaten);
     context.victual.fullwarn = context.victual.doreset = FALSE;
@@ -1776,8 +1778,8 @@ boolean already_partly_eaten;
         return;
     }
 
-    Sprintf(msgbuf, "eating %s", food_xname(otmp, TRUE));
-    set_occupation(eatfood, msgbuf, 0);
+    Sprintf(NH_G(msgbuf), "eating %s", food_xname(otmp, TRUE));
+    set_occupation(eatfood, NH_G(msgbuf), 0);
 }
 
 /*
@@ -1949,7 +1951,7 @@ struct obj *otmp;
 
     /* Note: rings are not so common that this is unbalancing. */
     /* (How often do you even _find_ 3 rings of polymorph in a game?) */
-    oldprop = u.uprops[objects[typ].oc_oprop].intrinsic;
+    oldprop = u.uprops[NH_G(objects)[typ].oc_oprop].intrinsic;
     if (otmp == uleft || otmp == uright) {
         Ring_gone(otmp);
         if (u.uhp <= 0)
@@ -1959,13 +1961,13 @@ struct obj *otmp;
     if (!rn2(otmp->oclass == RING_CLASS ? 3 : 5)) {
         switch (otmp->otyp) {
         default:
-            if (!objects[typ].oc_oprop)
+            if (!NH_G(objects)[typ].oc_oprop)
                 break; /* should never happen */
 
-            if (!(u.uprops[objects[typ].oc_oprop].intrinsic & FROMOUTSIDE))
+            if (!(u.uprops[NH_G(objects)[typ].oc_oprop].intrinsic & FROMOUTSIDE))
                 accessory_has_effect(otmp);
 
-            u.uprops[objects[typ].oc_oprop].intrinsic |= FROMOUTSIDE;
+            u.uprops[NH_G(objects)[typ].oc_oprop].intrinsic |= FROMOUTSIDE;
 
             switch (typ) {
             case RIN_SEE_INVISIBLE:
@@ -2047,7 +2049,7 @@ struct obj *otmp;
             makeknown(typ);
             change_sex();
             You("are suddenly very %s!",
-                flags.female ? "feminine" : "masculine");
+                NH_G(flags).female ? "feminine" : "masculine");
             context.botl = 1;
             break;
         case AMULET_OF_UNCHANGING:
@@ -2105,7 +2107,7 @@ eatspecial()
         vault_gd_watching(GD_EATGOLD);
         return;
     }
-    if (objects[otmp->otyp].oc_material == PAPER) {
+    if (NH_G(objects)[otmp->otyp].oc_material == PAPER) {
 #ifdef MAIL
         if (otmp->otyp == SCR_MAIL)
             /* no nutrition */
@@ -2117,7 +2119,7 @@ eatspecial()
             pline("Yuck%c", otmp->blessed ? '!' : '.');
         else if (otmp->oclass == SCROLL_CLASS
                  /* check description after checking for specific scrolls */
-                 && !strcmpi(OBJ_DESCR(objects[otmp->otyp]), "YUM YUM"))
+                 && !strcmpi(OBJ_DESCR(NH_G(objects)[otmp->otyp]), "YUM YUM"))
             pline("Yum%c", otmp->blessed ? '!' : '.');
         else
             pline("Needs salt...");
@@ -2176,10 +2178,10 @@ struct obj *otmp;
 {
     if (otmp->oclass == FOOD_CLASS)
         return "food";
-    if (otmp->oclass == GEM_CLASS && objects[otmp->otyp].oc_material == GLASS
+    if (otmp->oclass == GEM_CLASS && NH_G(objects)[otmp->otyp].oc_material == GLASS
         && otmp->dknown)
         makeknown(otmp->otyp);
-    return foodwords[objects[otmp->otyp].oc_material];
+    return foodwords[NH_G(objects)[otmp->otyp].oc_material];
 }
 
 /* called after consuming (non-corpse) food */
@@ -2221,8 +2223,8 @@ struct obj *otmp;
                     u.uhpmax++;
                 u.uhp = u.uhpmax;
             } else if (u.uhp <= 0) {
-                killer.format = KILLED_BY_AN;
-                Strcpy(killer.name, "rotten lump of royal jelly");
+                NH_G(killer).format = KILLED_BY_AN;
+                Strcpy(NH_G(killer).name, "rotten lump of royal jelly");
                 done(POISONING);
             }
         }
@@ -2235,9 +2237,9 @@ struct obj *otmp;
                 && !(poly_when_stoned(youmonst.data)
                      && polymon(PM_STONE_GOLEM))) {
                 if (!Stoned) {
-                    Sprintf(killer.name, "%s egg",
+                    Sprintf(NH_G(killer).name, "%s egg",
                             mons[otmp->corpsenm].mname);
-                    make_stoned(5L, (char *) 0, KILLED_BY_AN, killer.name);
+                    make_stoned(5L, (char *) 0, KILLED_BY_AN, NH_G(killer).name);
                 }
             }
             /* note: no "tastes like chicken" message for eggs */
@@ -2256,7 +2258,7 @@ struct obj *otmp;
                won't have to wait for a prince to be rescued/revived */
             if (Race_if(PM_DWARF) && Hallucination)
                 verbalize("Heigh-ho, ho-hum, I think I'll skip work today.");
-            else if (Deaf || !flags.acoustics)
+            else if (Deaf || !NH_G(flags).acoustics)
                 You("fall asleep.");
             else
                 You_hear("sinister laughter as you fall asleep...");
@@ -2304,7 +2306,7 @@ struct obj *otmp;
          it_or_they[QBUFSZ], eat_it_anyway[QBUFSZ];
     boolean cadaver = (otmp->otyp == CORPSE || otmp->globby),
             stoneorslime = FALSE;
-    int material = objects[otmp->otyp].oc_material, mnum = otmp->corpsenm;
+    int material = NH_G(objects)[otmp->otyp].oc_material, mnum = otmp->corpsenm;
     long rotted = 0L;
 
     Strcpy(foodsmell, Tobjnam(otmp, "smell"));
@@ -2527,8 +2529,8 @@ doeat()
     if (otmp->otyp == RIN_SLOW_DIGESTION) {
         pline("This ring is indigestible!");
         (void) rottenfood(otmp);
-        if (otmp->dknown && !objects[otmp->otyp].oc_name_known
-            && !objects[otmp->otyp].oc_uname)
+        if (otmp->dknown && !NH_G(objects)[otmp->otyp].oc_name_known
+            && !NH_G(objects)[otmp->otyp].oc_uname)
             docall(otmp);
         return 1;
     }
@@ -2551,7 +2553,7 @@ doeat()
             basenutrit = weight(otmp);
         /* oc_nutrition is usually weight anyway */
         else
-            basenutrit = objects[otmp->otyp].oc_nutrition;
+            basenutrit = NH_G(objects)[otmp->otyp].oc_nutrition;
 #ifdef MAIL
         if (otmp->otyp == SCR_MAIL) {
             basenutrit = 0;
@@ -2561,7 +2563,7 @@ doeat()
         context.victual.nmod = basenutrit;
         context.victual.eating = TRUE; /* needed for lesshungry() */
 
-        material = objects[otmp->otyp].oc_material;
+        material = NH_G(objects)[otmp->otyp].oc_material;
         if (material == LEATHER || material == BONE
             || material == DRAGON_HIDE) {
             u.uconduct.unvegan++;
@@ -2573,7 +2575,7 @@ doeat()
         if (otmp->cursed) {
             (void) rottenfood(otmp);
             nodelicious = TRUE;
-        } else if (objects[otmp->otyp].oc_material == PAPER)
+        } else if (NH_G(objects)[otmp->otyp].oc_material == PAPER)
             nodelicious = TRUE;
 
         if (otmp->oclass == WEAPON_CLASS && otmp->opoisoned) {
@@ -2654,7 +2656,7 @@ doeat()
         /* No checks for WAX, LEATHER, BONE, DRAGON_HIDE.  These are
          * all handled in the != FOOD_CLASS case, above.
          */
-        switch (objects[otmp->otyp].oc_material) {
+        switch (NH_G(objects)[otmp->otyp].oc_material) {
         case FLESH:
             u.uconduct.unvegan++;
             if (otmp->otyp != EGG) {
@@ -2670,7 +2672,7 @@ doeat()
             break;
         }
 
-        context.victual.reqtime = objects[otmp->otyp].oc_delay;
+        context.victual.reqtime = NH_G(objects)[otmp->otyp].oc_delay;
         if (otmp->otyp != FORTUNE_COOKIE
             && (otmp->cursed || (!nonrotting_food(otmp->otyp)
                                  && (monstermoves - otmp->age)
@@ -2820,7 +2822,7 @@ gethungry()
            Slow digestion cancels move hunger but still causes ring hunger. */
         switch ((int) (moves % 20)) { /* note: use even cases only */
         case 4:
-            if (uleft && (uleft->spe || !objects[uleft->otyp].oc_charged))
+            if (uleft && (uleft->spe || !NH_G(objects)[uleft->otyp].oc_charged))
                 u.uhunger--;
             break;
         case 8:
@@ -2828,7 +2830,7 @@ gethungry()
                 u.uhunger--;
             break;
         case 12:
-            if (uright && (uright->spe || !objects[uright->otyp].oc_charged))
+            if (uright && (uright->spe || !NH_G(objects)[uright->otyp].oc_charged))
                 u.uhunger--;
             break;
         case 16:
@@ -2929,8 +2931,8 @@ newuhs(incr)
 boolean incr;
 {
     unsigned newhs;
-    static unsigned save_hs;
-    static boolean saved_hs = FALSE;
+    /* save_hs: per-env nh_g->l_eat_c_newuhs_save_hs */
+    /* saved_hs: per-env nh_g->l_eat_c_newuhs_saved_hs */
     int h = u.uhunger;
 
     newhs = (h > 1000)
@@ -2961,16 +2963,16 @@ boolean incr;
      * gap to fit two bites.
      */
     if (occupation == eatfood || force_save_hs) {
-        if (!saved_hs) {
-            save_hs = u.uhs;
-            saved_hs = TRUE;
+        if (!NH_G(l_eat_c_newuhs_saved_hs)) {
+            NH_G(l_eat_c_newuhs_save_hs) = u.uhs;
+            NH_G(l_eat_c_newuhs_saved_hs) = TRUE;
         }
         u.uhs = newhs;
         return;
     } else {
-        if (saved_hs) {
-            u.uhs = save_hs;
-            saved_hs = FALSE;
+        if (NH_G(l_eat_c_newuhs_saved_hs)) {
+            u.uhs = NH_G(l_eat_c_newuhs_save_hs);
+            NH_G(l_eat_c_newuhs_saved_hs) = FALSE;
         }
     }
 
@@ -3006,8 +3008,8 @@ boolean incr;
             context.botl = 1;
             bot();
             You("die from starvation.");
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, "starvation");
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, "starvation");
             done(STARVING);
             /* if we return, we lifesaved, and that calls newuhs */
             return;
@@ -3073,8 +3075,8 @@ boolean incr;
         bot();
         if ((Upolyd ? u.mh : u.uhp) < 1) {
             You("die from hunger and exhaustion.");
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, "exhaustion");
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, "exhaustion");
             done(STARVING);
             return;
         }
@@ -3141,7 +3143,7 @@ int corpsecheck; /* 0, no check, 1, corpses, 2, tinnable corpses */
     }
 
     /* Is there some food (probably a heavy corpse) here on the ground? */
-    for (otmp = level.objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
+    for (otmp = NH_G(level).objects[u.ux][u.uy]; otmp; otmp = otmp->nexthere) {
         if (corpsecheck
                 ? (otmp->otyp == CORPSE
                    && (corpsecheck == 1 || tinnable(otmp)))

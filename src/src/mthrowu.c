@@ -26,8 +26,8 @@ STATIC_OVL NEARDATA const char *breathwep[] = {
     "strange breath #9"
 };
 
-extern boolean notonhead; /* for long worms */
-STATIC_VAR int mesg_given; /* for m_throw()/thitu() 'miss' message */
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
+#define mesg_given (nh_g->s_mthrowu_c_mesg_given) /* for m_throw()/thitu() 'miss' message */
 
 /* hero is hit by something other than a monster */
 int
@@ -63,7 +63,7 @@ const char *name; /* if null, then format `*objp' */
 
     if (u.uac + tlev <= (dieroll = rnd(20))) {
         ++mesg_given;
-        if (Blind || !flags.verbose) {
+        if (Blind || !NH_G(flags).verbose) {
             pline("It misses.");
         } else if (u.uac + tlev <= dieroll - 2) {
             if (onm != onmbuf)
@@ -73,7 +73,7 @@ const char *name; /* if null, then format `*objp' */
             You("are almost hit by %s.", onm);
         return 0;
     } else {
-        if (Blind || !flags.verbose)
+        if (Blind || !NH_G(flags).verbose)
             You("are hit%s", exclam(dam));
         else
             You("are hit by %s%s", onm, exclam(dam));
@@ -86,7 +86,7 @@ const char *name; /* if null, then format `*objp' */
             potionhit(&youmonst, obj, POTHIT_OTHER_THROW);
             *objp = obj = 0; /* potionhit() uses up the potion */
         } else {
-            if (obj && objects[obj->otyp].oc_material == SILVER
+            if (obj && NH_G(objects)[obj->otyp].oc_material == SILVER
                 && Hate_silver) {
                 /* extra damage already applied by dmgval() */
                 pline_The("silver sears your flesh!");
@@ -148,9 +148,9 @@ int x, y;
 }
 
 /* The monster that's being shot at when one monster shoots at another */
-STATIC_OVL struct monst *target = 0;
+#define target (nh_g->s_mthrowu_c_target)
 /* The monster that's doing the shooting/throwing */
-STATIC_OVL struct monst *archer = 0;
+#define archer (nh_g->s_mthrowu_c_archer)
 
 /* calculate multishot volley count for mtmp throwing otmp (if not ammo) or
    shooting otmp with mwep (if otmp is ammo and mwep appropriate launcher) */
@@ -159,7 +159,7 @@ monmulti(mtmp, otmp, mwep)
 struct monst *mtmp;
 struct obj *otmp, *mwep;
 {
-    int skill = (int) objects[otmp->otyp].oc_skill;
+    int skill = (int) NH_G(objects)[otmp->otyp].oc_skill;
     int multishot = 1;
 
     if (otmp->quan > 1L /* no point checking if there's only 1 */
@@ -386,7 +386,7 @@ boolean verbose;    /* give message(s) even when you can't see what happened */
                 }
             }
         }
-        if (objects[otmp->otyp].oc_material == SILVER
+        if (NH_G(objects)[otmp->otyp].oc_material == SILVER
             && mon_hates_silver(mtmp)) {
             boolean flesh = (!noncorporeal(mtmp->data)
                              && !amorphous(mtmp->data));
@@ -521,7 +521,7 @@ struct obj *obj;         /* missile (or stack providing it) */
     singleobj->owornmask = 0; /* threw one of multiple weapons in hand? */
 
     if ((singleobj->cursed || singleobj->greased) && (dx || dy) && !rn2(7)) {
-        if (canseemon(mon) && flags.verbose) {
+        if (canseemon(mon) && NH_G(flags).verbose) {
             if (is_ammo(singleobj))
                 pline("%s misfires!", Monnam(mon));
             else
@@ -611,7 +611,7 @@ struct obj *obj;         /* missile (or stack providing it) */
                 if (hitv < -4)
                     hitv = -4;
                 if (is_elf(mon->data)
-                    && objects[singleobj->otyp].oc_skill == P_BOW) {
+                    && NH_G(objects)[singleobj->otyp].oc_skill == P_BOW) {
                     hitv++;
                     if (MON_WEP(mon) && MON_WEP(mon)->otyp == ELVEN_BOW)
                         hitv++;
@@ -1145,8 +1145,8 @@ boolean your_fault, from_invent;
     else if (obj_type == BOULDER || obj_type == HEAVY_IRON_BALL)
         pline("Whang!");
     else if (otmp->oclass == COIN_CLASS
-             || objects[obj_type].oc_material == GOLD
-             || objects[obj_type].oc_material == SILVER)
+             || NH_G(objects)[obj_type].oc_material == GOLD
+             || NH_G(objects)[obj_type].oc_material == SILVER)
         pline("Clink!");
     else
         pline("Clonk!");
@@ -1167,7 +1167,7 @@ int whodidit;   /* 1==hero, 0=other, -1==just check whether it'll pass thru */
     if (!hits)
         switch (otmp->oclass) {
         case WEAPON_CLASS: {
-            int oskill = objects[obj_type].oc_skill;
+            int oskill = NH_G(objects)[obj_type].oc_skill;
 
             hits = (oskill != -P_BOW && oskill != -P_CROSSBOW
                     && oskill != -P_DART && oskill != -P_SHURIKEN
@@ -1176,7 +1176,7 @@ int whodidit;   /* 1==hero, 0=other, -1==just check whether it'll pass thru */
             break;
         }
         case ARMOR_CLASS:
-            hits = (objects[obj_type].oc_armcat != ARM_GLOVES);
+            hits = (NH_G(objects)[obj_type].oc_armcat != ARM_GLOVES);
             break;
         case TOOL_CLASS:
             hits = (obj_type != SKELETON_KEY && obj_type != LOCK_PICK

@@ -810,7 +810,7 @@ xchar x, y; /* clone's preferred location or 0 (near mon) */
     struct monst *m2;
 
     /* may be too weak or have been extinguished for population control */
-    if (mon->mhp <= 1 || (mvitals[monsndx(mon->data)].mvflags & G_EXTINCT))
+    if (mon->mhp <= 1 || (NH_G(mvitals)[monsndx(mon->data)].mvflags & G_EXTINCT))
         return (struct monst *) 0;
 
     if (x == 0) {
@@ -928,24 +928,24 @@ boolean ghostly;
 {
     boolean result;
     uchar lim = mbirth_limit(mndx);
-    boolean gone = (mvitals[mndx].mvflags & G_GONE) != 0; /* geno'd|extinct */
+    boolean gone = (NH_G(mvitals)[mndx].mvflags & G_GONE) != 0; /* geno'd|extinct */
 
-    result = (((int) mvitals[mndx].born < lim) && !gone) ? TRUE : FALSE;
+    result = (((int) NH_G(mvitals)[mndx].born < lim) && !gone) ? TRUE : FALSE;
 
     /* if it's unique, don't ever make it again */
     if ((mons[mndx].geno & G_UNIQ) && mndx != PM_HIGH_PRIEST)
-        mvitals[mndx].mvflags |= G_EXTINCT;
+        NH_G(mvitals)[mndx].mvflags |= G_EXTINCT;
 
-    if (mvitals[mndx].born < 255 && tally
+    if (NH_G(mvitals)[mndx].born < 255 && tally
         && (!ghostly || (ghostly && result)))
-        mvitals[mndx].born++;
-    if ((int) mvitals[mndx].born >= lim && !(mons[mndx].geno & G_NOGEN)
-        && !(mvitals[mndx].mvflags & G_EXTINCT)) {
+        NH_G(mvitals)[mndx].born++;
+    if ((int) NH_G(mvitals)[mndx].born >= lim && !(mons[mndx].geno & G_NOGEN)
+        && !(NH_G(mvitals)[mndx].mvflags & G_EXTINCT)) {
         if (wizard) {
             debugpline1("Automatically extinguished %s.",
                         makeplural(mons[mndx].mname));
         }
-        mvitals[mndx].mvflags |= G_EXTINCT;
+        NH_G(mvitals)[mndx].mvflags |= G_EXTINCT;
         reset_rndmonst(mndx);
     }
     return result;
@@ -1155,9 +1155,9 @@ int mmflags;
         mndx = monsndx(ptr);
         /* if you are to make a specific monster and it has
            already been genocided, return */
-        if (mvitals[mndx].mvflags & G_GENOD)
+        if (NH_G(mvitals)[mndx].mvflags & G_GENOD)
             return (struct monst *) 0;
-        if (wizard && (mvitals[mndx].mvflags & G_EXTINCT)) {
+        if (wizard && (NH_G(mvitals)[mndx].mvflags & G_EXTINCT)) {
             debugpline1("Explicitly creating extinct monster %s.",
                         mons[mndx].mname);
         }
@@ -1468,7 +1468,7 @@ int mndx;
 {
     if (mons[mndx].geno & (G_NOGEN | G_UNIQ))
         return TRUE;
-    if (mvitals[mndx].mvflags & G_GONE)
+    if (NH_G(mvitals)[mndx].mvflags & G_GONE)
         return TRUE;
     if (Inhell)
         return (boolean) (mons[mndx].maligntyp > A_NEUTRAL);
@@ -1485,15 +1485,15 @@ STATIC_OVL int
 align_shift(ptr)
 register struct permonst *ptr;
 {
-    static NEARDATA long oldmoves = 0L; /* != 1, starting value of moves */
-    static NEARDATA s_level *lev;
+    /* oldmoves: per-env nh_g->l_makemon_c_align_shift_oldmoves */ /* != 1, starting value of moves */
+    /* lev: per-env nh_g->l_makemon_c_align_shift_lev */
     register int alshift;
 
-    if (oldmoves != moves) {
-        lev = Is_special(&u.uz);
-        oldmoves = moves;
+    if (NH_G(l_makemon_c_align_shift_oldmoves) != moves) {
+        NH_G(l_makemon_c_align_shift_lev) = Is_special(&u.uz);
+        NH_G(l_makemon_c_align_shift_oldmoves) = moves;
     }
-    switch ((lev) ? lev->flags.align : dungeons[u.uz.dnum].flags.align) {
+    switch ((NH_G(l_makemon_c_align_shift_lev)) ? NH_G(l_makemon_c_align_shift_lev)->flags.align : dungeons[u.uz.dnum].flags.align) {
     default: /* just in case */
     case AM_NONE:
         alshift = 0;
@@ -1511,10 +1511,9 @@ register struct permonst *ptr;
     return alshift;
 }
 
-static NEARDATA struct {
-    int choice_count;
-    char mchoices[SPECIAL_PM]; /* value range is 0..127 */
-} rndmonst_state = { -1, { 0 } };
+#define rndmonst_state (nh_g->s_makemon_c_rndmonst_state)
+const struct nh_anon_s_makemon_c_rndmonst_state nh_tmpl_s_makemon_c_rndmonst_state =
+{ -1, { 0 } };
 
 /* select a random monster type */
 struct permonst *
@@ -1622,7 +1621,7 @@ int mndx, mvflagsmask, genomask;
 {
     struct permonst *ptr = &mons[mndx];
 
-    if (mvitals[mndx].mvflags & mvflagsmask)
+    if (NH_G(mvitals)[mndx].mvflags & mvflagsmask)
         return FALSE;
     if (ptr->geno & genomask)
         return FALSE;
@@ -1763,7 +1762,7 @@ register struct permonst *ptr;
         /* does not depend on other strengths, but does get stronger
          * every time he is killed
          */
-        tmp = ptr->mlevel + mvitals[PM_WIZARD_OF_YENDOR].died;
+        tmp = ptr->mlevel + NH_G(mvitals)[PM_WIZARD_OF_YENDOR].died;
         if (tmp > 49)
             tmp = 49;
         return tmp;
@@ -1860,7 +1859,7 @@ struct monst *mtmp, *victim;
         /* new form might force gender change */
         fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp->female;
 
-        if (mvitals[newtype].mvflags & G_GENOD) { /* allow G_EXTINCT */
+        if (NH_G(mvitals)[newtype].mvflags & G_GENOD) { /* allow G_EXTINCT */
             if (canspotmon(mtmp))
                 pline("As %s grows up into %s, %s %s!", mon_nam(mtmp),
                       an(ptr->mname), mhe(mtmp),
@@ -2154,7 +2153,7 @@ register struct monst *mtmp;
 
     if (OBJ_AT(mx, my)) {
         ap_type = M_AP_OBJECT;
-        appear = level.objects[mx][my]->otyp;
+        appear = NH_G(level).objects[mx][my]->otyp;
     } else if (IS_DOOR(typ) || IS_WALL(typ) || typ == SDOOR || typ == SCORR) {
         ap_type = M_AP_FURNITURE;
         /*
@@ -2174,7 +2173,7 @@ register struct monst *mtmp;
             appear = Is_rogue_level(&u.uz) ? S_hwall : S_hcdoor;
         else
             appear = Is_rogue_level(&u.uz) ? S_vwall : S_vcdoor;
-    } else if (level.flags.is_maze_lev && !In_sokoban(&u.uz) && rn2(2)) {
+    } else if (NH_G(level).flags.is_maze_lev && !In_sokoban(&u.uz) && rn2(2)) {
         ap_type = M_AP_OBJECT;
         appear = STATUE;
     } else if (roomno < 0 && !t_at(mx, my)) {
@@ -2237,7 +2236,7 @@ register struct monst *mtmp;
         && (appear == STATUE || appear == FIGURINE
             || appear == CORPSE || appear == EGG || appear == TIN)) {
         int mndx = rndmonnum(),
-            nocorpse_ndx = (mvitals[mndx].mvflags & G_NOCORPSE) != 0;
+            nocorpse_ndx = (NH_G(mvitals)[mndx].mvflags & G_NOCORPSE) != 0;
 
         if (appear == CORPSE && nocorpse_ndx)
             mndx = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
@@ -2255,7 +2254,7 @@ register struct monst *mtmp;
            assigns a new fruit name; override that--having a mimic as the
            current_fruit is equivalent to creating an instance of that
            fruit (no-op if a fruit of this type has actually been made) */
-        flags.made_fruit = TRUE;
+        NH_G(flags).made_fruit = TRUE;
     } else if (ap_type == M_AP_FURNITURE && appear == S_altar) {
         int algn = rn2(3) - 1; /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
 
@@ -2285,7 +2284,7 @@ int *seencount;  /* secondary output */
         /* if tipping known empty bag, give normal empty container message */
         pline1((tipping && bag->cknown) ? "It's empty." : nothing_happens);
         /* now known to be empty if sufficiently discovered */
-        if (bag->dknown && objects[bag->otyp].oc_name_known)
+        if (bag->dknown && NH_G(objects)[bag->otyp].oc_name_known)
             bag->cknown = 1;
     } else {
         struct monst *mtmp;

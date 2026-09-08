@@ -19,7 +19,7 @@
  * Returns the head of the list of objects that the player can see
  * at location (x,y).
  */
-#define vobj_at(x, y) (level.objects[x][y])
+#define vobj_at(x, y) (NH_G(level).objects[x][y])
 
 /*
  * sensemon()
@@ -128,7 +128,7 @@
  * definition here is convenient.
  */
 #define is_safepet(mon)                                                   \
-    (mon && mon->mtame && canspotmon(mon) && flags.safe_dog && !Confusion \
+    (mon && mon->mtame && canspotmon(mon) && NH_G(flags).safe_dog && !Confusion \
      && !Hallucination && !Stunned)
 
 /*
@@ -352,9 +352,9 @@
 /* The hero's glyph when seen as a monster.
  */
 #define hero_glyph                                                    \
-    monnum_to_glyph((Upolyd || !flags.showrace)                       \
+    monnum_to_glyph((Upolyd || !NH_G(flags).showrace)                       \
                         ? u.umonnum                                   \
-                        : (flags.female && urace.femalenum != NON_PM) \
+                        : (NH_G(flags).female && urace.femalenum != NON_PM) \
                               ? urace.femalenum                       \
                               : urace.malenum)
 

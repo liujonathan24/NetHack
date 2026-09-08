@@ -169,13 +169,13 @@ int show;
     if (!cansee(x, y) && !lev->waslit) {
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
         if (lev->typ == ROOM && glyph == cmap_to_glyph(S_room))
-            glyph = cmap_to_glyph((flags.dark_room && iflags.use_color)
+            glyph = cmap_to_glyph((NH_G(flags).dark_room && iflags.use_color)
                                       ? (DARKROOMSYM)
                                       : S_stone);
         else if (lev->typ == CORR && glyph == cmap_to_glyph(S_litcorr))
             glyph = cmap_to_glyph(S_corr);
     }
-    if (level.flags.hero_memory)
+    if (NH_G(level).flags.hero_memory)
         lev->glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -211,7 +211,7 @@ register int show;
 {
     register int glyph = back_to_glyph(x, y);
 
-    if (level.flags.hero_memory)
+    if (NH_G(level).flags.hero_memory)
         levl[x][y].glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -231,7 +231,7 @@ register int show;
     register int x = trap->tx, y = trap->ty;
     register int glyph = trap_to_glyph(trap, newsym_rn2);
 
-    if (level.flags.hero_memory)
+    if (NH_G(level).flags.hero_memory)
         levl[x][y].glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -251,7 +251,7 @@ register int show;
     register int x = obj->ox, y = obj->oy;
     register int glyph = obj_to_glyph(obj, newsym_rn2);
 
-    if (level.flags.hero_memory) {
+    if (NH_G(level).flags.hero_memory) {
         /* MRKR: While hallucinating, statues are seen as random monsters */
         /*       but remembered as random objects.                        */
 
@@ -279,7 +279,7 @@ map_invisible(x, y)
 register xchar x, y;
 {
     if (x != u.ux || y != u.uy) { /* don't display I at hero's location */
-        if (level.flags.hero_memory)
+        if (NH_G(level).flags.hero_memory)
             levl[x][y].glyph = GLYPH_INVISIBLE;
         show_glyph(x, y, GLYPH_INVISIBLE);
     }
@@ -313,7 +313,7 @@ register int x, y;
 {
     register struct trap *trap;
 
-    if (!level.flags.hero_memory)
+    if (!NH_G(level).flags.hero_memory)
         return;
 
     if ((trap = t_at(x, y)) != 0 && trap->tseen && !covers_traps(x, y)) {
@@ -662,7 +662,7 @@ xchar x, y;
                 do_room_glyph = TRUE;
             }
             if (do_room_glyph) {
-                lev->glyph = (flags.dark_room && iflags.use_color
+                lev->glyph = (NH_G(flags).dark_room && iflags.use_color
                               && !Is_rogue_level(&u.uz))
                                  ? cmap_to_glyph(S_darkroom)
                                  : (lev->waslit ? cmap_to_glyph(S_room)
@@ -677,7 +677,7 @@ xchar x, y;
             if (lev->typ == CORR && lev->glyph == cmap_to_glyph(S_litcorr)
                 && !lev->waslit)
                 show_glyph(x, y, lev->glyph = cmap_to_glyph(S_corr));
-            else if (lev->typ == ROOM && flags.dark_room && iflags.use_color
+            else if (lev->typ == ROOM && NH_G(flags).dark_room && iflags.use_color
                      && lev->glyph == cmap_to_glyph(S_room))
                 show_glyph(x, y, lev->glyph = cmap_to_glyph(S_darkroom));
         }
@@ -693,13 +693,13 @@ xchar x, y;
              * the wrong glyph.
              */
             if (uchain->ox == x && uchain->oy == y) {
-                if (level.objects[x][y] == uchain)
+                if (NH_G(level).objects[x][y] == uchain)
                     u.bc_felt |= BC_CHAIN;
                 else
                     u.bc_felt &= ~BC_CHAIN; /* do not feel the chain */
             }
             if (!carried(uball) && uball->ox == x && uball->oy == y) {
-                if (level.objects[x][y] == uball)
+                if (NH_G(level).objects[x][y] == uball)
                     u.bc_felt |= BC_BALL;
                 else
                     u.bc_felt &= ~BC_BALL; /* do not feel the ball */
@@ -708,9 +708,9 @@ xchar x, y;
 
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
         if (lev->typ == ROOM && lev->glyph == cmap_to_glyph(S_room)
-            && (!lev->waslit || (flags.dark_room && iflags.use_color)))
+            && (!lev->waslit || (NH_G(flags).dark_room && iflags.use_color)))
             show_glyph(x, y, lev->glyph = cmap_to_glyph(
-                                 flags.dark_room ? S_darkroom : S_stone));
+                                 NH_G(flags).dark_room ? S_darkroom : S_stone));
         else if (lev->typ == CORR && lev->glyph == cmap_to_glyph(S_litcorr)
                  && !lev->waslit)
             show_glyph(x, y, lev->glyph = cmap_to_glyph(S_corr));
@@ -741,7 +741,7 @@ register int x, y;
     if (in_mklev)
         return;
 #ifdef HANGUPHANDLING
-    if (program_state.done_hup)
+    if (NH_G(program_state).done_hup)
         return;
 #endif
 
@@ -875,7 +875,7 @@ register int x, y;
                 show_glyph(x, y, lev->glyph = cmap_to_glyph(S_stone));
             else
                 goto show_mem;
-        } else if (!lev->waslit || (flags.dark_room && iflags.use_color)) {
+        } else if (!lev->waslit || (NH_G(flags).dark_room && iflags.use_color)) {
             if (lev->glyph == cmap_to_glyph(S_litcorr) && lev->typ == CORR)
                 show_glyph(x, y, lev->glyph = cmap_to_glyph(S_corr));
             else if (lev->glyph == cmap_to_glyph(S_room) && lev->typ == ROOM)
@@ -903,7 +903,7 @@ xchar x, y;
 {
     register int i;
 
-    if (!flags.sparkle)
+    if (!NH_G(flags).sparkle)
         return;
     if (cansee(x, y)) { /* Don't see anything if can't see the location */
         for (i = 0; i < SHIELD_COUNT; i++) {
@@ -953,19 +953,13 @@ int x, y;
 
 #define TMP_AT_MAX_GLYPHS (COLNO * 2)
 
-static struct tmp_glyph {
-    coord saved[TMP_AT_MAX_GLYPHS]; /* previously updated positions */
-    int sidx;                       /* index of next unused slot in saved[] */
-    int style; /* either DISP_BEAM or DISP_FLASH or DISP_ALWAYS */
-    int glyph; /* glyph to use when printing */
-    struct tmp_glyph *prev;
-} tgfirst;
+#define tgfirst (nh_g->s_display_c_tgfirst)
 
 void
 tmp_at(x, y)
 int x, y;
 {
-    static struct tmp_glyph *tglyph = (struct tmp_glyph *) 0;
+    /* tglyph: per-env nh_g->l_display_c_tmp_at_tglyph */
     struct tmp_glyph *tmp;
 
     switch (x) {
@@ -974,24 +968,24 @@ int x, y;
     case DISP_TETHER:
     case DISP_FLASH:
     case DISP_ALWAYS:
-        if (!tglyph)
+        if (!NH_G(l_display_c_tmp_at_tglyph))
             tmp = &tgfirst;
         else /* nested effect; we need dynamic memory */
             tmp = (struct tmp_glyph *) alloc(sizeof *tmp);
-        tmp->prev = tglyph;
-        tglyph = tmp;
-        tglyph->sidx = 0;
-        tglyph->style = x;
-        tglyph->glyph = y;
+        tmp->prev = NH_G(l_display_c_tmp_at_tglyph);
+        NH_G(l_display_c_tmp_at_tglyph) = tmp;
+        NH_G(l_display_c_tmp_at_tglyph)->sidx = 0;
+        NH_G(l_display_c_tmp_at_tglyph)->style = x;
+        NH_G(l_display_c_tmp_at_tglyph)->glyph = y;
         flush_screen(0); /* flush buffered glyphs */
         return;
 
     case DISP_FREEMEM: /* in case game ends with tmp_at() in progress */
-        while (tglyph) {
-            tmp = tglyph->prev;
-            if (tglyph != &tgfirst)
-                free((genericptr_t) tglyph);
-            tglyph = tmp;
+        while (NH_G(l_display_c_tmp_at_tglyph)) {
+            tmp = NH_G(l_display_c_tmp_at_tglyph)->prev;
+            if (NH_G(l_display_c_tmp_at_tglyph) != &tgfirst)
+                free((genericptr_t) NH_G(l_display_c_tmp_at_tglyph));
+            NH_G(l_display_c_tmp_at_tglyph) = tmp;
         }
         return;
 
@@ -999,87 +993,87 @@ int x, y;
         break;
     }
 
-    if (!tglyph)
+    if (!NH_G(l_display_c_tmp_at_tglyph))
         panic("tmp_at: tglyph not initialized");
 
     switch (x) {
     case DISP_CHANGE:
-        tglyph->glyph = y;
+        NH_G(l_display_c_tmp_at_tglyph)->glyph = y;
         break;
 
     case DISP_END:
-        if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
+        if (NH_G(l_display_c_tmp_at_tglyph)->style == DISP_BEAM || NH_G(l_display_c_tmp_at_tglyph)->style == DISP_ALL) {
             register int i;
 
             /* Erase (reset) from source to end */
-            for (i = 0; i < tglyph->sidx; i++)
-                newsym(tglyph->saved[i].x, tglyph->saved[i].y);
-        } else if (tglyph->style == DISP_TETHER) {
+            for (i = 0; i < NH_G(l_display_c_tmp_at_tglyph)->sidx; i++)
+                newsym(NH_G(l_display_c_tmp_at_tglyph)->saved[i].x, NH_G(l_display_c_tmp_at_tglyph)->saved[i].y);
+        } else if (NH_G(l_display_c_tmp_at_tglyph)->style == DISP_TETHER) {
             int i;
 
-            if (y == BACKTRACK && tglyph->sidx > 1) {
+            if (y == BACKTRACK && NH_G(l_display_c_tmp_at_tglyph)->sidx > 1) {
                 /* backtrack */
-                for (i = tglyph->sidx - 1; i > 0; i--) {
-                    newsym(tglyph->saved[i].x, tglyph->saved[i].y);
-                    show_glyph(tglyph->saved[i - 1].x,
-                               tglyph->saved[i - 1].y, tglyph->glyph);
+                for (i = NH_G(l_display_c_tmp_at_tglyph)->sidx - 1; i > 0; i--) {
+                    newsym(NH_G(l_display_c_tmp_at_tglyph)->saved[i].x, NH_G(l_display_c_tmp_at_tglyph)->saved[i].y);
+                    show_glyph(NH_G(l_display_c_tmp_at_tglyph)->saved[i - 1].x,
+                               NH_G(l_display_c_tmp_at_tglyph)->saved[i - 1].y, NH_G(l_display_c_tmp_at_tglyph)->glyph);
                     flush_screen(0);   /* make sure it shows up */
                     delay_output();
                 }
-                tglyph->sidx = 1;
+                NH_G(l_display_c_tmp_at_tglyph)->sidx = 1;
             }
-            for (i = 0; i < tglyph->sidx; i++)
-                newsym(tglyph->saved[i].x, tglyph->saved[i].y);
+            for (i = 0; i < NH_G(l_display_c_tmp_at_tglyph)->sidx; i++)
+                newsym(NH_G(l_display_c_tmp_at_tglyph)->saved[i].x, NH_G(l_display_c_tmp_at_tglyph)->saved[i].y);
         } else {              /* DISP_FLASH or DISP_ALWAYS */
-            if (tglyph->sidx) /* been called at least once */
-                newsym(tglyph->saved[0].x, tglyph->saved[0].y);
+            if (NH_G(l_display_c_tmp_at_tglyph)->sidx) /* been called at least once */
+                newsym(NH_G(l_display_c_tmp_at_tglyph)->saved[0].x, NH_G(l_display_c_tmp_at_tglyph)->saved[0].y);
         }
         /* tglyph->sidx = 0; -- about to be freed, so not necessary */
-        tmp = tglyph->prev;
-        if (tglyph != &tgfirst)
-            free((genericptr_t) tglyph);
-        tglyph = tmp;
+        tmp = NH_G(l_display_c_tmp_at_tglyph)->prev;
+        if (NH_G(l_display_c_tmp_at_tglyph) != &tgfirst)
+            free((genericptr_t) NH_G(l_display_c_tmp_at_tglyph));
+        NH_G(l_display_c_tmp_at_tglyph) = tmp;
         break;
 
     default: /* do it */
         if (!isok(x, y))
             break;
-        if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
-            if (tglyph->style != DISP_ALL && !cansee(x, y))
+        if (NH_G(l_display_c_tmp_at_tglyph)->style == DISP_BEAM || NH_G(l_display_c_tmp_at_tglyph)->style == DISP_ALL) {
+            if (NH_G(l_display_c_tmp_at_tglyph)->style != DISP_ALL && !cansee(x, y))
                 break;
-            if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
+            if (NH_G(l_display_c_tmp_at_tglyph)->sidx >= TMP_AT_MAX_GLYPHS)
                 break; /* too many locations */
             /* save pos for later erasing */
-            tglyph->saved[tglyph->sidx].x = x;
-            tglyph->saved[tglyph->sidx].y = y;
-            tglyph->sidx += 1;
-        } else if (tglyph->style == DISP_TETHER) {
-            if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
+            NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx].x = x;
+            NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx].y = y;
+            NH_G(l_display_c_tmp_at_tglyph)->sidx += 1;
+        } else if (NH_G(l_display_c_tmp_at_tglyph)->style == DISP_TETHER) {
+            if (NH_G(l_display_c_tmp_at_tglyph)->sidx >= TMP_AT_MAX_GLYPHS)
                 break; /* too many locations */
-            if (tglyph->sidx) {
+            if (NH_G(l_display_c_tmp_at_tglyph)->sidx) {
                 int px, py;
 
-                px = tglyph->saved[tglyph->sidx-1].x;
-                py = tglyph->saved[tglyph->sidx-1].y;
+                px = NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx-1].x;
+                py = NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx-1].y;
                 show_glyph(px, py, tether_glyph(px, py));
             }
             /* save pos for later use or erasure */
-            tglyph->saved[tglyph->sidx].x = x;
-            tglyph->saved[tglyph->sidx].y = y;
-            tglyph->sidx += 1;
+            NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx].x = x;
+            NH_G(l_display_c_tmp_at_tglyph)->saved[NH_G(l_display_c_tmp_at_tglyph)->sidx].y = y;
+            NH_G(l_display_c_tmp_at_tglyph)->sidx += 1;
         } else {                /* DISP_FLASH/ALWAYS */
-            if (tglyph->sidx) { /* not first call, so reset previous pos */
-                newsym(tglyph->saved[0].x, tglyph->saved[0].y);
-                tglyph->sidx = 0; /* display is presently up to date */
+            if (NH_G(l_display_c_tmp_at_tglyph)->sidx) { /* not first call, so reset previous pos */
+                newsym(NH_G(l_display_c_tmp_at_tglyph)->saved[0].x, NH_G(l_display_c_tmp_at_tglyph)->saved[0].y);
+                NH_G(l_display_c_tmp_at_tglyph)->sidx = 0; /* display is presently up to date */
             }
-            if (!cansee(x, y) && tglyph->style != DISP_ALWAYS)
+            if (!cansee(x, y) && NH_G(l_display_c_tmp_at_tglyph)->style != DISP_ALWAYS)
                 break;
-            tglyph->saved[0].x = x;
-            tglyph->saved[0].y = y;
-            tglyph->sidx = 1;
+            NH_G(l_display_c_tmp_at_tglyph)->saved[0].x = x;
+            NH_G(l_display_c_tmp_at_tglyph)->saved[0].y = y;
+            NH_G(l_display_c_tmp_at_tglyph)->sidx = 1;
         }
 
-        show_glyph(x, y, tglyph->glyph); /* show it */
+        show_glyph(x, y, NH_G(l_display_c_tmp_at_tglyph)->glyph); /* show it */
         flush_screen(0);                 /* make sure it shows up */
         break;
     } /* end case */
@@ -1100,7 +1094,7 @@ int tg, rpt;
 
     rpt *= 2; /* two loop iterations per 'count' */
     glyph[0] = tg;
-    glyph[1] = (level.flags.hero_memory) ? levl[x][y].glyph
+    glyph[1] = (NH_G(level).flags.hero_memory) ? levl[x][y].glyph
                                          : back_to_glyph(x, y);
     /* even iteration count (guaranteed) ends with glyph[1] showing;
        caller might want to override that, but no newsym() calls here
@@ -1124,7 +1118,8 @@ void
 swallowed(first)
 int first;
 {
-    static xchar lastx, lasty; /* last swallowed position */
+    /* lastx: per-env nh_g->l_display_c_swallowed_lastx */
+/* lasty: per-env nh_g->l_display_c_swallowed_lasty */ /* last swallowed position */
     int swallower, left_ok, rght_ok;
 
     if (first) {
@@ -1134,8 +1129,8 @@ int first;
         register int x, y;
 
         /* Clear old location */
-        for (y = lasty - 1; y <= lasty + 1; y++)
-            for (x = lastx - 1; x <= lastx + 1; x++)
+        for (y = NH_G(l_display_c_swallowed_lasty) - 1; y <= NH_G(l_display_c_swallowed_lasty) + 1; y++)
+            for (x = NH_G(l_display_c_swallowed_lastx) - 1; x <= NH_G(l_display_c_swallowed_lastx) + 1; x++)
                 if (isok(x, y))
                     show_glyph(x, y, cmap_to_glyph(S_stone));
     }
@@ -1174,8 +1169,8 @@ int first;
     }
 
     /* Update the swallowed position. */
-    lastx = u.ux;
-    lasty = u.uy;
+    NH_G(l_display_c_swallowed_lastx) = u.ux;
+    NH_G(l_display_c_swallowed_lasty) = u.uy;
 }
 
 /*
@@ -1188,8 +1183,9 @@ void
 under_water(mode)
 int mode;
 {
-    static xchar lastx, lasty;
-    static boolean dela;
+    /* lastx: per-env nh_g->l_display_c_under_water_lastx */
+/* lasty: per-env nh_g->l_display_c_under_water_lasty */
+    /* dela: per-env nh_g->l_display_c_under_water_dela */
     register int x, y;
 
     /* swallowing has a higher precedence than under water */
@@ -1197,19 +1193,19 @@ int mode;
         return;
 
     /* full update */
-    if (mode == 1 || dela) {
+    if (mode == 1 || NH_G(l_display_c_under_water_dela)) {
         cls();
-        dela = FALSE;
+        NH_G(l_display_c_under_water_dela) = FALSE;
 
     /* delayed full update */
     } else if (mode == 2) {
-        dela = TRUE;
+        NH_G(l_display_c_under_water_dela) = TRUE;
         return;
 
     /* limited update */
     } else {
-        for (y = lasty - 1; y <= lasty + 1; y++)
-            for (x = lastx - 1; x <= lastx + 1; x++)
+        for (y = NH_G(l_display_c_under_water_lasty) - 1; y <= NH_G(l_display_c_under_water_lasty) + 1; y++)
+            for (x = NH_G(l_display_c_under_water_lastx) - 1; x <= NH_G(l_display_c_under_water_lastx) + 1; x++)
                 if (isok(x, y))
                     show_glyph(x, y, cmap_to_glyph(S_stone));
     }
@@ -1226,8 +1222,8 @@ int mode;
                 else
                     newsym(x, y);
             }
-    lastx = u.ux;
-    lasty = u.uy;
+    NH_G(l_display_c_under_water_lastx) = u.ux;
+    NH_G(l_display_c_under_water_lasty) = u.uy;
 }
 
 /*
@@ -1239,20 +1235,20 @@ void
 under_ground(mode)
 int mode;
 {
-    static boolean dela;
+    /* dela: per-env nh_g->l_display_c_under_ground_dela */
 
     /* swallowing has a higher precedence than under ground */
     if (u.uswallow)
         return;
 
     /* full update */
-    if (mode == 1 || dela) {
+    if (mode == 1 || NH_G(l_display_c_under_ground_dela)) {
         cls();
-        dela = FALSE;
+        NH_G(l_display_c_under_ground_dela) = FALSE;
 
     /* delayed full update */
     } else if (mode == 2) {
-        dela = TRUE;
+        NH_G(l_display_c_under_ground_dela) = TRUE;
         return;
 
     /* limited update */
@@ -1463,14 +1459,11 @@ redraw_map()
 /* ======================================================================== */
 /* Glyph Buffering (3rd screen) =========================================== */
 
-typedef struct {
-    xchar new; /* perhaps move this bit into the rm structure. */
-    int glyph;
-} gbuf_entry;
+/* typedef gbuf_entry moved to nh_globals.h */
 
-static gbuf_entry gbuf[ROWNO][COLNO];
-static char gbuf_start[ROWNO];
-static char gbuf_stop[ROWNO];
+#define gbuf (nh_g->s_display_c_gbuf)
+#define gbuf_start (nh_g->s_display_c_gbuf_start)
+#define gbuf_stop (nh_g->s_display_c_gbuf_stop)
 
 /* FIXME: This is a dirty hack, because newsym() doesn't distinguish
  * between object piles and single objects, it doesn't mark the location
@@ -1620,17 +1613,17 @@ int start, stop, y;
 void
 cls()
 {
-    static boolean in_cls = 0;
+    /* in_cls: per-env nh_g->l_display_c_cls_in_cls */
 
-    if (in_cls)
+    if (NH_G(l_display_c_cls_in_cls))
         return;
-    in_cls = TRUE;
+    NH_G(l_display_c_cls_in_cls) = TRUE;
     display_nhwindow(WIN_MESSAGE, FALSE); /* flush messages */
     context.botlx = 1;                    /* force update of botl window */
     clear_nhwindow(WIN_MAP);              /* clear physical screen */
 
     clear_glyph_buffer(); /* this is sort of an extra effort, but OK */
-    in_cls = FALSE;
+    NH_G(l_display_c_cls_in_cls) = FALSE;
 }
 
 /*
@@ -1643,19 +1636,19 @@ int cursor_on_u;
     /* Prevent infinite loops on errors:
      *      flush_screen->print_glyph->impossible->pline->flush_screen
      */
-    static int flushing = 0;
-    static int delay_flushing = 0;
+    /* flushing: per-env nh_g->l_display_c_flush_screen_flushing */
+    /* delay_flushing: per-env nh_g->l_display_c_flush_screen_delay_flushing */
     register int x, y;
 
     if (cursor_on_u == -1)
-        delay_flushing = !delay_flushing;
-    if (delay_flushing)
+        NH_G(l_display_c_flush_screen_delay_flushing) = !NH_G(l_display_c_flush_screen_delay_flushing);
+    if (NH_G(l_display_c_flush_screen_delay_flushing))
         return;
-    if (flushing)
+    if (NH_G(l_display_c_flush_screen_flushing))
         return; /* if already flushing then return */
-    flushing = 1;
+    NH_G(l_display_c_flush_screen_flushing) = 1;
 #ifdef HANGUPHANDLING
-    if (program_state.done_hup)
+    if (NH_G(program_state).done_hup)
         return;
 #endif
 
@@ -1673,7 +1666,7 @@ int cursor_on_u;
         curs(WIN_MAP, u.ux, u.uy); /* move cursor to the hero */
     display_nhwindow(WIN_MAP, FALSE);
     reset_glyph_bbox();
-    flushing = 0;
+    NH_G(l_display_c_flush_screen_flushing) = 0;
     if (context.botl || context.botlx)
         bot();
     else if (iflags.time_botl)
@@ -1707,13 +1700,13 @@ xchar x, y;
     switch (ptr->typ) {
     case SCORR:
     case STONE:
-        idx = level.flags.arboreal ? S_tree : S_stone;
+        idx = NH_G(level).flags.arboreal ? S_tree : S_stone;
         break;
     case ROOM:
         idx = S_room;
         break;
     case CORR:
-        idx = (ptr->waslit || flags.lit_corridor) ? S_litcorr : S_corr;
+        idx = (ptr->waslit || NH_G(flags).lit_corridor) ? S_litcorr : S_corr;
         break;
     case HWALL:
     case VWALL:
@@ -1907,13 +1900,13 @@ xchar x, y;
         switch (lev->typ) {
         case SCORR:
         case STONE:
-            idx = level.flags.arboreal ? S_tree : S_stone;
+            idx = NH_G(level).flags.arboreal ? S_tree : S_stone;
             break;
         case ROOM:
            idx = S_room;
            break;
         case CORR:
-           idx = (lev->waslit || flags.lit_corridor) ? S_litcorr : S_corr;
+           idx = (lev->waslit || NH_G(flags).lit_corridor) ? S_litcorr : S_corr;
            break;
         case ICE:
            idx = S_ice;
@@ -1939,12 +1932,12 @@ xchar x, y;
            break;
         }
 
-        if (!cansee(x, y) && (!lev->waslit || flags.dark_room)) {
+        if (!cansee(x, y) && (!lev->waslit || NH_G(flags).dark_room)) {
             /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
             if (lev->typ == CORR && idx == S_litcorr)
                 idx = S_corr;
             else if (idx == S_room)
-                idx = (flags.dark_room && iflags.use_color)
+                idx = (NH_G(flags).dark_room && iflags.use_color)
                          ? DARKROOMSYM : S_stone;
         }
 
@@ -2221,7 +2214,9 @@ set_wall_state()
 
 /* ------------------------------------------------------------------------ */
 /* This matrix is used here and in vision.c. */
-unsigned char seenv_matrix[3][3] = { { SV2, SV1, SV0 },
+/* seenv_matrix: per-env, see nh_globals.h */
+const unsigned char nh_tmpl_seenv_matrix[3][3] =
+{ { SV2, SV1, SV0 },
                                      { SV3, SVALL, SV7 },
                                      { SV4, SV5, SV6 } };
 

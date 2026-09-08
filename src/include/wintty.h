@@ -91,17 +91,17 @@ struct tty_status_fields {
 #endif
 #define NHW_BASE 6
 
-extern struct window_procs tty_procs;
+/* tty_procs: per-env, see nh_globals.h */
 
 /* port specific variable declarations */
-extern winid BASE_WINDOW;
+/* BASE_WINDOW: per-env, see nh_globals.h */
 
-extern struct WinDesc *wins[MAXWIN];
+/* wins: per-env, see nh_globals.h */
 
-extern struct DisplayDesc *ttyDisplay; /* the tty display descriptor */
+/* ttyDisplay: per-env, see nh_globals.h */ /* the tty display descriptor */
 
-extern char morc;         /* last character typed to xwaitforspace */
-extern char defmorestr[]; /* default --more-- prompt */
+/* morc: per-env, see nh_globals.h */         /* last character typed to xwaitforspace */
+/* defmorestr: per-env, see nh_globals.h */ /* default --more-- prompt */
 
 /* port specific external function references */
 

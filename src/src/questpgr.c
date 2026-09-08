@@ -16,7 +16,7 @@
 #endif
 
 /* from sp_lev.c, for deliver_splev_message() */
-extern char *lev_message;
+/* lev_message: per-env, see nh_globals.h */
 
 static void NDECL(dump_qtlist);
 static void FDECL(Fread, (genericptr_t, int, int, dlb *));
@@ -34,11 +34,11 @@ STATIC_DCL void FDECL(deliver_by_pline, (struct qtmsg *));
 STATIC_DCL void FDECL(deliver_by_window, (struct qtmsg *, int));
 STATIC_DCL boolean FDECL(skip_pager, (BOOLEAN_P));
 
-static char cvt_buf[64];
-static struct qtlists qt_list;
-static dlb *msg_file;
+#define cvt_buf (nh_g->s_questpgr_c_cvt_buf)
+#define qt_list (nh_g->s_questpgr_c_qt_list)
+#define msg_file (nh_g->s_questpgr_c_msg_file)
 /* used by ldrname() and neminame(), then copied into cvt_buf */
-static char nambuf[sizeof cvt_buf];
+#define nambuf (nh_g->s_questpgr_c_nambuf)
 
 /* dump the character msg list to check appearance;
    build with DEBUG enabled and use DEBUGFILES=questpgr.c
@@ -244,7 +244,7 @@ unsigned whichchains;
             qarti = find_qarti(migrating_objs);
     }
     if (!qarti && (whichchains & (1 << OBJ_BURIED)) != 0)
-        qarti = find_qarti(level.buriedobjlist);
+        qarti = find_qarti(NH_G(level).buriedobjlist);
 
     return qarti;
 }
@@ -338,19 +338,19 @@ char c;
         str = plname;
         break;
     case 'c':
-        str = (flags.female && urole.name.f) ? urole.name.f : urole.name.m;
+        str = (NH_G(flags).female && urole.name.f) ? urole.name.f : urole.name.m;
         break;
     case 'r':
-        str = rank_of(u.ulevel, Role_switch, flags.female);
+        str = rank_of(u.ulevel, Role_switch, NH_G(flags).female);
         break;
     case 'R':
-        str = rank_of(MIN_QUEST_LEVEL, Role_switch, flags.female);
+        str = rank_of(MIN_QUEST_LEVEL, Role_switch, NH_G(flags).female);
         break;
     case 's':
-        str = (flags.female) ? "sister" : "brother";
+        str = (NH_G(flags).female) ? "sister" : "brother";
         break;
     case 'S':
-        str = (flags.female) ? "daughter" : "son";
+        str = (NH_G(flags).female) ? "daughter" : "son";
         break;
     case 'l':
         str = ldrname();
@@ -583,7 +583,7 @@ skip_pager(common)
 boolean common;
 {
     /* WIZKIT: suppress plot feedback if starting with quest artifact */
-    if (program_state.wizkit_wishing)
+    if (NH_G(program_state).wizkit_wishing)
         return TRUE;
     if (!(common ? qt_list.common : qt_list.chrole)) {
         panic("%s: no %s quest text data available",
@@ -659,12 +659,12 @@ qt_montype()
 
     if (rn2(5)) {
         qpm = urole.enemy1num;
-        if (qpm != NON_PM && rn2(5) && !(mvitals[qpm].mvflags & G_GENOD))
+        if (qpm != NON_PM && rn2(5) && !(NH_G(mvitals)[qpm].mvflags & G_GENOD))
             return &mons[qpm];
         return mkclass(urole.enemy1sym, 0);
     }
     qpm = urole.enemy2num;
-    if (qpm != NON_PM && rn2(5) && !(mvitals[qpm].mvflags & G_GENOD))
+    if (qpm != NON_PM && rn2(5) && !(NH_G(mvitals)[qpm].mvflags & G_GENOD))
         return &mons[qpm];
     return mkclass(urole.enemy2sym, 0);
 }

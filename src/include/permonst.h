@@ -64,7 +64,9 @@ struct permonst {
 #endif
 };
 
-extern NEARDATA struct permonst mons[]; /* the master list of monster types */
+#ifdef NH_GLOBALS_NONE
+extern NEARDATA struct permonst mons[];
+#endif /* the master list of monster types */
 
 #define VERY_SLOW 3
 #define SLOW_SPEED 9

@@ -6,7 +6,7 @@
 #include "hack.h"
 #include "lev.h"
 
-STATIC_VAR NEARDATA struct engr *head_engr;
+#define head_engr (nh_g->s_engrave_c_head_engr)
 STATIC_DCL const char *NDECL(blengr);
 
 char *
@@ -603,7 +603,7 @@ doengrave()
         /* "diamond" rings and others should work */
     case GEM_CLASS:
         /* diamonds & other hard gems should work */
-        if (objects[otmp->otyp].oc_tough) {
+        if (NH_G(objects)[otmp->otyp].oc_tough) {
             type = ENGRAVE;
             break;
         }
@@ -749,8 +749,8 @@ doengrave()
             case WAN_DIGGING:
                 ptext = TRUE;
                 type = ENGRAVE;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of digging!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -763,7 +763,7 @@ doengrave()
                                  ? "Chips fly out from the headstone."
                                  : is_ice(u.ux, u.uy)
                                     ? "Ice chips fly up from the ice surface!"
-                                    : (level.locations[u.ux][u.uy].typ
+                                    : (NH_G(level).locations[u.ux][u.uy].typ
                                        == DRAWBRIDGE_DOWN)
                                        ? "Splinters fly up from the bridge."
                                        : "Gravel flies up from the floor.");
@@ -772,8 +772,8 @@ doengrave()
             case WAN_FIRE:
                 ptext = TRUE;
                 type = BURN;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of fire!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -783,8 +783,8 @@ doengrave()
             case WAN_LIGHTNING:
                 ptext = TRUE;
                 type = BURN;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of lightning!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -894,7 +894,7 @@ doengrave()
     /* Identify stylus */
     if (doknown) {
         learnwand(otmp);
-        if (objects[otmp->otyp].oc_name_known)
+        if (NH_G(objects)[otmp->otyp].oc_name_known)
             more_experienced(0, 10);
     }
     if (teleengr) {

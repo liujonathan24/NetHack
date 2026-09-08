@@ -27,7 +27,7 @@
 static long final_fpos;
 #endif
 
-#define done_stopprint program_state.stopprint
+#define done_stopprint NH_G(program_state).stopprint
 
 #define newttentry() (struct toptenentry *) alloc(sizeof (struct toptenentry))
 #define dealloc_ttentry(ttent) free((genericptr_t) (ttent))
@@ -41,24 +41,7 @@ static long final_fpos;
 #define NLE_XLOG_INCLUDE_FILE
 extern char * FDECL(nle_ttyrecname, ());
 
-struct toptenentry {
-    struct toptenentry *tt_next;
-#ifdef UPDATE_RECORD_IN_PLACE
-    long fpos;
-#endif
-    long points;
-    int deathdnum, deathlev;
-    int maxlvl, hp, maxhp, deaths;
-    int ver_major, ver_minor, patchlevel;
-    long deathdate, birthdate;
-    int uid;
-    char plrole[ROLESZ + 1];
-    char plrace[ROLESZ + 1];
-    char plgend[ROLESZ + 1];
-    char plalign[ROLESZ + 1];
-    char name[NAMSZ + 1];
-    char death[DTHSZ + 1];
-} * tt_head;
+/* tt_head: per-env, see nh_globals.h */
 /* size big enough to read in all the string fields at once; includes
    room for separating space or trailing newline plus string terminator */
 #define SCANBUFSZ (4 * (ROLESZ + 1) + (NAMSZ + 1) + (DTHSZ + 1) + 1)
@@ -85,7 +68,9 @@ STATIC_DCL void FDECL(nsb_mung_line, (char *));
 STATIC_DCL void FDECL(nsb_unmung_line, (char *));
 #endif
 
-static winid toptenwin = WIN_ERR;
+/* toptenwin: per-env nh_g->s_topten_c_toptenwin */
+const winid nh_tmpl_s_topten_c_toptenwin =
+WIN_ERR;
 
 /* "killed by",&c ["an"] 'killer.name' */
 void
@@ -106,12 +91,12 @@ boolean incl_helpless;
         "", "", "", "", ""
     };
     unsigned l;
-    char c, *kname = killer.name;
+    char c, *kname = NH_G(killer).name;
 
     buf[0] = '\0'; /* lint suppression */
-    switch (killer.format) {
+    switch (NH_G(killer).format) {
     default:
-        impossible("bad killer format? (%d)", killer.format);
+        impossible("bad killer format? (%d)", NH_G(killer).format);
         /*FALLTHRU*/
     case NO_KILLER_PREFIX:
         break;
@@ -164,20 +149,20 @@ STATIC_OVL void
 topten_print(x)
 const char *x;
 {
-    if (toptenwin == WIN_ERR)
+    if (NH_G(s_topten_c_toptenwin) == WIN_ERR)
         raw_print(x);
     else
-        putstr(toptenwin, ATR_NONE, x);
+        putstr(NH_G(s_topten_c_toptenwin), ATR_NONE, x);
 }
 
 STATIC_OVL void
 topten_print_bold(x)
 const char *x;
 {
-    if (toptenwin == WIN_ERR)
+    if (NH_G(s_topten_c_toptenwin) == WIN_ERR)
         raw_print_bold(x);
     else
-        putstr(toptenwin, ATR_BOLD, x);
+        putstr(NH_G(s_topten_c_toptenwin), ATR_BOLD, x);
 }
 
 int
@@ -376,7 +361,7 @@ int how;
             (long) urealtime.realtime, XLOG_SEP,
             (long) ubirthday, XLOG_SEP, (long) urealtime.finish_time);
     Fprintf(rfile, "%cgender0=%s%calign0=%s", XLOG_SEP,
-            genders[flags.initgend].filecode, XLOG_SEP,
+            genders[NH_G(flags).initgend].filecode, XLOG_SEP,
             aligns[1 - u.ualignbase[A_ORIGINAL]].filecode);
     Fprintf(rfile, "%cflags=0x%lx", XLOG_SEP, encodexlogflags());
 #ifdef NLE_XLOG_INCLUDE_FILE
@@ -495,7 +480,7 @@ time_t when;
 {
     int uid = getuid();
     int rank, rank0 = -1, rank1 = 0;
-    int occ_cnt = sysopt.persmax;
+    int occ_cnt = NH_G(sysopt).persmax;
     register struct toptenentry *t0, *tprev;
     struct toptenentry *t1;
     FILE *rfile;
@@ -520,15 +505,15 @@ time_t when;
      * topten uses alloc() several times, which will lead to
      * problems if the panic was the result of an alloc() failure.
      */
-    if (program_state.panicking)
+    if (NH_G(program_state).panicking)
         return;
 
     if (iflags.toptenwin) {
-        toptenwin = create_nhwindow(NHW_TEXT);
+        NH_G(s_topten_c_toptenwin) = create_nhwindow(NHW_TEXT);
     }
 
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-#define HUP if (!program_state.done_hup)
+#define HUP if (!NH_G(program_state).done_hup)
 #else
 #define HUP
 #endif
@@ -558,7 +543,7 @@ time_t when;
     t0->uid = uid;
     copynchars(t0->plrole, urole.filecode, ROLESZ);
     copynchars(t0->plrace, urace.filecode, ROLESZ);
-    copynchars(t0->plgend, genders[flags.female].filecode, ROLESZ);
+    copynchars(t0->plgend, genders[NH_G(flags).female].filecode, ROLESZ);
     copynchars(t0->plalign, aligns[1 - u.ualign.type].filecode, ROLESZ);
     copynchars(t0->name, plname, NAMSZ);
     formatkiller(t0->death, sizeof t0->death, how, TRUE);
@@ -624,7 +609,7 @@ time_t when;
     HUP topten_print("");
 
     /* assure minimum number of points */
-    if (t0->points < sysopt.pointsmin)
+    if (t0->points < NH_G(sysopt).pointsmin)
         t0->points = 0;
 
     t1 = tt_head = newttentry();
@@ -632,7 +617,7 @@ time_t when;
     /* rank0: -1 undefined, 0 not_on_list, n n_th on list */
     for (rank = 1;;) {
         readentry(rfile, t1);
-        if (t1->points < sysopt.pointsmin)
+        if (t1->points < NH_G(sysopt).pointsmin)
             t1->points = 0;
         if (rank0 < 0 && t1->points < t0->points) {
             rank0 = rank++;
@@ -652,7 +637,7 @@ time_t when;
 
         if (t1->points == 0)
             break;
-        if ((sysopt.pers_is_uid ? t1->uid == t0->uid
+        if ((NH_G(sysopt).pers_is_uid ? t1->uid == t0->uid
                                 : strncmp(t1->name, t0->name, NAMSZ) == 0)
             && !strncmp(t1->plrole, t0->plrole, ROLESZ) && --occ_cnt <= 0) {
             if (rank0 < 0) {
@@ -673,12 +658,12 @@ time_t when;
                 continue;
             }
         }
-        if (rank <= sysopt.entrymax) {
+        if (rank <= NH_G(sysopt).entrymax) {
             t1->tt_next = newttentry();
             t1 = t1->tt_next;
             rank++;
         }
-        if (rank > sysopt.entrymax) {
+        if (rank > NH_G(sysopt).entrymax) {
             t1->points = 0;
             break;
         }
@@ -705,7 +690,7 @@ time_t when;
 
                     Sprintf(pbuf,
                             "You reached the %d%s place on the top %d list.",
-                            rank0, ordin(rank0), sysopt.entrymax);
+                            rank0, ordin(rank0), NH_G(sysopt).entrymax);
                     topten_print(pbuf);
                 }
                 topten_print("");
@@ -727,15 +712,15 @@ time_t when;
             writeentry(rfile, t1);
         if (done_stopprint)
             continue;
-        if (rank > flags.end_top && (rank < rank0 - flags.end_around
-                                     || rank > rank0 + flags.end_around)
-            && (!flags.end_own
-                || (sysopt.pers_is_uid
+        if (rank > NH_G(flags).end_top && (rank < rank0 - NH_G(flags).end_around
+                                     || rank > rank0 + NH_G(flags).end_around)
+            && (!NH_G(flags).end_own
+                || (NH_G(sysopt).pers_is_uid
                         ? t1->uid == t0->uid
                         : strncmp(t1->name, t0->name, NAMSZ) == 0)))
             continue;
-        if (rank == rank0 - flags.end_around
-            && rank0 > flags.end_top + flags.end_around + 1 && !flags.end_own)
+        if (rank == rank0 - NH_G(flags).end_around
+            && rank0 > NH_G(flags).end_top + NH_G(flags).end_around + 1 && !NH_G(flags).end_own)
             topten_print("");
         if (rank != rank0)
             outentry(rank, t1, FALSE);
@@ -776,13 +761,13 @@ time_t when;
 
 showwin:
     if (iflags.toptenwin && !done_stopprint)
-        display_nhwindow(toptenwin, 1);
+        display_nhwindow(NH_G(s_topten_c_toptenwin), 1);
 destroywin:
     if (!t0_used)
         dealloc_ttentry(t0);
     if (iflags.toptenwin) {
-        destroy_nhwindow(toptenwin);
-        toptenwin = WIN_ERR;
+        destroy_nhwindow(NH_G(s_topten_c_toptenwin));
+        NH_G(s_topten_c_toptenwin) = WIN_ERR;
     }
 }
 
@@ -980,7 +965,7 @@ int uid;
             || t1->patchlevel != PATCHLEVEL))
         return 0;
 
-    if (sysopt.pers_is_uid && !playerct && t1->uid == uid)
+    if (NH_G(sysopt).pers_is_uid && !playerct && t1->uid == uid)
         return 1;
 
     for (i = 0; i < playerct; i++) {
@@ -1066,7 +1051,7 @@ char **argv;
     }
 
     if (argc <= 1) {
-        if (sysopt.pers_is_uid) {
+        if (NH_G(sysopt).pers_is_uid) {
             uid = getuid();
             playerct = 0;
             players = (const char **) 0;
@@ -1191,7 +1176,7 @@ get_rnd_toptenentry()
     int rank, i;
     FILE *rfile;
     register struct toptenentry *tt;
-    static struct toptenentry tt_buf;
+    /* tt_buf: per-env nh_g->l_topten_c_get_rnd_toptenentry_tt_buf */
 
     rfile = fopen_datafile(RECORD, "r", SCOREPREFIX);
     if (!rfile) {
@@ -1199,8 +1184,8 @@ get_rnd_toptenentry()
         return NULL;
     }
 
-    tt = &tt_buf;
-    rank = rnd(sysopt.tt_oname_maxrank);
+    tt = &NH_G(l_topten_c_get_rnd_toptenentry_tt_buf);
+    rank = rnd(NH_G(sysopt).tt_oname_maxrank);
 pickentry:
     for (i = rank; i; i--) {
         readentry(rfile, tt);

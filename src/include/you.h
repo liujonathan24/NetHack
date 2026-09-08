@@ -167,7 +167,7 @@ struct Role {
 };
 
 extern const struct Role roles[]; /* table of available roles */
-extern struct Role urole;
+/* urole: per-env, see nh_globals.h */
 #define Role_if(X) (urole.malenum == (X))
 #define Role_switch (urole.malenum)
 
@@ -219,7 +219,7 @@ struct Race {
 };
 
 extern const struct Race races[]; /* Table of available races */
-extern struct Race urace;
+/* urace: per-env, see nh_globals.h */
 #define Race_if(X) (urace.malenum == (X))
 #define Race_switch (urace.malenum)
 
@@ -238,8 +238,8 @@ struct Gender {
 extern const struct Gender genders[]; /* table of available genders */
 /* pronouns for the hero */
 #define uhe()      (genders[flags.female ? 1 : 0].he)
-#define uhim()     (genders[flags.female ? 1 : 0].him)
-#define uhis()     (genders[flags.female ? 1 : 0].his)
+#define uhim()     (genders[NH_G(flags).female ? 1 : 0].him)
+#define uhis()     (genders[NH_G(flags).female ? 1 : 0].his)
 /* corresponding pronouns for monsters; yields "it" when mtmp can't be seen */
 #define mhe(mtmp)  (genders[pronoun_gender(mtmp, FALSE)].he)
 #define mhim(mtmp) (genders[pronoun_gender(mtmp, FALSE)].him)

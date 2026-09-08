@@ -337,7 +337,7 @@ char *pname; /* caller-supplied output buffer */
     Strcat(pname, what);
     /* same as distant_monnam(), more or less... */
     if (do_hallu || !high_priest || !Is_astralevel(&u.uz)
-        || distu(mon->mx, mon->my) <= 2 || program_state.gameover) {
+        || distu(mon->mx, mon->my) <= 2 || NH_G(program_state).gameover) {
         Strcat(pname, " of ");
         Strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
@@ -497,7 +497,7 @@ int roomno;
         if (!rn2(5)
             && (mtmp = makemon(&mons[PM_GHOST], u.ux, u.uy, NO_MM_FLAGS))
                    != 0) {
-            int ngen = mvitals[PM_GHOST].born;
+            int ngen = NH_G(mvitals)[PM_GHOST].born;
             if (canspotmon(mtmp))
                 pline("A%s ghost appears next to you%c",
                       ngen < 5 ? "n enormous" : "",
@@ -506,7 +506,7 @@ int roomno;
                 You("sense a presence close by!");
             mtmp->mpeaceful = 0;
             set_malign(mtmp);
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 You("are frightened to death, and unable to move.");
             nomul(-3);
             multi_reason = "being terrified of a ghost";
@@ -894,7 +894,7 @@ piousness(showneg, suffix)
 boolean showneg;
 const char *suffix;
 {
-    static char buf[32]; /* bigger than "insufficiently neutral" */
+    /* buf: per-env nh_g->l_priest_c_piousness_buf */ /* bigger than "insufficiently neutral" */
     const char *pio;
 
     /* note: piousness 20 matches MIN_QUEST_ALIGN (quest.h) */
@@ -921,13 +921,13 @@ const char *suffix;
     else
         pio = "transgressed";
 
-    Sprintf(buf, "%s", pio);
+    Sprintf(NH_G(l_priest_c_piousness_buf), "%s", pio);
     if (suffix && (!showneg || u.ualign.record >= 0)) {
         if (u.ualign.record != 3)
-            Strcat(buf, " ");
-        Strcat(buf, suffix);
+            Strcat(NH_G(l_priest_c_piousness_buf), " ");
+        Strcat(NH_G(l_priest_c_piousness_buf), suffix);
     }
-    return buf;
+    return NH_G(l_priest_c_piousness_buf);
 }
 
 /* stethoscope or probing applied to monster -- one-line feedback */

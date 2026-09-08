@@ -10,10 +10,7 @@
 #define dealloc_seg(wseg) free((genericptr_t) (wseg))
 
 /* worm segment structure */
-struct wseg {
-    struct wseg *nseg;
-    xchar wx, wy; /* the segment's position */
-};
+/* struct wseg moved to nh_globals.h */
 
 STATIC_DCL void FDECL(toss_wsegs, (struct wseg *, BOOLEAN_P));
 STATIC_DCL void FDECL(shrink_worm, (int));
@@ -67,8 +64,9 @@ STATIC_DCL struct wseg *FDECL(create_worm_tail, (int));
  *  segment, and remove hit points from the worm.
  */
 
-struct wseg *wheads[MAX_NUM_WORMS] = DUMMY, *wtails[MAX_NUM_WORMS] = DUMMY;
-long wgrowtime[MAX_NUM_WORMS] = DUMMY;
+/* wheads: per-env, see nh_globals.h */
+/* wtails: per-env, see nh_globals.h */
+/* wgrowtime: per-env, see nh_globals.h */
 
 /*
  *  get_wormno()
@@ -599,7 +597,7 @@ struct monst *worm;
         if (curr->wx) {
             if (!isok(curr->wx, curr->wy))
                 panic("worm seg not isok");
-            if (level.monsters[curr->wx][curr->wy] != worm)
+            if (NH_G(level).monsters[curr->wx][curr->wy] != worm)
                 panic("worm not at seg location");
         }
         curr = curr->nseg;

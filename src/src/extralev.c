@@ -8,19 +8,13 @@
 
 #include "hack.h"
 
-struct rogueroom {
-    xchar rlx, rly;
-    xchar dx, dy;
-    boolean real;
-    uchar doortable;
-    int nroom; /* Only meaningful for "real" rooms */
-};
+/* struct rogueroom moved to nh_globals.h */
 #define UP 1
 #define DOWN 2
 #define LEFT 4
 #define RIGHT 8
 
-static NEARDATA struct rogueroom r[3][3];
+#define r (nh_g->s_extralev_c_r)
 STATIC_DCL void FDECL(roguejoin, (int, int, int, int, int));
 STATIC_DCL void FDECL(roguecorr, (int, int, int));
 STATIC_DCL void FDECL(miniwalk, (int, int));
@@ -224,13 +218,13 @@ makeroguerooms()
      */
 #define here r[x][y]
 
-    nroom = 0;
+    NH_G(nroom) = 0;
     for (y = 0; y < 3; y++)
         for (x = 0; x < 3; x++) {
             /* Note: we want to insure at least 1 room.  So, if the
              * first 8 are all dummies, force the last to be a room.
              */
-            if (!rn2(5) && (nroom || (x < 2 && y < 2))) {
+            if (!rn2(5) && (NH_G(nroom) || (x < 2 && y < 2))) {
                 /* Arbitrary: dummy rooms may only go where real
                  * ones do.
                  */
@@ -245,19 +239,19 @@ makeroguerooms()
                 /* boundaries of room floor */
                 here.rlx = rnd(23 - here.dx + 1);
                 here.rly = rnd(((y == 2) ? 5 : 4) - here.dy + 1);
-                nroom++;
+                NH_G(nroom)++;
             }
             here.doortable = 0;
         }
     miniwalk(rn2(3), rn2(3));
-    nroom = 0;
+    NH_G(nroom) = 0;
     for (y = 0; y < 3; y++)
         for (x = 0; x < 3; x++) {
             if (here.real) { /* Make a room */
                 int lowx, lowy, hix, hiy;
 
-                r[x][y].nroom = nroom;
-                smeq[nroom] = nroom;
+                r[x][y].nroom = NH_G(nroom);
+                smeq[NH_G(nroom)] = NH_G(nroom);
 
                 lowx = 1 + 26 * x + here.rlx;
                 lowy = 7 * y + here.rly;
@@ -305,9 +299,9 @@ makerogueghost()
     struct mkroom *croom;
     int x, y;
 
-    if (!nroom)
+    if (!NH_G(nroom))
         return; /* Should never happen */
-    croom = &rooms[rn2(nroom)];
+    croom = &rooms[rn2(NH_G(nroom))];
     x = somex(croom);
     y = somey(croom);
     if (!(ghost = makemon(&mons[PM_GHOST], x, y, NO_MM_FLAGS)))

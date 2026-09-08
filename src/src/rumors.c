@@ -46,15 +46,18 @@ STATIC_DCL void FDECL(init_oracles, (dlb *));
 STATIC_DCL void FDECL(couldnt_open_file, (const char *));
 
 /* rumor size variables are signed so that value -1 can be used as a flag */
-static long true_rumor_size = 0L, false_rumor_size;
+#define true_rumor_size (nh_g->s_rumors_c_true_rumor_size)
+#define false_rumor_size (nh_g->s_rumors_c_false_rumor_size)
 /* rumor start offsets are unsigned because they're handled via %lx format */
-static unsigned long true_rumor_start, false_rumor_start;
+#define true_rumor_start (nh_g->s_rumors_c_true_rumor_start)
+#define false_rumor_start (nh_g->s_rumors_c_false_rumor_start)
 /* rumor end offsets are signed because they're compared with [dlb_]ftell() */
-static long true_rumor_end, false_rumor_end;
+#define true_rumor_end (nh_g->s_rumors_c_true_rumor_end)
+#define false_rumor_end (nh_g->s_rumors_c_false_rumor_end)
 /* oracles are handled differently from rumors... */
-static int oracle_flg = 0; /* -1=>don't use, 0=>need init, 1=>init done */
-static unsigned oracle_cnt = 0;
-static unsigned long *oracle_loc = 0;
+#define oracle_flg (nh_g->s_rumors_c_oracle_flg) /* -1=>don't use, 0=>need init, 1=>init done */
+#define oracle_cnt (nh_g->s_rumors_c_oracle_cnt)
+#define oracle_loc (nh_g->s_rumors_c_oracle_loc)
 
 STATIC_OVL void
 init_rumors(fp)
@@ -558,16 +561,16 @@ STATIC_OVL void
 couldnt_open_file(filename)
 const char *filename;
 {
-    int save_something = program_state.something_worth_saving;
+    int save_something = NH_G(program_state).something_worth_saving;
 
     /* most likely the file is missing, so suppress impossible()'s
        "saving and restoring might fix this" (unless the fuzzer,
        which escalates impossible to panic, is running) */
     if (!iflags.debug_fuzzer)
-        program_state.something_worth_saving = 0;
+        NH_G(program_state).something_worth_saving = 0;
 
     impossible("Can't open '%s' file.", filename);
-    program_state.something_worth_saving = save_something;
+    NH_G(program_state).something_worth_saving = save_something;
 }
 
 /*rumors.c*/

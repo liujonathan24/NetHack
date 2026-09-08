@@ -23,7 +23,9 @@
  *              @...X   +4
  *
  */
-char circle_data[] = {
+/* circle_data: per-env, see nh_globals.h */
+const char nh_tmpl_circle_data[] =
+{
     /*  0*/ 1,  1,
     /*  2*/ 2,  2,  1,
     /*  5*/ 3,  3,  2,  1,
@@ -46,7 +48,9 @@ char circle_data[] = {
  * These are the starting indexes into the circle_data[] array for a
  * circle of a given radius.
  */
-char circle_start[] = {
+/* circle_start: per-env, see nh_globals.h */
+const char nh_tmpl_circle_start[] =
+{
     /*  */ 0, /* circles of radius zero are not used */
     /* 1*/ 0,
     /* 2*/ 2,
@@ -78,20 +82,24 @@ boolean vision_full_recalc = 0;
 /* Pointers to the current vision array. */
 char    **viz_array;
 #endif
-char *viz_rmin, *viz_rmax; /* current vision cs bounds */
+/* viz_rmin: per-env, see nh_globals.h */
+/* viz_rmax: per-env, see nh_globals.h */ /* current vision cs bounds */
 
 /*------ local variables ------*/
 
-static char could_see[2][ROWNO][COLNO]; /* vision work space */
-static char *cs_rows0[ROWNO], *cs_rows1[ROWNO];
-static char cs_rmin0[ROWNO], cs_rmax0[ROWNO];
-static char cs_rmin1[ROWNO], cs_rmax1[ROWNO];
+#define could_see (nh_g->s_vision_c_could_see) /* vision work space */
+#define cs_rows0 (nh_g->s_vision_c_cs_rows0)
+#define cs_rows1 (nh_g->s_vision_c_cs_rows1)
+#define cs_rmin0 (nh_g->s_vision_c_cs_rmin0)
+#define cs_rmax0 (nh_g->s_vision_c_cs_rmax0)
+#define cs_rmin1 (nh_g->s_vision_c_cs_rmin1)
+#define cs_rmax1 (nh_g->s_vision_c_cs_rmax1)
 
-static char viz_clear[ROWNO][COLNO]; /* vision clear/blocked map */
-static char *viz_clear_rows[ROWNO];
+#define viz_clear (nh_g->s_vision_c_viz_clear) /* vision clear/blocked map */
+#define viz_clear_rows (nh_g->s_vision_c_viz_clear_rows)
 
-static char left_ptrs[ROWNO][COLNO]; /* LOS algorithm helpers */
-static char right_ptrs[ROWNO][COLNO];
+#define left_ptrs (nh_g->s_vision_c_left_ptrs) /* LOS algorithm helpers */
+#define right_ptrs (nh_g->s_vision_c_right_ptrs)
 
 /* Forward declarations. */
 STATIC_DCL void FDECL(fill_point, (int, int));
@@ -171,7 +179,7 @@ register struct rm *lev;
         return 1;
 
     /* Boulders block light. */
-    for (obj = level.objects[x][y]; obj; obj = obj->nexthere)
+    for (obj = NH_G(level).objects[x][y]; obj; obj = obj->nexthere)
         if (obj->otyp == BOULDER)
             return 1;
 
@@ -514,8 +522,8 @@ int control;
     register int col;  /* inner loop counter */
     register struct rm *lev; /* pointer to current pos */
     struct rm *flev; /* pointer to position in "front" of current pos */
-    extern unsigned char seenv_matrix[3][3]; /* from display.c */
-    static unsigned char colbump[COLNO + 1]; /* cols to bump sv */
+    /* seenv_matrix: per-env, see nh_globals.h */ /* from display.c */
+    /* colbump: per-env nh_g->l_vision_c_vision_recalc_colbump */ /* cols to bump sv */
     unsigned char *sv;                       /* ptr to seen angle bits */
     int oldseenv;                            /* previous seenv value */
 
@@ -713,7 +721,7 @@ int control;
      *      Even so, that is not entirely correct.  But it seems close
      *      enough for now.
      */
-    colbump[u.ux] = colbump[u.ux + 1] = 1;
+    NH_G(l_vision_c_vision_recalc_colbump)[u.ux] = NH_G(l_vision_c_vision_recalc_colbump)[u.ux + 1] = 1;
     for (row = 0; row < ROWNO; row++) {
         dy = u.uy - row;
         dy = sign(dy);
@@ -728,7 +736,7 @@ int control;
         sv = &seenv_matrix[dy + 1][start < u.ux ? 0 : (start > u.ux ? 2 : 1)];
 
         for (col = start; col <= stop;
-             lev += ROWNO, sv += (int) colbump[++col]) {
+             lev += ROWNO, sv += (int) NH_G(l_vision_c_vision_recalc_colbump)[++col]) {
             if (next_row[col] & IN_SIGHT) {
                 /*
                  * We see this position because of night- or xray-vision.
@@ -817,7 +825,7 @@ int control;
 
         } /* end for col . . */
     }     /* end for row . .  */
-    colbump[u.ux] = colbump[u.ux + 1] = 0;
+    NH_G(l_vision_c_vision_recalc_colbump)[u.ux] = NH_G(l_vision_c_vision_recalc_colbump)[u.ux + 1] = 0;
 
 skip:
     /* This newsym() caused a crash delivering msg about failure to open
@@ -825,7 +833,7 @@ skip:
      * vision_recalc(2) -> newsym() -> crash!  u.ux and u.uy are 0 and
      * program_state.panicking == 1 under those circumstances
      */
-    if (!program_state.panicking)
+    if (!NH_G(program_state).panicking)
         newsym(u.ux, u.uy); /* Make sure the hero shows up! */
 
     /* Set the new min and max pointers. */
@@ -1097,15 +1105,15 @@ int row, col;
 /*
  * Variables local to both Algorithms C and D.
  */
-static int start_row;
-static int start_col;
-static int step;
-static char **cs_rows;
-static char *cs_left;
-static char *cs_right;
+#define start_row (nh_g->s_vision_c_start_row)
+#define start_col (nh_g->s_vision_c_start_col)
+#define step (nh_g->s_vision_c_step)
+#define cs_rows (nh_g->s_vision_c_cs_rows)
+#define cs_left (nh_g->s_vision_c_cs_left)
+#define cs_right (nh_g->s_vision_c_cs_right)
 
-static void FDECL((*vis_func), (int, int, genericptr_t));
-static genericptr_t varg;
+#define vis_func (nh_g->s_vision_c_vis_func)
+#define varg (nh_g->s_vision_c_varg)
 
 /*
  * Both Algorithms C and D use the following macros.

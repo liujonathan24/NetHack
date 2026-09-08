@@ -14,7 +14,7 @@ STATIC_OVL void NDECL(placebc_core);
 STATIC_OVL void NDECL(unplacebc_core);
 STATIC_DCL boolean FDECL(check_restriction, (int));
 
-static int bcrestriction = 0;
+#define bcrestriction (nh_g->s_ball_c_bcrestriction)
 #ifdef BREADCRUMBS
 static struct breadcrumbs bcpbreadcrumbs = {0}, bcubreadcrumbs = {0};
 #endif
@@ -56,7 +56,7 @@ ballfall()
             if (is_metallic(uarmh)) {
                 pline("Fortunately, you are wearing a hard helmet.");
                 dmg = 3;
-            } else if (flags.verbose)
+            } else if (NH_G(flags).verbose)
                 pline("%s does not protect you.", Yname2(uarmh));
         }
         losehp(Maybe_Half_Phys(dmg), "crunched in the head by an iron ball",
@@ -367,7 +367,7 @@ bc_order()
         || u.uswallow)
         return BCPOS_DIFFER;
 
-    for (obj = level.objects[uball->ox][uball->oy]; obj;
+    for (obj = NH_G(level).objects[uball->ox][uball->oy]; obj;
          obj = obj->nexthere) {
         if (obj == uchain)
             return BCPOS_CHAIN;
