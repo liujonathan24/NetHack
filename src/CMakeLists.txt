@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.15)
 file(STRINGS "version.txt" NLE_VERSION)
 project(nle VERSION ${NLE_VERSION})
 
+# Default to RelWithDebInfo: at -O0 every access to a per-env global reloads
+# the thread-local context pointer; -O2 hoists it. An explicit
+# CMAKE_BUILD_TYPE on the command line still wins.
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Default build type" FORCE)
+endif()
+
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   message("Debug build.")
   # Unclear if this is even necessary. `dsymutil rlmain -o rlmain.dSYM` seems to
@@ -102,6 +109,8 @@ file(
   "sys/unix/unixres.c"
   "win/tty/*.c"
   "win/rl/winrl.cc")
+# NLE fast-reset: C++ operator new/delete overrides routed to the arena.
+list(APPEND NETHACK_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/nle_arena_cpp.cc")
 
 # terminal emulator library
 add_library(tmt STATIC "third_party/libtmt/tmt.c")
@@ -120,7 +129,21 @@ target_link_directories(nethack PUBLIC /usr/local/lib)
 # Careful with -DMONITOR_HEAP: Ironically, it fails to fclose FILE* heaplog.
 # target_compile_definitions(nethack PUBLIC "$<$<CONFIG:DEBUG>:MONITOR_HEAP>")
 
-target_link_libraries(nethack PUBLIC m fcontext bz2 tmt)
+# NLE fast-reset: arena-based allocator. NetHack's free() becomes a no-op for
+# arena pointers (include/global.h), so a snapshot/restore of the arena
+# captures all of the game's heap state.
+target_compile_definitions(nethack PRIVATE NLE_USE_ARENA_FREE=1)
+target_link_options(nethack PRIVATE
+    # bind libnethack's intra-DSO calls (notably free and the C++ operator
+    # new/delete overrides in nle_arena_cpp.cc) to its own definitions
+    "LINKER:-Bsymbolic-functions"
+    # hide the operator new/delete overrides from the rest of the process
+    # (torch / pybind11 / Python allocations must not land in the arena)
+    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/nethack.ver"
+    )
+
+find_package(Threads REQUIRED)
+target_link_libraries(nethack PUBLIC m fcontext bz2 tmt Threads::Threads)
 
 # dlopen wrapper library
 add_library(nethackdl STATIC "sys/unix/nledl.c")

@@ -288,6 +288,13 @@ extern char *FDECL(nhdupstr, (const char *, const char *, int));
 #else /* !MONITOR_HEAP */
 extern long *FDECL(alloc, (unsigned int));  /* alloc.c */
 extern char *FDECL(dupstr, (const char *)); /* ditto */
+/* NLE fast-reset: the game's heap lives in a per-env bump arena (alloc.c),
+ * so free() is a no-op for arena pointers. Only when building libnethack
+ * (the CMake target sets NLE_USE_ARENA_FREE); the utilities use libc. */
+#ifdef NLE_USE_ARENA_FREE
+extern void FDECL(nle_arena_free, (genericptr_t));
+#define free(p) nle_arena_free((genericptr_t) (p))
+#endif
 #endif
 
 /* Used for consistency checks of various data files; declare it here so

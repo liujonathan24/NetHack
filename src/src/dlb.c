@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "dlb.h"
+#include <unistd.h>
 #if defined(VERSION_IN_DLB_FILENAME)
 #include "patchlevel.h"
 #endif
@@ -144,8 +145,22 @@ library *lp; /* library pointer to fill in */
     if (lp->rev > DLB_MAX_VERS || lp->rev < DLB_MIN_VERS)
         return FALSE;
 
+#ifdef NLE_USE_ARENA_FREE
+    /* The library table is process-global, but alloc() places allocations
+     * in the CURRENT env's arena, which is unmapped when that env ends and
+     * would leave lp->dir / lp->sspace dangling for every later env. Take
+     * them from libc so they live for the whole process. */
+    {
+        extern void *__libc_malloc(size_t);
+        lp->dir = (libdir *) __libc_malloc((size_t) lp->nentries * sizeof(libdir));
+        lp->sspace = (char *) __libc_malloc((size_t) lp->strsize);
+        if (!lp->dir || !lp->sspace)
+            return FALSE;
+    }
+#else
     lp->dir = (libdir *) alloc(lp->nentries * sizeof(libdir));
     lp->sspace = (char *) alloc(lp->strsize);
+#endif
 
     /* read in each directory entry */
     for (i = 0, sp = lp->sspace; i < lp->nentries; i++) {
@@ -231,11 +246,19 @@ void
 close_library(lp)
 library *lp;
 {
+#ifdef NLE_USE_ARENA_FREE
+    /* Keep the library open for the whole process: the game's death
+     * sequence calls dlb_cleanup(), but with in-memory snapshots the
+     * environment stays usable after a restore, and every env shares this
+     * one read-only table (reads use pread(), see lib_dlb_fread). */
+    (void) lp;
+#else
     (void) fclose(lp->fdata);
     free((genericptr_t) lp->dir);
     free((genericptr_t) lp->sspace);
 
     (void) memset((char *) lp, 0, sizeof(library));
+#endif
 }
 
 /*
@@ -329,6 +352,15 @@ dlb *dp;
         return 0;
 
     pos = dp->start + dp->mark;
+#ifdef NLE_USE_ARENA_FREE
+    /* pread(): read at an offset without touching the shared file position,
+     * so environments on different threads can read the one library
+     * concurrently (fseek+fread on a shared FILE* races). */
+    nbytes = pread(fileno(dp->lib->fdata), buf, (size_t) size * quan, pos);
+    if (nbytes < 0)
+        nbytes = 0;
+    nread = nbytes / size;
+#else
     if (dp->lib->fmark != pos) {
         fseek(dp->lib->fdata, pos, SEEK_SET); /* check for error??? */
         dp->lib->fmark = pos;
@@ -336,8 +368,9 @@ dlb *dp;
 
     nread = fread(buf, size, quan, dp->lib->fdata);
     nbytes = nread * size;
-    dp->mark += nbytes;
     dp->lib->fmark += nbytes;
+#endif
+    dp->mark += nbytes;
 
     return nread;
 }
@@ -455,9 +488,36 @@ const dlb_procs_t rsrc_dlb_procs = { rsrc_dlb_init,  rsrc_dlb_cleanup,
 static const dlb_procs_t *dlb_procs;
 static boolean dlb_initialized = FALSE;
 
+#ifdef NLE_USE_ARENA_FREE
+/* The library table is shared by every environment in the process; the
+ * first env to arrive opens it, exactly once, even with envs starting on
+ * several threads. */
+#include <stdatomic.h>
+static atomic_int dlb_init_state = 0; /* 0 = unstarted, 1 = opening, 2 = done */
+#endif
+
 boolean
 dlb_init()
 {
+#ifdef NLE_USE_ARENA_FREE
+    int expected = 0;
+
+    if (atomic_compare_exchange_strong(&dlb_init_state, &expected, 1)) {
+#ifdef DLBLIB
+        dlb_procs = &lib_dlb_procs;
+#endif
+#ifdef DLBRSRC
+        dlb_procs = &rsrc_dlb_procs;
+#endif
+        if (dlb_procs)
+            dlb_initialized = do_dlb_init();
+        atomic_store(&dlb_init_state, 2);
+    } else {
+        while (atomic_load(&dlb_init_state) != 2)
+            ; /* another thread is opening the library */
+    }
+    return dlb_initialized;
+#else
     if (!dlb_initialized) {
 #ifdef DLBLIB
         dlb_procs = &lib_dlb_procs;
@@ -471,15 +531,22 @@ dlb_init()
     }
 
     return dlb_initialized;
+#endif
 }
 
 void
 dlb_cleanup()
 {
+#ifdef NLE_USE_ARENA_FREE
+    /* The library is shared by every environment and stays open for the
+     * whole process (see close_library): a game ending must not close it
+     * under the other games. */
+#else
     if (dlb_initialized) {
         do_dlb_cleanup();
         dlb_initialized = FALSE;
     }
+#endif
 }
 
 dlb *

@@ -4,6 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
 #include "dgn_file.h"
 #include "dlb.h"
 #include "lev.h"
@@ -1611,6 +1612,14 @@ level_difficulty()
              */
 #endif /*0*/
     }
+    /* monster_difficulty_scale knob: scale the difficulty used for monster
+     * selection/generation (1.0 = vanilla). Clamp to >= 1 so generation stays
+     * well-defined. */
+    if (nle_tuning.monster_difficulty_scale != 1.0) {
+        res = (int) ((double) res * nle_tuning.monster_difficulty_scale + 0.5);
+        if (res < 1)
+            res = 1;
+    }
     return (xchar) res;
 }
 
@@ -2376,6 +2385,16 @@ mapseen *mptr;
 void
 recalc_mapseen()
 {
+    /* exp_039: recalc_mapseen was ~6% of user CPU at iter-5 puffer N=128.
+     * It updates the player's "discovered rooms/features" annotations used
+     * by the in-game overview map and travel-by-click — not consumed by
+     * the RL agent (the observation gets chars/glyphs from level.locations
+     * directly via fill_obs). Skip entirely under the RL window-port.
+     * If a future caller needs it (e.g., for replay rendering), gate via
+     * !iflags.status_updates instead. */
+    if (!iflags.status_updates)
+        return;
+    {
     mapseen *mptr;
     struct monst *mtmp;
     struct cemetery *bp, **bonesaddr;
@@ -2630,6 +2649,7 @@ recalc_mapseen()
             bp->bonesknown = TRUE;
             mptr->flags.knownbones = 1;
         }
+    } /* exp_039: close gated-block */
 }
 
 /*ARGUSED*/
@@ -3121,3 +3141,10 @@ nh_init_dungeon_c(void)
     }
 }
 #endif
+
+/* NLE: number of dungeon branches (n_dgns is private to this file). */
+int
+nle_n_dgns()
+{
+    return NH_G(n_dgns);
+}

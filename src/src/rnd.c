@@ -22,6 +22,21 @@ const struct rnglist_t nh_tmpl_s_rnd_c_rnglist[] =
     { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };
 
+/* NLE: per-env RNG state accessors (nle.h). CORE = 0, DISP = 1. */
+struct isaac64_ctx *
+nle_rng_state(idx)
+int idx;
+{
+    return &rnglist[idx].rng_state;
+}
+
+boolean *
+nle_rng_init_flag(idx)
+int idx;
+{
+    return &rnglist[idx].init;
+}
+
 int
 whichrng(fn)
 int FDECL((*fn), (int));

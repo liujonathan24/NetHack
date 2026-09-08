@@ -4,6 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
+#include <fcntl.h>
 #include "lev.h"
 #include "tcap.h" /* for TERMLIB and ASCIIGRAPH */
 
@@ -934,6 +936,111 @@ register int fd;
     welcome(FALSE);
     check_special_room(FALSE);
     return 1;
+}
+
+/* ===================================================================
+ * Hero (player) state blob load.
+ *
+ * nle_load_player restores a hero gamestate blob (produced by
+ * nle_save_player) onto an ALREADY-LOADED level. It mirrors dorecover()'s
+ * gamestate tail -- restgamestate() then restlevelstate() plus the worn
+ * ball/chain fixup -- but does NOT call getlev() (the level is already
+ * installed) and does NOT re-render (no docrt/pline/window calls, which
+ * would yield the game coroutine from this main-context entry point and
+ * SIGSEGV; the caller steps once to repaint, exactly like nle_load_level).
+ *
+ * LOAD ORDERING CONTRACT: the caller MUST call nle_load_level BEFORE
+ * nle_load_player. restgamestate() reads stuckid/steedid and the worn
+ * ball/chain fixup, and restlevelstate() relinks u.ustuck / u.usteed
+ * against the CURRENT level's fmon, while the ball/chain fixup walks the
+ * current level's fobj -- so the target level must already be in place.
+ *
+ * Implemented here (not nle.c) because restgamestate() / restlevelstate()
+ * are file-static. Returns 0 on success, nonzero on error.
+ * =================================================================== */
+int
+nle_load_player(nle, blob, len)
+nle_ctx_t *nle;
+const void *blob;
+long len;
+{
+    int fd, ledger;
+    char fq_player[BUFSZ];
+    const char *fq_save;
+    unsigned int stuckid = 0, steedid = 0;
+    struct obj *otmp;
+
+    nle_anchor(nle);
+    if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
+        return 4;
+
+    /* Derive the same per-env scratch path nle_save_player used: populate
+     * lock[] via set_levelfile_name (NLE leaves it empty during play), root it
+     * in the hackdir via fqname, and append `.player`. Then stamp the blob to
+     * it and reopen for the restore reader. */
+    ledger = ledger_no(&u.uz);
+    set_levelfile_name(lock, ledger);
+    fq_save = fqname(lock, LEVELPREFIX, 0);
+    if ((strlen(fq_save) + sizeof ".player") > sizeof fq_player)
+        return 6;
+    Strcpy(fq_player, fq_save);
+    Strcat(fq_player, ".player");
+
+    {
+        int wfd = open(fq_player, O_WRONLY | O_CREAT | O_TRUNC, FCMASK);
+
+        if (wfd < 0)
+            return 1;
+        if (write(wfd, blob, (unsigned) len) != (long) len) {
+            (void) close(wfd);
+            (void) unlink(fq_player);
+            return 2;
+        }
+        (void) close(wfd);
+    }
+
+    fd = open(fq_player, O_RDONLY, FCMASK);
+    if (fd < 0) {
+        (void) unlink(fq_player);
+        return 3;
+    }
+
+    /* Mirror dorecover()'s gamestate tail. restoring guards the timer /
+     * container restore paths; minit() arms the ZEROCOMP read codec (same
+     * as nle_load_level before getlev). We do NOT getlev() here -- the
+     * caller already installed the target level via nle_load_level. */
+    restoring = TRUE;
+    minit();
+    if (!restgamestate(fd, &stuckid, &steedid)) {
+        (void) nhclose(fd);
+        (void) unlink(fq_player);
+        restoring = FALSE;
+        return 7;
+    }
+    /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
+    restlevelstate(stuckid, steedid);
+    (void) nhclose(fd);
+    (void) unlink(fq_player);
+
+    /* take care of iron ball & chain (copied from dorecover's post-restore
+     * fixup): rebind owornmask'd floor objects, then sanity-check ball/chain */
+    for (otmp = fobj; otmp; otmp = otmp->nobj)
+        if (otmp->owornmask)
+            setworn(otmp, otmp->owornmask);
+    if ((uball && !uchain) || (uchain && !uball)) {
+        impossible("nle_load_player: lost ball & chain");
+        /* poor man's unpunish() */
+        setworn((struct obj *) 0, W_CHAIN);
+        setworn((struct obj *) 0, W_BALL);
+    }
+
+    restoring = FALSE;
+
+    /* vision_reset() is pure computation (no window calls) and is safe from
+     * this entry point; the caller's next nle_step() runs docrt() inside the
+     * coroutine to repaint. Same two-phase contract as nle_load_level. */
+    vision_reset();
+    return 0;
 }
 
 void

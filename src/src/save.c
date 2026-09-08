@@ -4,7 +4,10 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
+#include <fcntl.h>
 #include "lev.h"
+#include <errno.h> /* errno in def_bclose */
 
 #ifndef NO_SIGNAL
 #include <signal.h>
@@ -364,6 +367,103 @@ char *whynot;
     return FALSE;
 }
 
+/* ===================================================================
+ * Hero (player) state blob save.
+ *
+ * nle_save_player serializes the full hero gamestate -- the `u` struct,
+ * inventory, attributes, killers/timers/light-sources, the dungeon graph,
+ * fruit/names/waterlevel/msghistory -- to a malloc'd byte blob, WITHOUT
+ * the current level map. It mirrors dosave0()'s gamestate tail but uses
+ * WRITE_SAVE (NOT FREE_SAVE), so the live game is left fully intact.
+ *
+ * Pairs with nle_save_level: a checkpoint = level blob + player blob.
+ * Caller owns the blob and frees it via nle_free_blob.
+ *
+ * Implemented here (not nle.c) because savegamestate() is file-static.
+ * Returns the blob and writes its length to *out_len, or NULL on error.
+ * =================================================================== */
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
+{
+    int fd, ledger;
+    char fq_player[BUFSZ];
+    const char *fq_save;
+    long sz;
+    void *blob;
+    FILE *fp;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+
+    /* Derive a per-env scratch path. NLE leaves `lock[]` empty during play
+     * (it is only populated when a level file is created), so we populate it
+     * the same way nle_save_level does -- set_levelfile_name(lock, ledger) --
+     * then root it in the env's hackdir via fqname and append a `.player`
+     * suffix so we never clobber a real level file. Each env owns its own
+     * lock[] (migrated to nle_ctx_t), so this is concurrency-safe. fqname
+     * returns a static buffer, so copy it out. */
+    ledger = ledger_no(&u.uz);
+    set_levelfile_name(lock, ledger);
+    fq_save = fqname(lock, LEVELPREFIX, 0);
+    if ((strlen(fq_save) + sizeof ".player") > sizeof fq_player)
+        return (genericptr_t) 0;
+    Strcpy(fq_player, fq_save);
+    Strcat(fq_player, ".player");
+
+    fd = open(fq_player, O_WRONLY | O_CREAT | O_TRUNC, FCMASK);
+    if (fd < 0)
+        return (genericptr_t) 0;
+
+    /* Mirror dosave0()'s tail: stamp the stuck/steed monster ids (so the
+     * restore side can relink u.ustuck / u.usteed against the target level's
+     * monster chain), then write the gamestate. WRITE_SAVE only -- no
+     * FREE_SAVE -- keeps invent / dungeon / timers live in the running game.
+     * No store_version / store_plname here: this is a raw gamestate blob,
+     * read back by nle_load_player via restgamestate(), not by dorecover(). */
+    ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
+    usteed_id = (u.usteed ? u.usteed->m_id : 0);
+    bufon(fd);
+    savegamestate(fd, WRITE_SAVE);
+    bflush(fd);
+    bufoff(fd);
+    (void) nhclose(fd);
+
+    /* Slurp the scratch file into a malloc'd blob, then unlink it. */
+    fp = fopen(fq_player, "rb");
+    if (!fp) {
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    (void) fseek(fp, 0L, SEEK_END);
+    sz = ftell(fp);
+    (void) fseek(fp, 0L, SEEK_SET);
+    if (sz <= 0) { /* ftell error or empty file: nothing valid to return */
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    blob = malloc((size_t) sz);
+    if (!blob) {
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    if (fread(blob, 1, (size_t) sz, fp) != (size_t) sz) {
+        free(blob);
+        (void) fclose(fp);
+        (void) unlink(fq_player);
+        return (genericptr_t) 0;
+    }
+    (void) fclose(fp);
+    (void) unlink(fq_player);
+    if (out_len)
+        *out_len = sz;
+    return blob;
+}
+
 #ifdef INSURANCE
 void
 savestateinlock()
@@ -683,7 +783,7 @@ STATIC_OVL void
 def_bufon(fd)
 int fd;
 {
-#ifdef UNIX
+#if defined(UNIX) && !defined(__EMSCRIPTEN__)
     if (bw_fd != fd) {
         if (bw_fd >= 0)
             panic("double buffering unexpected");
@@ -691,8 +791,16 @@ int fd;
         if ((bw_FILE = fdopen(fd, "w")) == 0)
             panic("buffering of file %d failed", fd);
     }
-#endif
     buffering = TRUE;
+#else
+    /* Under Emscripten, fdopen()+fwrite() to a MEMFS-backed fd flushes via a
+       writev that returns 0 bytes without error; musl's __stdio_write then
+       retries that 0-byte write forever (savelev spins on the first level
+       transition). Keep the raw fd unbuffered so def_bwrite() uses the direct
+       write(2) path, which writes MEMFS cleanly in one syscall. */
+    (void) fd;
+    buffering = FALSE;
+#endif
 }
 
 STATIC_OVL void
@@ -764,9 +872,33 @@ int fd;
     bufoff(fd);
 #ifdef UNIX
     if (fd == bw_fd) {
-        (void) fclose(bw_FILE);
+        /* exp_037: the prior `(void) fclose(bw_FILE)` silently discarded
+         * fclose's return. After a successful fflush in def_bflush, fclose
+         * still drains the stdio buffer one more time and writes the FILE*'s
+         * internal state — if the underlying close(2) errors (EIO, ENOSPC,
+         * EDQUOT) or any residual buffered byte fails to flush, those bytes
+         * are dropped without notice. The N=1024 short-read panic at
+         * restmon (eshk, 4936 bytes) saw `pos == size` on the reader, so the
+         * file on disk was exactly the writer's `claimed' length — meaning
+         * the bug is on the writer side and the only ignored error path left
+         * is fclose. Check it and panic loudly. */
+        FILE *bf = bw_FILE;
+        int save_fd = bw_fd;
+        int rc;
+        /* Reset state BEFORE fclose so a re-entrant panic path can't
+         * double-close. */
         bw_fd = -1;
         bw_FILE = 0;
+        /* Force the kernel to push the just-flushed stdio bytes to the
+         * filesystem before fclose. This is paranoia — fflush already
+         * pushed bytes via write(2), so fsync should be a no-op here in
+         * terms of correctness, but it ensures we surface EIO/ENOSPC as
+         * an error rather than only after fclose has discarded info. */
+        (void) fsync(save_fd);
+        rc = fclose(bf);
+        if (rc != 0)
+            panic("fclose of savefile failed (fd=%d errno=%d)",
+                  save_fd, errno);
     } else
 #endif
         (void) nhclose(fd);
