@@ -4,6 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
 
 STATIC_DCL boolean FDECL(known_hitum, (struct monst *, struct obj *, int *,
                                        int, int, struct attack *, int));
@@ -2014,6 +2015,13 @@ int specialdmg; /* blessed and/or silver bonus against various things */
     }
 
     mdef->mstrategy &= ~STRAT_WAITFORU; /* in case player is very fast */
+    /* dmg_by_player_scale knob: scale the hero's melee damage (1.0 = vanilla).
+     * v1 covers the primary weapon/melee path here in hmon_hitmon. */
+    if (nle_tuning.dmg_by_player_scale != 1.0) {
+        tmp = (int) ((double) tmp * nle_tuning.dmg_by_player_scale + 0.5);
+        if (tmp < 0)
+            tmp = 0;
+    }
     mdef->mhp -= tmp;
     if (DEADMONSTER(mdef)) {
         if (mdef->mtame && !cansee(mdef->mx, mdef->my)) {

@@ -1021,6 +1021,25 @@ register struct trobj *trop;
 {
     struct obj *obj;
     int otyp, i;
+    /* The trobj arrays passed in here (Archeologist[], Monk[], ...) are
+     * per-environment fields in nh_g, but ini_inv still mutates
+     * trop->trquan via --trop->trquan (and trop->trquan = 1 for weapons).
+     * Anything that reuses a context (a second game in the same nh_g, or
+     * any future context reuse) would see the decremented trquan and end
+     * up with the wrong initial inventory (zero quantities, wrong-class
+     * items, duplicate spellbooks).
+     *
+     * Fix: snapshot onto a stack-local copy and walk that instead, which
+     * makes the list's mutation harmless. The buffer lives for the whole
+     * function (one stack frame), so trop is valid until ini_inv returns. */
+    struct trobj _trop_local[24];   /* generous; longest list is ~12 rows */
+    {
+        int n = 0;
+        struct trobj *p = trop;
+        while (p->trclass && n < 23) { _trop_local[n++] = *p; p++; }
+        _trop_local[n] = *p;        /* copy the {0,...} terminator */
+        trop = _trop_local;
+    }
 
     while (trop->trclass) {
         otyp = (int) trop->trotyp;

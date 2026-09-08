@@ -4,6 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
 
 STATIC_PTR int NDECL(eatmdone);
 STATIC_PTR int NDECL(eatfood);
@@ -2791,6 +2792,8 @@ bite()
 void
 gethungry()
 {
+    int hunger_before = u.uhunger; /* hunger_rate_scale: scale net consumption */
+
     if (u.uinvulnerable)
         return; /* you don't feel hungrier */
 
@@ -2841,6 +2844,17 @@ gethungry()
             break;
         }
     }
+
+    /* hunger_rate_scale knob (1.0 = vanilla; 0.0 = never get hungry; >1 faster).
+     * Scale the net nutrition consumed this turn rather than each scattered
+     * decrement, so the vanilla path stays byte-identical when the knob is 1. */
+    if (nle_tuning.hunger_rate_scale != 1.0) {
+        int spent = hunger_before - u.uhunger;
+        if (spent > 0)
+            u.uhunger = hunger_before
+                        - (int) ((double) spent * nle_tuning.hunger_rate_scale + 0.5);
+    }
+
     newuhs(TRUE);
 }
 

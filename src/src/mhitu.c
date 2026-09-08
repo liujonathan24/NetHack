@@ -4,6 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
+#include "nle.h"
 #include "artifact.h"
 
 #define mon_currwep (nh_g->s_mhitu_c_mon_currwep)
@@ -2360,6 +2361,13 @@ mdamageu(mtmp, n)
 struct monst *mtmp;
 int n;
 {
+    /* dmg_to_player_scale knob (1.0 = vanilla; 0.0 = player takes no monster
+     * damage). Guarded so the default path is byte-identical to vanilla. */
+    if (nle_tuning.dmg_to_player_scale != 1.0) {
+        n = (int) ((double) n * nle_tuning.dmg_to_player_scale + 0.5);
+        if (n < 0)
+            n = 0;
+    }
     context.botl = 1;
     if (Upolyd) {
         u.mh -= n;

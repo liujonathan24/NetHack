@@ -6,6 +6,8 @@
 #define NEED_VARARGS /* comment line for pre-compiled headers */
 
 #include "hack.h"
+#include "nle.h" /* current_nle_ctx->sentinel */
+#include "nle_sentinel.h"
 #include "lev.h"
 #ifndef NO_SIGNAL
 #include <signal.h>
@@ -476,7 +478,12 @@ int how;
         Strcat(buf, "ghost");
         if (has_mname(mtmp))
             Sprintf(eos(buf), " of %s", MNAME(mtmp));
-    } else if (mtmp->isshk) {
+    } else if (mtmp->isshk && has_eshk(mtmp)) {
+        /* Has_eshk() guard. dealloc_mextra() can null
+         * mtmp->mextra while leaving mtmp->isshk set; in that case
+         * shkname()/shkname_is_pname() would dereference ESHK(mtmp)
+         * (= mtmp->mextra->eshk) and segfault. Fall through to the
+         * generic monster-name branch below. */
         const char *shknm = shkname(mtmp),
                    *honorific = shkname_is_pname(mtmp) ? ""
                                    : mtmp->female ? "Ms. " : "Mr. ";
@@ -629,6 +636,11 @@ VA_DECL(const char *, str)
 #else
         Vsprintf(buf, str, VA_ARGS);
 #endif
+        /* Attribute the panic reason to this env's sentinel slot (NULL slot ok;
+         * set_panic falls back to the current thread's slot). */
+        nle_sentinel_set_panic(current_nle_ctx ? current_nle_ctx->sentinel
+                                               : NULL,
+                               buf);
         raw_print(buf);
         paniclog("panic", buf);
     }

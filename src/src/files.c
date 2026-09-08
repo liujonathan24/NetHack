@@ -3649,30 +3649,12 @@ const char *type;   /* panic, impossible, trickery */
 const char *reason; /* explanation */
 {
 #ifdef PANICLOG
-    FILE *lfile;
-    char buf[BUFSZ];
-
-    if (!NH_G(program_state).in_paniclog) {
-        NH_G(program_state).in_paniclog = 1;
-        lfile = fopen_datafile(PANICLOG, "a", TROUBLEPREFIX);
-        if (lfile) {
-#ifdef PANICLOG_FMT2
-            (void) fprintf(lfile, "%ld %s: %s %s\n",
-                           ubirthday, (plname ? plname : "(none)"),
-                           type, reason);
-#else
-            time_t now = getnow();
-            int uid = getuid();
-            char playmode = wizard ? 'D' : discover ? 'X' : '-';
-
-            (void) fprintf(lfile, "%s %08ld %06ld %d %c: %s %s\n",
-                           version_string(buf), yyyymmdd(now), hhmmss(now),
-                           uid, playmode, type, reason);
-#endif /* !PANICLOG_FMT2 */
-            (void) fclose(lfile);
-        }
-        NH_G(program_state).in_paniclog = 0;
-    }
+    /* NLE: file I/O suppressed. Under OMP training the upstream
+     * fopen+fwrite+fclose serializes through glibc + the underlying
+     * filesystem and destroys scaling. RL training never reads
+     * paniclog, so drop the writes. */
+    (void) type;
+    (void) reason;
 #endif /* PANICLOG */
     return;
 }

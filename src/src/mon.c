@@ -9,6 +9,7 @@
 #endif
 
 #include "hack.h"
+#include "nle.h"
 #include "mfndpos.h"
 #include <ctype.h>
 
@@ -669,6 +670,14 @@ struct monst *mon;
     mmove -= mmove_adj;
     if (rn2(NORMAL_SPEED) < mmove_adj)
         mmove += NORMAL_SPEED;
+
+    /* monster_speed_scale knob: scale monster movement points (1.0 = vanilla;
+     * affects monsters only — the hero's movement does not route through here). */
+    if (nle_tuning.monster_speed_scale != 1.0) {
+        mmove = (int) ((double) mmove * nle_tuning.monster_speed_scale + 0.5);
+        if (mmove < 0)
+            mmove = 0;
+    }
 
     return mmove;
 }
@@ -1798,7 +1807,28 @@ struct monst *m;
         /* [no action needed for x->mcorpsenm] */
 
         free((genericptr_t) x);
+        /* Root fix (replaces the whack-a-mole has_eshk()
+         * guards at every ESHK callsite): under NLE_USE_ARENA_FREE the
+         * free()s above are no-ops — the mextra slot and its sub-structs
+         * remain mapped in the never-reclaimed arena. Nulling m->mextra
+         * here used to be correct under libc malloc (clears a dangling
+         * pointer) but with arena allocation it breaks the invariant
+         * `isshk => has_eshk(m)` (mon.c:82 panics on this) WITHOUT
+         * actually freeing anything. The downstream cost is a parade
+         * of crashes (segfault at 0x18/0x35) in shop_keeper, dopay,
+         * shkname, shkname_is_pname, done_in_by, doset, polymon — all
+         * paths that branch on mtmp->isshk and immediately deref ESHK
+         * without checking has_eshk first.
+         *
+         * Under the arena allocator, leaving m->mextra pointing at the
+         * still-live (leaked) slot preserves the invariant and stops
+         * those crashes at the root. The cost is bounded: we already
+         * leak this memory across the entire game's arena lifetime;
+         * not nulling the field doesn't change the leak amount, just
+         * keeps the pointer valid until process exit. */
+#ifndef NLE_USE_ARENA_FREE
         m->mextra = (struct mextra *) 0;
+#endif
     }
 }
 
