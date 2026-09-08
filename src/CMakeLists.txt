@@ -70,6 +70,10 @@ add_compile_definitions(
   NLE_USE_TILES)
 
 option(USE_SEEDING "Use seeding support in NLE" ON)
+# The engine library (target nethack) needs no Python; the pybind11 module
+# and the ttyrec converter do. Consumers that only want libnethack.so can
+# configure with -DNLE_BUILD_PYTHON=OFF and skip the Python toolchain.
+option(NLE_BUILD_PYTHON "Build the Python extension modules" ON)
 
 if(USE_SEEDING)
   add_compile_definitions(NLE_ALLOW_SEEDING)
@@ -157,6 +161,7 @@ target_link_libraries(rlmain PUBLIC nethackdl)
 target_include_directories(rlmain PUBLIC ${NLE_INC_GEN})
 add_dependencies(rlmain util) # For pm.h.
 
+if(NLE_BUILD_PYTHON)
 # pybind11 core python library.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11)
 pybind11_add_module(
@@ -171,6 +176,7 @@ target_link_libraries(_pynethack PUBLIC nethackdl)
 set_target_properties(_pynethack PROPERTIES CXX_STANDARD 14)
 target_include_directories(_pynethack PUBLIC ${NLE_INC_GEN})
 add_dependencies(_pynethack util) # For pm.h.
+endif()
 
 # ttyrec converter library
 add_library(
@@ -190,8 +196,10 @@ target_link_libraries(ttyrec_reader PUBLIC converter)
 target_include_directories(
   ttyrec_reader PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/converter)
 
+if(NLE_BUILD_PYTHON)
 pybind11_add_module(_pyconverter third_party/converter/pyconverter.cc)
 target_link_libraries(_pyconverter PUBLIC converter)
 set_target_properties(_pyconverter PROPERTIES CXX_STANDARD 14)
 target_include_directories(
   _pyconverter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/converter)
+endif()
