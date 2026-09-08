@@ -212,9 +212,16 @@ nle_vt_snapshot_load(nle_ctx_t *nle, const void *src)
      * its own state agrees (TMT_MSG_MOVED refreshes tty_cursor) */
     snprintf(seq, sizeof seq, "\033[0m\033[%d;%dH", c[0] + 1, c[1] + 1);
     tmt_write(vt, seq, strlen(seq));
-    /* every line is dirty: the next flush repaints the whole tty observation */
+    /* Push the restored screen into the observation buffers now. The game's
+     * terminal output is incremental: a step that changes nothing on screen
+     * writes nothing, and the tty_* buffers would keep the abandoned
+     * continuation's text until something is redrawn. */
     for (r = 0; r < s->nline; r++)
         s->lines[r]->dirty = true;
+    if (nle->observation) {
+        nle_vt_callback(TMT_MSG_UPDATE, vt, s, nle);   /* copies + cleans */
+        nle_vt_callback(TMT_MSG_MOVED, vt, tmt_cursor(vt), nle);
+    }
 }
 
 /* ---- difficulty knob catalog (catalog defined in include/nle.h) ---------- */
