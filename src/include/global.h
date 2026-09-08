@@ -288,14 +288,12 @@ extern char *FDECL(nhdupstr, (const char *, const char *, int));
 #else /* !MONITOR_HEAP */
 extern long *FDECL(alloc, (unsigned int));  /* alloc.c */
 extern char *FDECL(dupstr, (const char *)); /* ditto */
-/* NLE fast-reset: route NetHack free() into the arena-aware wrapper.
- * Arena allocations become no-op frees; non-arena pointers (rare) are
- * forwarded to libc free. See alloc.c / nle_fast_reset.c.
- * Only enabled when building libnethack (NLE_USE_ARENA_FREE is set by the
- * libnethack CMake target). Utility binaries use libc free as usual. */
+/* NLE fast-reset: the game's heap lives in a per-env bump arena (alloc.c),
+ * so free() is a no-op for arena pointers. Only when building libnethack
+ * (the CMake target sets NLE_USE_ARENA_FREE); the utilities use libc. */
 #ifdef NLE_USE_ARENA_FREE
 extern void FDECL(nle_arena_free, (genericptr_t));
-#define free(p) nle_arena_free((genericptr_t)(p))
+#define free(p) nle_arena_free((genericptr_t) (p))
 #endif
 #endif
 

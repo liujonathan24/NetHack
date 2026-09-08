@@ -1216,14 +1216,14 @@ char c; /* class */
         return ERR;
 
     for (i = class ? bases[class] : 0; i < NUM_OBJECTS; i++) {
-        if (class && objects[i].oc_class != class)
+        if (class && NH_G(objects)[i].oc_class != class)
             break;
         objname = obj_descr[i].oc_name;
         if (objname && !strcmp(s, objname))
             return i;
     }
     for (i = class ? bases[class] : 0; i < NUM_OBJECTS; i++) {
-        if (class && objects[i].oc_class != class)
+        if (class && NH_G(objects)[i].oc_class != class)
             break;
         objname = obj_descr[i].oc_name;
         if (objname && !case_insensitive_comp(s, objname)) {
@@ -1243,7 +1243,7 @@ init_obj_classes()
 
     prev_class = -1;
     for (i = 0; i < NUM_OBJECTS; i++) {
-        class = objects[i].oc_class;
+        class = NH_G(objects)[i].oc_class;
         if (class != prev_class) {
             bases[class] = i;
             prev_class = class;

@@ -6,10 +6,7 @@
 /* various code that was replicated in *main.c */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffer */
-#define pbar (current_nle_ctx->s_allmain_pbar)
+#include "nle.h"
 #include <ctype.h>
 
 #ifndef NO_SIGNAL
@@ -54,15 +51,15 @@ boolean resuming;
         (void) enter_explore_mode();
 
     /* side-effects from the real world */
-    flags.moonphase = phase_of_the_moon();
-    if (flags.moonphase == FULL_MOON) {
+    NH_G(flags).moonphase = phase_of_the_moon();
+    if (NH_G(flags).moonphase == FULL_MOON) {
         You("are lucky!  Full moon tonight.");
         change_luck(1);
-    } else if (flags.moonphase == NEW_MOON) {
+    } else if (NH_G(flags).moonphase == NEW_MOON) {
         pline("Be careful!  New moon tonight.");
     }
-    flags.friday13 = friday_13th();
-    if (flags.friday13) {
+    NH_G(flags).friday13 = friday_13th();
+    if (NH_G(flags).friday13) {
         pline("Watch out!  Bad things can happen on Friday the 13th.");
         change_luck(-1);
     }
@@ -74,13 +71,13 @@ boolean resuming;
     }
     context.botlx = TRUE; /* for STATUS_HILITES */
     update_inventory(); /* for perm_invent */
-    if (resuming) { /* current_nle_ctx->restoring old game */
+    if (resuming) { /* restoring old game */
         read_engr_at(u.ux, u.uy); /* subset of pickup() */
     }
 
     (void) encumber_msg(); /* in case they auto-picked up something */
-    if (current_nle_ctx->defer_see_monsters) {
-        current_nle_ctx->defer_see_monsters = FALSE;
+    if (defer_see_monsters) {
+        defer_see_monsters = FALSE;
         see_monsters();
     }
     initrack();
@@ -89,10 +86,10 @@ boolean resuming;
     youmonst.movement = NORMAL_SPEED; /* give the hero some movement points */
     context.move = 0;
 
-    current_nle_ctx->program_state.in_moveloop = 1;
+    NH_G(program_state).in_moveloop = 1;
     for (;;) {
 #ifdef SAFERHANGUP
-        if (current_nle_ctx->program_state.done_hup)
+        if (NH_G(program_state).done_hup)
             end_of_input();
 #endif
         get_nh_event();
@@ -212,7 +209,7 @@ boolean resuming;
 
                     if (u.ublesscnt)
                         u.ublesscnt--;
-                    if (flags.time && !context.run)
+                    if (NH_G(flags).time && !context.run)
                         iflags.time_botl = TRUE;
 
                     /* One possible result of prayer is healing.  Whether or
@@ -289,7 +286,7 @@ boolean resuming;
                                  && !rn2(80 - (20 * night())))
                             change = 2;
                         if (change && !Unchanging) {
-                            if (current_nle_ctx->multi >= 0) {
+                            if (multi >= 0) {
                                 stop_occupation();
                                 if (change == 1)
                                     polyself(0);
@@ -300,7 +297,7 @@ boolean resuming;
                         }
                     }
 
-                    if (Searching && current_nle_ctx->multi >= 0)
+                    if (Searching && multi >= 0)
                         (void) dosearch0(1);
                     if (Warning)
                         warnreveal();
@@ -336,8 +333,8 @@ boolean resuming;
                         under_ground(0);
 
                     /* when immobile, count is in turns */
-                    if (current_nle_ctx->multi < 0) {
-                        if (++current_nle_ctx->multi == 0) { /* finished yet? */
+                    if (multi < 0) {
+                        if (++multi == 0) { /* finished yet? */
                             unmul((char *) 0);
                             /* if unmul caused a level change, take it now */
                             if (u.utotype)
@@ -400,7 +397,7 @@ boolean resuming;
 
         context.move = 1;
 
-        if (current_nle_ctx->multi >= 0 && occupation) {
+        if (multi >= 0 && occupation) {
 #if defined(MICRO) || defined(WIN32)
             abort_lev = 0;
             if (kbhit()) {
@@ -423,7 +420,7 @@ boolean resuming;
                 reset_eat();
             }
 #if defined(MICRO) || defined(WIN32)
-            if (!(++current_nle_ctx->occtime % 7))
+            if (!(++occtime % 7))
                 display_nhwindow(WIN_MAP, FALSE);
 #endif
             continue;
@@ -439,25 +436,25 @@ boolean resuming;
 
         u.umoved = FALSE;
 
-        if (current_nle_ctx->multi > 0) {
+        if (multi > 0) {
             lookaround();
-            if (!current_nle_ctx->multi) {
-                /* lookaround may clear current_nle_ctx->multi */
+            if (!multi) {
+                /* lookaround may clear multi */
                 context.move = 0;
-                if (flags.time)
+                if (NH_G(flags).time)
                     context.botl = TRUE;
                 continue;
             }
             if (context.mv) {
-                if (current_nle_ctx->multi < COLNO && !--current_nle_ctx->multi)
+                if (multi < COLNO && !--multi)
                     context.travel = context.travel1 = context.mv =
                         context.run = 0;
                 domove();
             } else {
-                --current_nle_ctx->multi;
+                --multi;
                 rhack(save_cm);
             }
-        } else if (current_nle_ctx->multi == 0) {
+        } else if (multi == 0) {
 #ifdef MAIL
             ckmailstatus();
 #endif
@@ -466,15 +463,15 @@ boolean resuming;
         if (u.utotype)       /* change dungeon level */
             deferred_goto(); /* after rhack() */
         /* !context.move here: multiple movement command stopped */
-        else if (flags.time && (!context.move || !context.mv))
+        else if (NH_G(flags).time && (!context.move || !context.mv))
             context.botl = TRUE;
 
         if (vision_full_recalc)
             vision_recalc(0); /* vision! */
         /* when running in non-tport mode, this gets done through domove() */
-        if ((!context.run || flags.runmode == RUN_TPORT)
-            && (current_nle_ctx->multi && (!context.travel ? !(current_nle_ctx->multi % 7) : !(moves % 7L)))) {
-            if (flags.time && context.run)
+        if ((!context.run || NH_G(flags).runmode == RUN_TPORT)
+            && (multi && (!context.travel ? !(multi % 7) : !(moves % 7L)))) {
+            if (NH_G(flags).time && context.run)
                 context.botl = TRUE;
             /* [should this be flush_screen() instead?] */
             display_nhwindow(WIN_MAP, FALSE);
@@ -548,7 +545,7 @@ int wtcap;
                 u.uhp += heal;
                 if (u.uhp > u.uhpmax)
                     u.uhp = u.uhpmax;
-                /* stop voluntary current_nle_ctx->multi-turn activity if now fully healed */
+                /* stop voluntary multi-turn activity if now fully healed */
                 reached_full = (u.uhp == u.uhpmax);
             }
         }
@@ -568,7 +565,7 @@ stop_occupation()
         context.botl = TRUE; /* in case u.uhs changed */
         nomul(0);
         pushch(0);
-    } else if (current_nle_ctx->multi >= 0) {
+    } else if (multi >= 0) {
         nomul(0);
     }
 }
@@ -627,11 +624,11 @@ newgame()
     context.tribute.tributesz = sizeof(struct tribute_info);
 
     for (i = LOW_PM; i < NUMMONS; i++)
-        mvitals[i].mvflags = mons[i].geno & G_NOCORPSE;
+        NH_G(mvitals)[i].mvflags = mons[i].geno & G_NOCORPSE;
 
     init_objects(); /* must be before u_init() */
 
-    flags.pantheon = -1; /* role_init() will reset this */
+    NH_G(flags).pantheon = -1; /* role_init() will reset this */
     role_init();         /* must be before init_dungeons(), u_init(),
                           * and init_artifacts() */
 
@@ -664,7 +661,7 @@ newgame()
     (void) makedog();
     docrt();
 
-    if (flags.legacy) {
+    if (NH_G(flags).legacy) {
         flush_screen(1);
         com_pager(1);
     }
@@ -674,7 +671,7 @@ newgame()
 #ifdef INSURANCE
     save_currentstate();
 #endif
-    current_nle_ctx->program_state.something_worth_saving++; /* useful data now exists */
+    NH_G(program_state).something_worth_saving++; /* useful data now exists */
 
     /* Success! */
     welcome(TRUE);
@@ -684,12 +681,12 @@ newgame()
 /* show "welcome [back] to nethack" message at program startup */
 void
 welcome(new_game)
-boolean new_game; /* false => current_nle_ctx->restoring an old game */
+boolean new_game; /* false => restoring an old game */
 {
     char buf[BUFSZ];
-    boolean currentgend = Upolyd ? u.mfemale : flags.female;
+    boolean currentgend = Upolyd ? u.mfemale : NH_G(flags).female;
 
-    /* skip "welcome back" if current_nle_ctx->restoring a doomed character */
+    /* skip "welcome back" if restoring a doomed character */
     if (!new_game && Upolyd && ugenocided()) {
         /* death via self-genocide is pending */
         pline("You're back, but you still feel %s inside.", udeadinside());
@@ -710,7 +707,7 @@ boolean new_game; /* false => current_nle_ctx->restoring an old game */
     if (!urole.name.f
         && (new_game
                 ? (urole.allow & ROLE_GENDMASK) == (ROLE_MALE | ROLE_FEMALE)
-                : currentgend != flags.initgend))
+                : currentgend != NH_G(flags).initgend))
         Sprintf(eos(buf), " %s", genders[currentgend].adj);
 
     pline(new_game ? "%s %s, welcome to NetHack!  You are a%s %s %s."
@@ -723,7 +720,7 @@ boolean new_game; /* false => current_nle_ctx->restoring an old game */
 STATIC_DCL void
 do_positionbar()
 {
-    /* Pbar migrated to nle_ctx_t */
+    static char pbar[COLNO];
     char *p;
 
     p = pbar;
@@ -779,9 +776,9 @@ STATIC_DCL void
 interrupt_multi(msg)
 const char *msg;
 {
-    if (current_nle_ctx->multi > 0 && !context.travel && !context.run) {
+    if (multi > 0 && !context.travel && !context.run) {
         nomul(0);
-        if (flags.verbose && msg)
+        if (NH_G(flags).verbose && msg)
             Norep("%s", msg);
     }
 }

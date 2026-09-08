@@ -78,19 +78,19 @@ struct objclass {
 
     Bitfield(oc_material, 5); /* one of obj_material_types */
 
-#define is_organic(otmp) (objects[otmp->otyp].oc_material <= WOOD)
+#define is_organic(otmp) (NH_G(objects)[otmp->otyp].oc_material <= WOOD)
 #define is_metallic(otmp)                    \
-    (objects[otmp->otyp].oc_material >= IRON \
-     && objects[otmp->otyp].oc_material <= MITHRIL)
+    (NH_G(objects)[otmp->otyp].oc_material >= IRON \
+     && NH_G(objects)[otmp->otyp].oc_material <= MITHRIL)
 
 /* primary damage: fire/rust/--- */
 /* is_flammable(otmp), is_rottable(otmp) in mkobj.c */
-#define is_rustprone(otmp) (objects[otmp->otyp].oc_material == IRON)
+#define is_rustprone(otmp) (NH_G(objects)[otmp->otyp].oc_material == IRON)
 
 /* secondary damage: rot/acid/acid */
 #define is_corrodeable(otmp)                   \
-    (objects[otmp->otyp].oc_material == COPPER \
-     || objects[otmp->otyp].oc_material == IRON)
+    (NH_G(objects)[otmp->otyp].oc_material == COPPER \
+     || NH_G(objects)[otmp->otyp].oc_material == IRON)
 
 #define is_damageable(otmp)                                        \
     (is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp) \
@@ -134,19 +134,11 @@ struct objdescr {
     const char *oc_descr; /* description when name unknown */
 };
 
-#ifdef NLE_OBJECTS_GLOBAL
-/* Build-tool path (makedefs, lev_comp): regular writable globals so
- * those utilities can scratch oc_name_idx etc. while generating their
- * outputs. They don't have current_nle_ctx. */
-extern struct objclass objects[];
-extern struct objdescr obj_descr[];
-#else
-/* libnethack: per-env tables (per-game object randomization). Baseline
- * is shared const; nle_objects_init() in objects.c populates each env. */
-#define objects   (current_nle_ctx->s9o_objects_p)
-#define obj_descr (current_nle_ctx->s9o_obj_descr_p)
-extern const struct objclass objects_baseline[];
-extern const struct objdescr obj_descr_baseline[];
+#ifdef NH_GLOBALS_NONE
+extern NEARDATA struct objclass objects[];
+#endif
+#ifdef NH_GLOBALS_NONE
+extern NEARDATA struct objdescr obj_descr[];
 #endif
 
 /*

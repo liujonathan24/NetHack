@@ -6,11 +6,6 @@
 /* Contains code for 't' (throw) */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Function-local statics migrated to nle_ctx_t */
-#define lastmovetime  (current_nle_ctx->s_breakobj_lastmovetime)
-#define peaceful_shk  (current_nle_ctx->s_breakobj_peaceful_shk)
 
 STATIC_DCL int FDECL(throw_obj, (struct obj *, int));
 STATIC_DCL boolean FDECL(ok_to_throw, (int *));
@@ -25,16 +20,15 @@ STATIC_DCL boolean FDECL(toss_up, (struct obj *, BOOLEAN_P));
 STATIC_DCL void FDECL(sho_obj_return_to_u, (struct obj * obj));
 STATIC_DCL boolean FDECL(mhurtle_step, (genericptr_t, int, int));
 
-static const char toss_objs[] = { ALLOW_COUNT, COIN_CLASS,
+static NEARDATA const char toss_objs[] = { ALLOW_COUNT, COIN_CLASS,
                                            ALL_CLASSES, WEAPON_CLASS, 0 };
 /* different default choices when wielding a sling (gold must be included) */
-static const char bullets[] = { ALLOW_COUNT, COIN_CLASS, ALL_CLASSES,
+static NEARDATA const char bullets[] = { ALLOW_COUNT, COIN_CLASS, ALL_CLASSES,
                                          GEM_CLASS, 0 };
 
 /* thrownobj (decl.c) tracks an object until it lands */
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
 
 /* Throw the selected object, asking for direction */
 STATIC_OVL int
@@ -97,8 +91,8 @@ int shotlimit;
             /* throwing with one hand, but pluralize since the
                expression "with your bare hands" sounds better */
             makeplural(body_part(HAND)));
-        Sprintf(killer.name, "throwing %s bare-handed", killer_xname(obj));
-        instapetrify(killer.name);
+        Sprintf(NH_G(killer).name, "throwing %s bare-handed", killer_xname(obj));
+        instapetrify(NH_G(killer).name);
     }
     if (welded(obj)) {
         weldmsg(obj);
@@ -111,7 +105,7 @@ int shotlimit;
      * (potential volley of up to N missiles; default for N is 1)
      */
     multishot = 1;
-    skill = objects[obj->otyp].oc_skill;
+    skill = NH_G(objects)[obj->otyp].oc_skill;
     if (obj->quan > 1L /* no point checking if there's only 1 */
         /* ammo requires corresponding launcher be wielded */
         && (is_ammo(obj) ? matching_launcher(obj, uwep)
@@ -244,9 +238,9 @@ STATIC_OVL boolean
 ok_to_throw(shotlimit_p)
 int *shotlimit_p; /* (see dothrow()) */
 {
-    /* kludge to work around parse()'s pre-decrement of `current_nle_ctx->multi' */
-    *shotlimit_p = (current_nle_ctx->multi || save_cm) ? current_nle_ctx->multi + 1 : 0;
-    current_nle_ctx->multi = 0; /* reset; it's been used up */
+    /* kludge to work around parse()'s pre-decrement of `multi' */
+    *shotlimit_p = (multi || save_cm) ? multi + 1 : 0;
+    multi = 0; /* reset; it's been used up */
 
     if (notake(youmonst.data)) {
         You("are physically incapable of throwing or shooting anything.");
@@ -306,10 +300,10 @@ autoquiver()
         } else if (otmp->otyp == ROCK
                    /* seen rocks or known flint or known glass */
                    || (otmp->otyp == FLINT
-                       && objects[otmp->otyp].oc_name_known)
+                       && NH_G(objects)[otmp->otyp].oc_name_known)
                    || (otmp->oclass == GEM_CLASS
-                       && objects[otmp->otyp].oc_material == GLASS
-                       && objects[otmp->otyp].oc_name_known)) {
+                       && NH_G(objects)[otmp->otyp].oc_material == GLASS
+                       && NH_G(objects)[otmp->otyp].oc_name_known)) {
             if (uslinging())
                 oammo = otmp;
             else if (ammo_and_launcher(otmp, uswapwep))
@@ -333,7 +327,7 @@ autoquiver()
             omissile = otmp;
         } else if (otmp->oclass == WEAPON_CLASS && throwing_weapon(otmp)) {
             /* Ordinary weapon */
-            if (objects[otmp->otyp].oc_skill == P_DAGGER && !omissile)
+            if (NH_G(objects)[otmp->otyp].oc_skill == P_DAGGER && !omissile)
                 omissile = otmp;
             else
                 omisc = otmp;
@@ -380,7 +374,7 @@ dofire()
         return 0;
 
     if ((obj = uquiver) == 0) {
-        if (!flags.autoquiver) {
+        if (!NH_G(flags).autoquiver) {
             You("have no ammunition readied.");
         } else {
             autoquiver();
@@ -726,7 +720,7 @@ int x, y;
     if (is_pool(x, y) && !u.uinwater) {
         if ((Is_waterlevel(&u.uz) && levl[x][y].typ == WATER)
             || !(Levitation || Flying || Wwalking)) {
-            current_nle_ctx->multi = 0; /* can move, so drown() allows crawling out of water */
+            multi = 0; /* can move, so drown() allows crawling out of water */
             (void) drown();
             return FALSE;
         } else if (!Is_waterlevel(&u.uz) && !stopping_short) {
@@ -845,7 +839,7 @@ boolean verbose;
         return; /* paranoia */
 
     nomul(-range);
-    current_nle_ctx->multi_reason = "moving through the air";
+    multi_reason = "moving through the air";
     nomovemsg = ""; /* it just happens */
     if (verbose)
         You("%s in the opposite direction.", range > 1 ? "hurtle" : "float");
@@ -1022,7 +1016,7 @@ boolean hitsroof;
             else if (dmg > 6)
                 dmg = 6;
             if (youmonst.data == &mons[PM_SHADE]
-                && objects[obj->otyp].oc_material != SILVER)
+                && NH_G(objects)[obj->otyp].oc_material != SILVER)
                 dmg = 0;
         }
         if (dmg > 1 && less_damage)
@@ -1040,15 +1034,15 @@ boolean hitsroof;
                 /* helmet definitely protects you when it blocks petrification
                  */
             } else if (!petrifier) {
-                if (flags.verbose)
+                if (NH_G(flags).verbose)
                     Your("%s does not protect you.", helm_simple_name(uarmh));
             }
         } else if (petrifier && !Stone_resistance
                    && !(poly_when_stoned(youmonst.data)
                         && polymon(PM_STONE_GOLEM))) {
  petrify:
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, "elementary physics"); /* "what goes up..." */
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, "elementary physics"); /* "what goes up..." */
             You("turn to stone.");
             if (obj)
                 dropy(obj); /* bypass most of hitfloor() */
@@ -1071,7 +1065,7 @@ struct obj *obj;
     return (boolean) (is_missile(obj) || is_spear(obj)
                       /* daggers and knife (excludes scalpel) */
                       || (is_blade(obj) && !is_sword(obj)
-                          && (objects[obj->otyp].oc_dir & PIERCE))
+                          && (NH_G(objects)[obj->otyp].oc_dir & PIERCE))
                       /* special cases [might want to add AXE] */
                       || obj->otyp == WAR_HAMMER || obj->otyp == AKLYS);
 }
@@ -1572,7 +1566,7 @@ register struct obj *obj; /* thrownobj or kickedobj or uwep */
     tmp += disttmp;
 
     /* gloves are a hindrance to proper use of bows */
-    if (uarmg && uwep && objects[uwep->otyp].oc_skill == P_BOW) {
+    if (uarmg && uwep && NH_G(objects)[uwep->otyp].oc_skill == P_BOW) {
         switch (uarmg->otyp) {
         case GAUNTLETS_OF_POWER: /* metal */
             tmp -= 2;
@@ -1664,7 +1658,7 @@ register struct obj *obj; /* thrownobj or kickedobj or uwep */
                  */
                 if ((Race_if(PM_ELF) || Role_if(PM_SAMURAI))
                     && (!Upolyd || your_race(youmonst.data))
-                    && objects[uwep->otyp].oc_skill == P_BOW) {
+                    && NH_G(objects)[uwep->otyp].oc_skill == P_BOW) {
                     tmp++;
                     if (Race_if(PM_ELF) && uwep->otyp == ELVEN_BOW)
                         tmp++;
@@ -1707,9 +1701,9 @@ register struct obj *obj; /* thrownobj or kickedobj or uwep */
             /* projectiles other than magic stones sometimes disappear
                when thrown; projectiles aren't among the types of weapon
                that hmon() might have destroyed so obj is intact */
-            if (objects[otyp].oc_skill < P_NONE
-                && objects[otyp].oc_skill > -P_BOOMERANG
-                && !objects[otyp].oc_magic) {
+            if (NH_G(objects)[otyp].oc_skill < P_NONE
+                && NH_G(objects)[otyp].oc_skill > -P_BOOMERANG
+                && !NH_G(objects)[otyp].oc_magic) {
                 /* we were breaking 2/3 of everything unconditionally.
                  * we still don't want anything to survive unconditionally,
                  * but we need ammo to stay around longer on average.
@@ -1811,20 +1805,20 @@ register struct obj *obj;
 {
     char buf[BUFSZ];
     boolean is_buddy = sgn(mon->data->maligntyp) == sgn(u.ualign.type);
-    boolean is_gem = objects[obj->otyp].oc_material == GEMSTONE;
+    boolean is_gem = NH_G(objects)[obj->otyp].oc_material == GEMSTONE;
     int ret = 0;
-    static const char nogood[] = " is not interested in your junk.";
-    static const char acceptgift[] = " accepts your gift.";
-    static const char maybeluck[] = " hesitatingly";
-    static const char noluck[] = " graciously";
-    static const char addluck[] = " gratefully";
+    static NEARDATA const char nogood[] = " is not interested in your junk.";
+    static NEARDATA const char acceptgift[] = " accepts your gift.";
+    static NEARDATA const char maybeluck[] = " hesitatingly";
+    static NEARDATA const char noluck[] = " graciously";
+    static NEARDATA const char addluck[] = " gratefully";
 
     Strcpy(buf, Monnam(mon));
     mon->mpeaceful = 1;
     mon->mavenge = 0;
 
     /* object properly identified */
-    if (obj->dknown && objects[obj->otyp].oc_name_known) {
+    if (obj->dknown && NH_G(objects)[obj->otyp].oc_name_known) {
         if (is_gem) {
             if (is_buddy) {
                 Strcat(buf, addluck);
@@ -1838,7 +1832,7 @@ register struct obj *obj;
             goto nopick;
         }
         /* making guesses */
-    } else if (has_oname(obj) || objects[obj->otyp].oc_uname) {
+    } else if (has_oname(obj) || NH_G(objects)[obj->otyp].oc_uname) {
         if (is_gem) {
             if (is_buddy) {
                 Strcat(buf, addluck);
@@ -2032,18 +2026,19 @@ boolean from_invent;
             struct monst *shkp = shop_keeper(*o_shop);
 
             if (shkp) { /* (implies *o_shop != '\0') */
-                /* Lastmovetime, peaceful_shk migrated to nle_ctx_t */
+                /* lastmovetime: per-env nh_g->l_dothrow_c_breakobj_lastmovetime */
+                /* peaceful_shk: per-env nh_g->l_dothrow_c_breakobj_peaceful_shk */
                 /*  We want to base shk actions on her peacefulness
                     at start of this turn, so that "simultaneous"
                     multiple breakage isn't drastically worse than
                     single breakage.  (ought to be done via ESHK)  */
-                if (moves != lastmovetime)
-                    peaceful_shk = shkp->mpeaceful;
-                if (stolen_value(obj, x, y, peaceful_shk, FALSE) > 0L
+                if (moves != NH_G(l_dothrow_c_breakobj_lastmovetime))
+                    NH_G(l_dothrow_c_breakobj_peaceful_shk) = shkp->mpeaceful;
+                if (stolen_value(obj, x, y, NH_G(l_dothrow_c_breakobj_peaceful_shk), FALSE) > 0L
                     && (*o_shop != u.ushops[0] || !inside_shop(u.ux, u.uy))
-                    && moves != lastmovetime)
+                    && moves != NH_G(l_dothrow_c_breakobj_lastmovetime))
                     make_angry_shk(shkp, x, y);
-                lastmovetime = moves;
+                NH_G(l_dothrow_c_breakobj_lastmovetime) = moves;
             }
         }
     }
@@ -2061,7 +2056,7 @@ struct obj *obj;
 {
     if (obj_resists(obj, 1, 99))
         return 0;
-    if (objects[obj->otyp].oc_material == GLASS && !obj->oartifact
+    if (NH_G(objects)[obj->otyp].oc_material == GLASS && !obj->oartifact
         && obj->oclass != GEM_CLASS)
         return 1;
     switch (obj->oclass == POTION_CLASS ? POT_WATER : obj->otyp) {

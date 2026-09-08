@@ -3,15 +3,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "sp_lev.h"
-
-/* File-statics migrated to nle_ctx_t for per-env
- * isolation. `new_locations` is alloc()'d at the top of mkmap() and
- * free()'d at the bottom, so the ctx pointer holds the in-progress
- * buffer for exactly this env's mkmap call. */
-#define new_locations  (current_nle_ctx->s_new_locations)
-#define n_loc_filled   (current_nle_ctx->s_n_loc_filled)
 
 #define HEIGHT (ROWNO - 1)
 #define WIDTH (COLNO - 2)
@@ -29,13 +21,12 @@ STATIC_DCL void FDECL(finish_map,
 STATIC_DCL void FDECL(remove_room, (unsigned));
 void FDECL(mkmap, (lev_init *));
 
-/* new_locations moved to nle_ctx_t */
-/* min_rx, max_rx, min_ry, max_ry — migrated to nle_ctx_t. */
-#define min_rx (current_nle_ctx->min_rx_v)
-#define max_rx (current_nle_ctx->max_rx_v)
-#define min_ry (current_nle_ctx->min_ry_v)
-#define max_ry (current_nle_ctx->max_ry_v)
-/* n_loc_filled moved to nle_ctx_t */
+#define new_locations (nh_g->s_mkmap_c_new_locations)
+/* min_rx: per-env, see nh_globals.h */
+/* max_rx: per-env, see nh_globals.h */
+/* min_ry: per-env, see nh_globals.h */
+/* max_ry: per-env, see nh_globals.h */ /* rectangle bounds for regions */
+#define n_loc_filled (nh_g->s_mkmap_c_n_loc_filled)
 
 STATIC_OVL void
 init_map(bg_typ)
@@ -299,12 +290,12 @@ schar bg_typ, fg_typ;
                 min_rx = max_rx = i;
                 min_ry = max_ry = j;
                 n_loc_filled = 0;
-                flood_fill_rm(i, j, current_nle_ctx->s_nroom + ROOMOFFSET, FALSE, FALSE);
+                flood_fill_rm(i, j, NH_G(nroom) + ROOMOFFSET, FALSE, FALSE);
                 if (n_loc_filled > 3) {
                     add_room(min_rx, min_ry, max_rx, max_ry, FALSE, OROOM,
                              TRUE);
-                    rooms[current_nle_ctx->s_nroom - 1].irregular = TRUE;
-                    if (current_nle_ctx->s_nroom >= (MAXNROFROOMS * 2))
+                    rooms[NH_G(nroom) - 1].irregular = TRUE;
+                    if (NH_G(nroom) >= (MAXNROFROOMS * 2))
                         goto joinm;
                 } else {
                     /*
@@ -314,7 +305,7 @@ schar bg_typ, fg_typ;
                     for (sx = min_rx; sx <= max_rx; sx++)
                         for (sy = min_ry; sy <= max_ry; sy++)
                             if ((int) levl[sx][sy].roomno
-                                == current_nle_ctx->s_nroom + ROOMOFFSET) {
+                                == NH_G(nroom) + ROOMOFFSET) {
                                 levl[sx][sy].typ = bg_typ;
                                 levl[sx][sy].roomno = NO_ROOM;
                             }
@@ -329,7 +320,7 @@ joinm:
      * so don't call sort_rooms(), which can screw up the roomno's
      * validity in the levl structure.
      */
-    for (croom = &rooms[0], croom2 = croom + 1; croom2 < &rooms[current_nle_ctx->s_nroom];) {
+    for (croom = &rooms[0], croom2 = croom + 1; croom2 < &rooms[NH_G(nroom)];) {
         /* pick random starting and end locations for "corridor" */
         if (!somexy(croom, &sm) || !somexy(croom2, &em)) {
             /* ack! -- the level is going to be busted */
@@ -372,7 +363,7 @@ boolean lit, walled, icedpools;
                     || (bg_typ == TREE && levl[i][j].typ == bg_typ)
                     || (walled && IS_WALL(levl[i][j].typ)))
                     levl[i][j].lit = TRUE;
-        for (i = 0; i < current_nle_ctx->s_nroom; i++)
+        for (i = 0; i < NH_G(nroom); i++)
             rooms[i].rlit = 1;
     }
     /* light lava even if everything's otherwise unlit;
@@ -402,7 +393,7 @@ int lx, ly, hx, hy;
     int i;
     struct mkroom *croom;
 
-    for (i = current_nle_ctx->s_nroom - 1; i >= 0; --i) {
+    for (i = NH_G(nroom) - 1; i >= 0; --i) {
         croom = &rooms[i];
         if (croom->hx < lx || croom->lx >= hx || croom->hy < ly
             || croom->ly >= hy)
@@ -422,7 +413,7 @@ int lx, ly, hx, hy;
 }
 
 /*
- * Remove roomno from the rooms array, decrementing current_nle_ctx->s_nroom.  Also updates
+ * Remove roomno from the rooms array, decrementing nroom.  Also updates
  * all level roomno values of affected higher numbered rooms.  Assumes
  * level structure contents corresponding to roomno have already been reset.
  * Currently handles only the removal of rooms that have no subrooms.
@@ -432,7 +423,7 @@ remove_room(roomno)
 unsigned roomno;
 {
     struct mkroom *croom = &rooms[roomno];
-    struct mkroom *maxroom = &rooms[--current_nle_ctx->s_nroom];
+    struct mkroom *maxroom = &rooms[--NH_G(nroom)];
     int i, j;
     unsigned oroomno;
 
@@ -444,7 +435,7 @@ unsigned roomno;
                       sizeof(struct mkroom));
 
         /* since maxroom moved, update affected level roomno values */
-        oroomno = current_nle_ctx->s_nroom + ROOMOFFSET;
+        oroomno = NH_G(nroom) + ROOMOFFSET;
         roomno += ROOMOFFSET;
         for (i = croom->lx; i <= croom->hx; ++i)
             for (j = croom->ly; j <= croom->hy; ++j) {
@@ -494,8 +485,8 @@ lev_init *init_lev;
                init_lev->icedpools);
     /* a walled, joined level is cavernous, not mazelike -dlc */
     if (walled && join) {
-        level.lflags.is_maze_lev = FALSE;
-        level.lflags.is_cavernous_lev = TRUE;
+        NH_G(level).flags.is_maze_lev = FALSE;
+        NH_G(level).flags.is_cavernous_lev = TRUE;
     }
     free(new_locations);
 }

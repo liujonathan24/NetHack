@@ -17,10 +17,10 @@ struct ext_func_tab {
     uchar key;
     const char *ef_txt, *ef_desc;
     int NDECL((*ef_funct));
-    int cmd_flags; /* XXX AW-full: was 'flags' */
+    int flags;
     const char *f_text;
 };
 
-extern const struct ext_func_tab extcmdlist[];
+/* extcmdlist: per-env, see nh_globals.h */
 
 #endif /* FUNC_TAB_H */

@@ -5,7 +5,6 @@
 /* Code for drinking from fountains. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL void NDECL(dowatersnakes);
 STATIC_DCL void NDECL(dowaterdemon);
@@ -37,7 +36,7 @@ dowatersnakes()
     register int num = rn1(5, 2);
     struct monst *mtmp;
 
-    if (!(mvitals[PM_WATER_MOCCASIN].mvflags & G_GONE)) {
+    if (!(NH_G(mvitals)[PM_WATER_MOCCASIN].mvflags & G_GONE)) {
         if (!Blind)
             pline("An endless stream of %s pours forth!",
                   Hallucination ? makeplural(rndmonnam(NULL)) : "snakes");
@@ -58,7 +57,7 @@ dowaterdemon()
 {
     struct monst *mtmp;
 
-    if (!(mvitals[PM_WATER_DEMON].mvflags & G_GONE)) {
+    if (!(NH_G(mvitals)[PM_WATER_DEMON].mvflags & G_GONE)) {
         if ((mtmp = makemon(&mons[PM_WATER_DEMON], u.ux, u.uy,
                             NO_MM_FLAGS)) != 0) {
             if (!Blind)
@@ -86,7 +85,7 @@ dowaternymph()
 {
     register struct monst *mtmp;
 
-    if (!(mvitals[PM_WATER_NYMPH].mvflags & G_GONE)
+    if (!(NH_G(mvitals)[PM_WATER_NYMPH].mvflags & G_GONE)
         && (mtmp = makemon(&mons[PM_WATER_NYMPH], u.ux, u.uy,
                            NO_MM_FLAGS)) != 0) {
         if (!Blind)
@@ -138,10 +137,10 @@ genericptr_t poolcnt;
         pline("Water gushes forth from the overflowing fountain!");
 
     /* Put a pool at x, y */
-    levl[x][y].typ = POOL, levl[x][y].rmflags = 0;
+    levl[x][y].typ = POOL, levl[x][y].flags = 0;
     /* No kelp! */
     del_engr_at(x, y);
-    water_damage_chain(level.objs[x][y], TRUE);
+    water_damage_chain(NH_G(level).objects[x][y], TRUE);
 
     if ((mtmp = m_at(x, y)) != 0)
         (void) minliquid(mtmp);
@@ -206,14 +205,14 @@ boolean isyou;
                 return;
         }
         /* replace the fountain with ordinary floor */
-        levl[x][y].typ = ROOM, levl[x][y].rmflags = 0;
+        levl[x][y].typ = ROOM, levl[x][y].flags = 0;
         levl[x][y].blessedftn = 0;
         if (cansee(x, y))
             pline_The("fountain dries up!");
         /* The location is seen if the hero/monster is invisible
            or felt if the hero is blind. */
         newsym(x, y);
-        level.lflags.nfountains--;
+        NH_G(level).flags.nfountains--;
         if (isyou && in_town(x, y))
             (void) angry_guards(FALSE);
     }
@@ -397,9 +396,9 @@ register struct obj *obj;
             exercise(A_WIS, TRUE);
         }
         update_inventory();
-        levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].rmflags = 0;
+        levl[u.ux][u.uy].typ = ROOM, levl[u.ux][u.uy].flags = 0;
         newsym(u.ux, u.uy);
-        level.lflags.nfountains--;
+        NH_G(level).flags.nfountains--;
         if (in_town(u.ux, u.uy))
             (void) angry_guards(FALSE);
         return;
@@ -466,7 +465,7 @@ register struct obj *obj;
                 money = somegold(money) / 10;
                 for (otmp = invent; otmp && money > 0; otmp = otmp->nobj)
                     if (otmp->oclass == COIN_CLASS) {
-                        int denomination = objects[otmp->otyp].oc_cost;
+                        int denomination = NH_G(objects)[otmp->otyp].oc_cost;
                         long coin_loss =
                             (money + denomination - 1) / denomination;
                         coin_loss = min(coin_loss, otmp->quan);
@@ -509,11 +508,11 @@ int x, y;
 {
     if (cansee(x, y) || (x == u.ux && y == u.uy))
         pline_The("pipes break!  Water spurts out!");
-    level.lflags.nsinks--;
+    NH_G(level).flags.nsinks--;
     levl[x][y].typ = FOUNTAIN, levl[x][y].looted = 0;
     levl[x][y].blessedftn = 0;
     SET_FOUNTAIN_LOOTED(x, y);
-    level.lflags.nfountains++;
+    NH_G(level).flags.nfountains++;
     newsym(x, y);
 }
 
@@ -543,7 +542,7 @@ drinksink()
         /* boiling water burns considered fire damage */
         break;
     case 3:
-        if (mvitals[PM_SEWER_RAT].mvflags & G_GONE)
+        if (NH_G(mvitals)[PM_SEWER_RAT].mvflags & G_GONE)
             pline_The("sink seems quite dirty.");
         else {
             mtmp = makemon(&mons[PM_SEWER_RAT], u.ux, u.uy, NO_MM_FLAGS);
@@ -563,7 +562,7 @@ drinksink()
         } while (!otmp);
         otmp->cursed = otmp->blessed = 0;
         pline("Some %s liquid flows from the faucet.",
-              Blind ? "odd" : hcolor(OBJ_DESCR(objects[otmp->otyp])));
+              Blind ? "odd" : hcolor(OBJ_DESCR(NH_G(objects)[otmp->otyp])));
         otmp->dknown = !(Blind || Hallucination);
         otmp->quan++;       /* Avoid panic upon useup() */
         otmp->fromsink = 1; /* kludge for docall() */
@@ -585,7 +584,7 @@ drinksink()
         break;
     case 7:
         pline_The("%s moves as though of its own will!", hliquid("water"));
-        if ((mvitals[PM_WATER_ELEMENTAL].mvflags & G_GONE)
+        if ((NH_G(mvitals)[PM_WATER_ELEMENTAL].mvflags & G_GONE)
             || !makemon(&mons[PM_WATER_ELEMENTAL], u.ux, u.uy, NO_MM_FLAGS))
             pline("But it quiets down.");
         break;

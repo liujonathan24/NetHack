@@ -6,14 +6,9 @@
 #define NEED_VARARGS /* comment line for pre-compiled headers */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
+#include "nle.h" /* current_nle_ctx->sentinel */
 #include "nle_sentinel.h"
 #include "lev.h"
-
-/* Per-env replacement for vanq_sortmode (end.c).
- * VANQ_MLVL_MNDX == 0, so the calloc default matches the original
- * static initializer. */
-#define vanq_sortmode (current_nle_ctx->s_vanq_sortmode)
 #ifndef NO_SIGNAL
 #include <signal.h>
 #endif
@@ -33,50 +28,12 @@ extern void FDECL(nle_done, (int));
 #define FIRST_AMULET AMULET_OF_ESP
 #define LAST_AMULET AMULET_OF_YENDOR
 
-struct valuable_data {
-    long count;
-    int typ;
-};
+/* struct valuable_data moved to nh_globals.h */
 
-/* gems, amulets, valuables — migrated to nle_end_state (runtime init) */
-struct val_list {
-    struct valuable_data *list;
-    int size;
-};
+#define gems (nh_g->s_end_c_gems)
+#define amulets (nh_g->s_end_c_amulets)
 
-/* Per-env end.c state. Extends earlier Schroedingers_cat migration with
- * aborting, gems[], amulets[], valuables[]. */
-struct nle_end_state {
-    boolean _Schroedingers_cat;
-    boolean _aborting;
-    struct valuable_data _gems[LAST_GEM + 1 - FIRST_GEM + 1];
-    struct valuable_data _amulets[LAST_AMULET + 1 - FIRST_AMULET];
-    struct val_list _valuables[3]; /* {gems,sz}, {amulets,sz}, {0,0} */
-    boolean _valuables_inited;
-};
-static struct nle_end_state *nle_end_st(void) {
-    if (!current_nle_ctx) return NULL;
-    struct nle_end_state *s = (struct nle_end_state *) current_nle_ctx->s_end_state;
-    if (!s) {
-        s = (struct nle_end_state *) nle_arena_calloc(1, sizeof(struct nle_end_state));
-        current_nle_ctx->s_end_state = s;
-    }
-    if (!s->_valuables_inited) {
-        s->_valuables[0].list = s->_gems;
-        s->_valuables[0].size = (int)(sizeof s->_gems / sizeof *s->_gems);
-        s->_valuables[1].list = s->_amulets;
-        s->_valuables[1].size = (int)(sizeof s->_amulets / sizeof *s->_amulets);
-        s->_valuables[2].list = 0;
-        s->_valuables[2].size = 0;
-        s->_valuables_inited = TRUE;
-    }
-    return s;
-}
-#define Schroedingers_cat (nle_end_st()->_Schroedingers_cat)
-#define aborting          (nle_end_st()->_aborting)
-#define gems              (nle_end_st()->_gems)
-#define amulets           (nle_end_st()->_amulets)
-#define valuables         (nle_end_st()->_valuables)
+#define valuables (nh_g->s_end_c_valuables)
 
 #ifndef NO_SIGNAL
 STATIC_PTR void FDECL(done_intr, (int));
@@ -109,7 +66,7 @@ extern void FDECL(nethack_exit, (int)) NORETURN;
 #define nethack_exit exit
 #endif
 
-#define done_stopprint current_nle_ctx->program_state.stopprint
+#define done_stopprint NH_G(program_state).stopprint
 
 #ifndef PANICTRACE
 #define NH_abort NH_abort_
@@ -223,10 +180,11 @@ NH_abort()
 {
     int gdb_prio = SYSOPT_PANICTRACE_GDB;
     int libc_prio = SYSOPT_PANICTRACE_LIBC;
+    /* aborting: per-env nh_g->l_end_c_NH_abort_aborting */
 
-    if (aborting)
+    if (NH_G(l_end_c_NH_abort_aborting))
         return;
-    aborting = TRUE;
+    NH_G(l_end_c_NH_abort_aborting) = TRUE;
 
 #ifndef VMS
     if (gdb_prio == libc_prio && gdb_prio > 0)
@@ -326,7 +284,7 @@ NH_panictrace_gdb()
 /*
  * The order of these needs to match the macros in hack.h.
  */
-static const char *deaths[] = {
+static NEARDATA const char *deaths[] = {
     /* the array of death */
     "died", "choked", "poisoned", "starvation", "drowning", "burning",
     "dissolving under the heat and pressure", "crushed", "turned to stone",
@@ -334,7 +292,7 @@ static const char *deaths[] = {
     "escaped", "ascended"
 };
 
-static const char *ends[] = {
+static NEARDATA const char *ends[] = {
     /* "when you %s" */
     "died", "choked", "were poisoned",
     "starved", "drowned", "burned",
@@ -345,6 +303,8 @@ static const char *ends[] = {
     "escaped", "ascended"
 };
 
+#define Schroedingers_cat (nh_g->s_end_c_Schroedingers_cat)
+
 /*ARGSUSED*/
 void
 done1(sig_unused) /* called as signal() handler, so sent at least one arg */
@@ -353,14 +313,14 @@ int sig_unused UNUSED;
 #ifndef NO_SIGNAL
     (void) signal(SIGINT, SIG_IGN);
 #endif
-    if (flags.ignintr) {
+    if (NH_G(flags).ignintr) {
 #ifndef NO_SIGNAL
         (void) signal(SIGINT, (SIG_RET_TYPE) done1);
 #endif
         clear_nhwindow(WIN_MESSAGE);
         curs_on_u();
         wait_synch();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
     } else {
         (void) done2();
@@ -380,9 +340,9 @@ done2()
         clear_nhwindow(WIN_MESSAGE);
         curs_on_u();
         wait_synch();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
-        if (current_nle_ctx->multi == 0) {
+        if (multi == 0) {
             u.uinvulnerable = FALSE; /* avoid ctrl-C bug -dlc */
             u.usleep = 0;
         }
@@ -438,7 +398,7 @@ static void
 done_hangup(sig)
 int sig;
 {
-    current_nle_ctx->program_state.done_hup++;
+    program_state.done_hup++;
     sethanguphandler((void FDECL((*), (int) )) SIG_IGN);
     done_intr(sig);
     return;
@@ -463,19 +423,19 @@ int how;
     You((how == STONING) ? "turn to stone..." : "die...");
     mark_synch(); /* flush buffered screen output */
     buf[0] = '\0';
-    killer.format = KILLED_BY_AN;
+    NH_G(killer).format = KILLED_BY_AN;
     /* "killed by the high priest of Crom" is okay,
        "killed by the high priest" alone isn't */
     if ((mptr->geno & G_UNIQ) != 0 && !(imitator && !mimicker)
         && !(mptr == &mons[PM_HIGH_PRIEST] && !mtmp->ispriest)) {
         if (!type_is_pname(mptr))
             Strcat(buf, "the ");
-        killer.format = KILLED_BY;
+        NH_G(killer).format = KILLED_BY;
     }
     /* _the_ <invisible> <distorted> ghost of Dudley */
     if (mptr == &mons[PM_GHOST] && has_mname(mtmp)) {
         Strcat(buf, "the ");
-        killer.format = KILLED_BY;
+        NH_G(killer).format = KILLED_BY;
     }
     if (mtmp->minvis)
         Strcat(buf, "invisible ");
@@ -529,7 +489,7 @@ int how;
                                    : mtmp->female ? "Ms. " : "Mr. ";
 
         Sprintf(eos(buf), "%s%s, the shopkeeper", honorific, shknm);
-        killer.format = KILLED_BY;
+        NH_G(killer).format = KILLED_BY;
     } else if (mtmp->ispriest || mtmp->isminion) {
         /* m_monnam() suppresses "the" prefix plus "invisible", and
            it overrides the effect of Hallucination on priestname() */
@@ -540,7 +500,7 @@ int how;
             Sprintf(eos(buf), " called %s", MNAME(mtmp));
     }
 
-    Strcpy(killer.name, buf);
+    Strcpy(NH_G(killer).name, buf);
     /*
      * Chicken and egg issue:
      *  Ordinarily Unchanging ought to override something like this,
@@ -561,7 +521,7 @@ int how;
     /* this could happen if a high-end vampire kills the hero
        when ordinary vampires are genocided; ditto for wraiths */
     if (u.ugrave_arise >= LOW_PM
-        && (mvitals[u.ugrave_arise].mvflags & G_GENOD))
+        && (NH_G(mvitals)[u.ugrave_arise].mvflags & G_GENOD))
         u.ugrave_arise = NON_PM;
 
     done(how);
@@ -573,10 +533,10 @@ static const struct {
     int why, unmulti;
     const char *exclude, *include;
 } death_fixups[] = {
-    /* "petrified by <foo>, while getting current_nle_ctx->stoned" -- "while getting current_nle_ctx->stoned"
+    /* "petrified by <foo>, while getting stoned" -- "while getting stoned"
        prevented any last-second recovery, but it was not the cause of
        "petrified by <foo>" */
-    { STONING, 1, "getting current_nle_ctx->stoned", (char *) 0 },
+    { STONING, 1, "getting stoned", (char *) 0 },
     /* "died of starvation, while fainted from lack of food" is accurate
        but sounds a fairly silly (and doesn't actually appear unless you
        splice together death and while-helpless from xlogfile) */
@@ -584,23 +544,23 @@ static const struct {
 };
 
 /* clear away while-helpless when the cause of death caused that
-   helplessness (ie, "petrified by <foo> while getting current_nle_ctx->stoned") */
+   helplessness (ie, "petrified by <foo> while getting stoned") */
 STATIC_DCL void
 fixup_death(how)
 int how;
 {
     int i;
 
-    if (current_nle_ctx->multi_reason) {
+    if (multi_reason) {
         for (i = 0; i < SIZE(death_fixups); ++i)
             if (death_fixups[i].why == how
-                && !strcmp(death_fixups[i].exclude, current_nle_ctx->multi_reason)) {
+                && !strcmp(death_fixups[i].exclude, multi_reason)) {
                 if (death_fixups[i].include) /* substitute alternate reason */
-                    current_nle_ctx->multi_reason = death_fixups[i].include;
+                    multi_reason = death_fixups[i].include;
                 else /* remove the helplessness reason */
-                    current_nle_ctx->multi_reason = (char *) 0;
+                    multi_reason = (char *) 0;
                 if (death_fixups[i].unmulti) /* possibly hide helplessness */
-                    current_nle_ctx->multi = 0L;
+                    multi = 0L;
                 break;
             }
     }
@@ -617,7 +577,7 @@ VA_DECL(const char *, str)
     VA_START(str);
     VA_INIT(str, char *);
 
-    if (current_nle_ctx->program_state.panicking++)
+    if (NH_G(program_state).panicking++)
         NH_abort(); /* avoid loops - this should never happen*/
 
     if (iflags.window_inited) {
@@ -627,9 +587,9 @@ VA_DECL(const char *, str)
         iflags.window_inited = 0; /* they're gone; force raw_print()ing */
     }
 
-    raw_print(current_nle_ctx->program_state.gameover
+    raw_print(NH_G(program_state).gameover
                   ? "Postgame wrapup disrupted."
-                  : !current_nle_ctx->program_state.something_worth_saving
+                  : !NH_G(program_state).something_worth_saving
                         ? "Program initialization has failed."
                         : "Suddenly, the dungeon collapses.");
 #ifndef MICRO
@@ -637,20 +597,20 @@ VA_DECL(const char *, str)
     if (!wizard)
         raw_printf("Report the following error to \"%s\" or at \"%s\".",
                    DEVTEAM_EMAIL, DEVTEAM_URL);
-    else if (current_nle_ctx->program_state.something_worth_saving)
+    else if (program_state.something_worth_saving)
         raw_print("\nError save file being written.\n");
 #else /* !NOTIFY_NETHACK_BUGS */
     if (!wizard) {
-        const char *maybe_rebuild = !current_nle_ctx->program_state.something_worth_saving
+        const char *maybe_rebuild = !NH_G(program_state).something_worth_saving
                                      ? "."
                                      : "\nand it may be possible to rebuild.";
 
-        if (sysopt.support)
-            raw_printf("To report this error, %s%s", sysopt.support,
+        if (NH_G(sysopt).support)
+            raw_printf("To report this error, %s%s", NH_G(sysopt).support,
                        maybe_rebuild);
-        else if (sysopt.fmtd_wizard_list) /* formatted SYSCF WIZARDS */
+        else if (NH_G(sysopt).fmtd_wizard_list) /* formatted SYSCF WIZARDS */
             raw_printf("To report this error, contact %s%s",
-                       sysopt.fmtd_wizard_list, maybe_rebuild);
+                       NH_G(sysopt).fmtd_wizard_list, maybe_rebuild);
         else
             raw_printf("Report error to \"%s\"%s", WIZARD_NAME,
                        maybe_rebuild);
@@ -659,12 +619,12 @@ VA_DECL(const char *, str)
     /* XXX can we move this above the prints?  Then we'd be able to
      * suppress "it may be possible to rebuild" based on dosave0()
      * or say it's NOT possible to rebuild. */
-    if (current_nle_ctx->program_state.something_worth_saving && !iflags.debug_fuzzer) {
+    if (NH_G(program_state).something_worth_saving && !iflags.debug_fuzzer) {
         set_error_savefile();
         if (dosave0()) {
             /* os/win port specific recover instructions */
-            if (sysopt.recover)
-                raw_printf("%s", sysopt.recover);
+            if (NH_G(sysopt).recover)
+                raw_printf("%s", NH_G(sysopt).recover);
         }
     }
 #endif /* !MICRO */
@@ -713,7 +673,7 @@ char *defquery;
             *defquery = DISCLOSE_PROMPT_DEFAULT_YES;
             return TRUE;
         }
-        disclose = flags.end_disclose[idx];
+        disclose = NH_G(flags).end_disclose[idx];
         if (disclose == DISCLOSE_YES_WITHOUT_PROMPT) {
             *defquery = 'y';
             return FALSE;
@@ -928,10 +888,10 @@ int how;
     }
     nomovemsg = "You survived that attempt on your life.";
     context.move = 0;
-    if (current_nle_ctx->multi > 0)
-        current_nle_ctx->multi = 0;
+    if (multi > 0)
+        multi = 0;
     else
-        current_nle_ctx->multi = -1;
+        multi = -1;
     if (u.utrap && u.utraptype == TT_LAVA)
         reset_utrap(FALSE);
     context.botl = 1;
@@ -1129,7 +1089,7 @@ winid endwin;
                 Sprintf(pbuf, "%s%s (worth %ld %s and %ld points)",
                         the_unique_obj(otmp) ? "The " : "",
                         otmp->oartifact ? artifact_name(xname(otmp), &dummy)
-                                        : OBJ_NAME(objects[otmp->otyp]),
+                                        : OBJ_NAME(NH_G(objects)[otmp->otyp]),
                         value, currency(value), points);
                 putstr(endwin, 0, pbuf);
             }
@@ -1147,19 +1107,19 @@ int how;
     boolean survive = FALSE;
 
     if (how == TRICKED) {
-        if (killer.name[0]) {
-            paniclog("trickery", killer.name);
-            killer.name[0] = '\0';
+        if (NH_G(killer).name[0]) {
+            paniclog("trickery", NH_G(killer).name);
+            NH_G(killer).name[0] = '\0';
         }
         if (wizard) {
             You("are a very tricky wizard, it seems.");
-            killer.format = KILLED_BY_AN; /* reset to 0 */
+            NH_G(killer).format = KILLED_BY_AN; /* reset to 0 */
             return;
         }
     }
-    if (current_nle_ctx->program_state.panicking
+    if (NH_G(program_state).panicking
 #ifdef HANGUPHANDLING
-        || current_nle_ctx->program_state.done_hup
+        || NH_G(program_state).done_hup
 #endif
         ) {
         /* skip status update if panicking or disconnected */
@@ -1171,7 +1131,7 @@ int how;
     }
 
     if (iflags.debug_fuzzer) {
-        if (!(current_nle_ctx->program_state.panicking || how == PANICKED)) {
+        if (!(NH_G(program_state).panicking || how == PANICKED)) {
             savelife(how);
             /* periodically restore characteristics and lost exp levels
                or cure lycanthropy */
@@ -1185,18 +1145,18 @@ int how;
                 /* not useup(); we haven't put this potion into inventory */
                 obfree(potion, (struct obj *) 0);
             }
-            killer.name[0] = '\0';
-            killer.format = 0;
+            NH_G(killer).name[0] = '\0';
+            NH_G(killer).format = 0;
             return;
         }
     } else
-    if (how == ASCENDED || (!killer.name[0] && how == GENOCIDED))
-        killer.format = NO_KILLER_PREFIX;
+    if (how == ASCENDED || (!NH_G(killer).name[0] && how == GENOCIDED))
+        NH_G(killer).format = NO_KILLER_PREFIX;
     /* Avoid killed by "a" burning or "a" starvation */
-    if (!killer.name[0] && (how == STARVING || how == BURNING))
-        killer.format = KILLED_BY;
-    if (!killer.name[0] || how >= PANICKED)
-        Strcpy(killer.name, deaths[how]);
+    if (!NH_G(killer).name[0] && (how == STARVING || how == BURNING))
+        NH_G(killer).format = KILLED_BY;
+    if (!NH_G(killer).name[0] || how >= PANICKED)
+        Strcpy(NH_G(killer).name, deaths[how]);
 
     if (how < PANICKED) {
         u.umortality++;
@@ -1239,30 +1199,13 @@ int how;
     }
 
     if (survive) {
-        killer.name[0] = '\0';
-        killer.format = KILLED_BY_AN; /* reset to 0 */
+        NH_G(killer).name[0] = '\0';
+        NH_G(killer).format = KILLED_BY_AN; /* reset to 0 */
         return;
     }
     really_done(how);
     /*NOTREACHED*/
 }
-
-/* NLE: serialize env-death across OMP threads.
- *
- * The done() / really_done() path walks display_inventory →
- * tty_end_menu → various TTY allocators. Several of those helpers
- * still hold residual process-shared state (file-scope statics that
- * the bulk-TLS sweep missed: condition tables, menu scratch). Under
- * concurrent stepping that races and segfaults. Until each of those
- * sites is migrated, we hold one process-wide mutex around the
- * entire death path. The fast (non-dying) step path is unaffected.
- * Death happens at most once per env, so the contention is tiny.
- */
-/* Removed pthread mutex around death path. It was added for
- * the old multithreaded mode; under single-thread vecenv it caused
- * deadlock when an env yielded mid-death (via a --more-- prompt or
- * dump output) — the mutex was never unlocked, so the NEXT env's
- * really_done() blocked forever. Single-thread vecenv doesn't need it. */
 
 /* separated from done() in order to specify the __noreturn__ attribute */
 STATIC_OVL void
@@ -1281,11 +1224,11 @@ int how;
     /*
      *  The game is now over...
      */
-    current_nle_ctx->program_state.gameover = 1;
+    NH_G(program_state).gameover = 1;
     /* in case of a subsequent panic(), there's no point trying to save */
-    current_nle_ctx->program_state.something_worth_saving = 0;
+    NH_G(program_state).something_worth_saving = 0;
 #ifdef HANGUPHANDLING
-    if (current_nle_ctx->program_state.done_hup)
+    if (NH_G(program_state).done_hup)
         done_stopprint++;
 #endif
     /* render vision subsystem inoperative */
@@ -1293,7 +1236,7 @@ int how;
 
     /* maybe use up active invent item(s), place thrown/kicked missile,
        deal with ball and chain possibly being temporarily off the map */
-    if (!current_nle_ctx->program_state.panicking)
+    if (!NH_G(program_state).panicking)
         done_object_cleanup();
     /* in case we're panicking; normally cleared by done_object_cleanup() */
     iflags.perm_invent = FALSE;
@@ -1342,21 +1285,21 @@ int how;
                 have been genocided:  genocide could occur after hero is
                 already infected or hero could eat a glob of one created
                 before genocide; don't try to arise as one if they're gone */
-             && !(mvitals[PM_GREEN_SLIME].mvflags & G_GENOD))
+             && !(NH_G(mvitals)[PM_GREEN_SLIME].mvflags & G_GENOD))
         u.ugrave_arise = PM_GREEN_SLIME;
 
     if (how == QUIT) {
-        killer.format = NO_KILLER_PREFIX;
+        NH_G(killer).format = NO_KILLER_PREFIX;
         if (u.uhp < 1) {
             how = DIED;
             u.umortality++; /* skipped above when how==QUIT */
-            Strcpy(killer.name, "quit while already on Charon's boat");
+            Strcpy(NH_G(killer).name, "quit while already on Charon's boat");
         }
     }
     if (how == ESCAPED || how == PANICKED)
-        killer.format = NO_KILLER_PREFIX;
+        NH_G(killer).format = NO_KILLER_PREFIX;
 
-    fixup_death(how); /* actually, fixup current_nle_ctx->multi_reason */
+    fixup_death(how); /* actually, fixup multi_reason */
 
     if (how != PANICKED) {
         boolean silently = done_stopprint ? TRUE : FALSE;
@@ -1402,7 +1345,7 @@ int how;
             }
         }
 
-        if (strcmp(flags.end_disclose, "none"))
+        if (strcmp(NH_G(flags).end_disclose, "none"))
             disclose(how, taken);
 
         dump_everything(how, endtime);
@@ -1422,13 +1365,13 @@ int how;
     /* grave creation should be after disclosure so it doesn't have
        this grave in the current level's features for #overview */
     if (bones_ok && u.ugrave_arise == NON_PM
-        && !(mvitals[u.umonnum].mvflags & G_NOCORPSE)) {
+        && !(NH_G(mvitals)[u.umonnum].mvflags & G_NOCORPSE)) {
         int mnum = u.umonnum;
 
         if (!Upolyd) {
             /* Base corpse on race when not poly'd since original u.umonnum
                is based on role, and all role monsters are human. */
-            mnum = (flags.female && urace.femalenum != NON_PM)
+            mnum = (NH_G(flags).female && urace.femalenum != NON_PM)
                        ? urace.femalenum
                        : urace.malenum;
         }
@@ -1490,7 +1433,7 @@ int how;
 
     /* update gold for the rip output, which can't use hidden_gold()
        (containers will be gone by then if bones just got saved...) */
-    current_nle_ctx->done_money = umoney;
+    done_money = umoney;
 
     /* clean up unneeded windows */
     if (have_windows) {
@@ -1507,10 +1450,10 @@ int how;
             destroy_nhwindow(WIN_STATUS),  WIN_STATUS = WIN_ERR;
         destroy_nhwindow(WIN_MESSAGE),  WIN_MESSAGE = WIN_ERR;
 
-        if (!done_stopprint || flags.tombstone)
+        if (!done_stopprint || NH_G(flags).tombstone)
             endwin = create_nhwindow(NHW_TEXT);
 
-        if (how < GENOCIDED && flags.tombstone && endwin != WIN_ERR)
+        if (how < GENOCIDED && NH_G(flags).tombstone && endwin != WIN_ERR)
             outrip(endwin, how, endtime);
     } else
         done_stopprint = 1; /* just avoid any more output */
@@ -1526,12 +1469,12 @@ int how;
     }
 #endif
     if (u.uhave.amulet) {
-        Strcat(killer.name, " (with the Amulet)");
+        Strcat(NH_G(killer).name, " (with the Amulet)");
     } else if (how == ESCAPED) {
         if (Is_astralevel(&u.uz)) /* offered Amulet to wrong deity */
-            Strcat(killer.name, " (in celestial disgrace)");
+            Strcat(NH_G(killer).name, " (in celestial disgrace)");
         else if (carrying(FAKE_AMULET_OF_YENDOR))
-            Strcat(killer.name, " (with a fake Amulet)");
+            Strcat(NH_G(killer).name, " (with a fake Amulet)");
         /* don't bother counting to see whether it should be plural */
     }
 
@@ -1539,10 +1482,10 @@ int how;
 
     Sprintf(pbuf, "%s %s the %s...", Goodbye(), plname,
             (how != ASCENDED)
-                ? (const char *) ((flags.female && urole.name.f)
+                ? (const char *) ((NH_G(flags).female && urole.name.f)
                     ? urole.name.f
                     : urole.name.m)
-                : (const char *) (flags.female ? "Demigoddess" : "Demigod"));
+                : (const char *) (NH_G(flags).female ? "Demigoddess" : "Demigod"));
     dump_forward_putstr(endwin, 0, pbuf, done_stopprint);
     dump_forward_putstr(endwin, 0, "", done_stopprint);
 
@@ -1563,7 +1506,7 @@ int how;
             for (i = 0; i < val->size; i++)
                 if (val->list[i].count != 0L) {
                     tmp = val->list[i].count
-                          * (long) objects[val->list[i].typ].oc_cost;
+                          * (long) NH_G(objects)[val->list[i].typ].oc_cost;
                     nowrap_add(u.urexp, tmp);
                 }
 
@@ -1618,7 +1561,7 @@ int how;
 
                 if (count == 0L)
                     continue;
-                if (objects[typ].oc_class != GEM_CLASS || typ <= LAST_GEM) {
+                if (NH_G(objects)[typ].oc_class != GEM_CLASS || typ <= LAST_GEM) {
                     otmp = mksobj(typ, FALSE, FALSE);
                     discover_object(otmp->otyp, TRUE, FALSE);
                     otmp->known = 1;  /* for fake amulets */
@@ -1627,7 +1570,7 @@ int how;
                         free_oname(otmp);
                     otmp->quan = count;
                     Sprintf(pbuf, "%8ld %s (worth %ld %s),", count,
-                            xname(otmp), count * (long) objects[typ].oc_cost,
+                            xname(otmp), count * (long) NH_G(objects)[typ].oc_cost,
                             currency(2L));
                     obfree(otmp, (struct obj *) 0);
                 } else {
@@ -1728,10 +1671,10 @@ boolean identified, all_containers, reportempty;
                     putstr(tmpwin, 0, "");
                 buf[0] = buf[1] = ' '; /* two leading spaces */
                 if (box->cobj && !cat) {
-                    sortflags = (((flags.sortloot == 'l'
-                                   || flags.sortloot == 'f')
+                    sortflags = (((NH_G(flags).sortloot == 'l'
+                                   || NH_G(flags).sortloot == 'f')
                                      ? SORTLOOT_LOOT : 0)
-                                 | (flags.sortpack ? SORTLOOT_PACK : 0));
+                                 | (NH_G(flags).sortpack ? SORTLOOT_PACK : 0));
                     sortedcobj = sortloot(&box->cobj, sortflags, FALSE,
                                           (boolean FDECL((*), (OBJ_P))) 0);
                     for (srtc = sortedcobj; ((obj = srtc->obj) != 0); ++srtc) {
@@ -1772,13 +1715,13 @@ void
 nh_terminate(status)
 int status;
 {
-    current_nle_ctx->program_state.in_moveloop = 0; /* won't be returning to normal play */
+    NH_G(program_state).in_moveloop = 0; /* won't be returning to normal play */
 #ifdef MAC
     getreturn("to exit");
 #endif
     /* don't bother to try to release memory if we're in panic mode, to
        avoid trouble in case that happens to be due to memory problems */
-    if (!current_nle_ctx->program_state.panicking) {
+    if (!NH_G(program_state).panicking) {
         freedynamicdata();
         dlb_cleanup();
     }
@@ -1791,10 +1734,10 @@ int status;
      */
     /* don't call exit() if already executing within an exit handler;
        that would cancel any other pending user-mode handlers */
-    if (current_nle_ctx->program_state.exiting)
+    if (program_state.exiting)
         return;
 #endif
-    current_nle_ctx->program_state.exiting = 1;
+    NH_G(program_state).exiting = 1;
     nethack_exit(status);
 }
 
@@ -1821,7 +1764,9 @@ static const char *vanqorders[NUM_VANQ_ORDER_MODES] = {
     "by count, high to low, by internal index within tied count",
     "by count, low to high, by internal index within tied count",
 };
-/* vanq_sortmode moved into nle_ctx_t — macro above. */
+#define vanq_sortmode (nh_g->s_end_c_vanq_sortmode)
+const int nh_tmpl_s_end_c_vanq_sortmode =
+VANQ_MLVL_MNDX;
 
 STATIC_PTR int CFDECLSPEC
 vanqsort_cmp(vptr1, vptr2)
@@ -1891,7 +1836,7 @@ const genericptr vptr2;
         break;
     case VANQ_COUNT_H_L:
     case VANQ_COUNT_L_H:
-        died1 = mvitals[indx1].died, died2 = mvitals[indx2].died;
+        died1 = NH_G(mvitals)[indx1].died, died2 = NH_G(mvitals)[indx2].died;
         res = died2 - died1; /* dead count high to low */
         if (vanq_sortmode == VANQ_COUNT_L_H)
             res = -res; /* dead count low to high */
@@ -1970,7 +1915,7 @@ boolean ask;
     /* get totals first */
     ntypes = 0;
     for (i = LOW_PM; i < NUMMONS; i++) {
-        if ((nkilled = (int) mvitals[i].died) == 0)
+        if ((nkilled = (int) NH_G(mvitals)[i].died) == 0)
             continue;
         mindx[ntypes++] = i;
         total_killed += (long) nkilled;
@@ -2008,7 +1953,7 @@ boolean ask;
             qsort((genericptr_t) mindx, ntypes, sizeof *mindx, vanqsort_cmp);
             for (ni = 0; ni < ntypes; ni++) {
                 i = mindx[ni];
-                nkilled = mvitals[i].died;
+                nkilled = NH_G(mvitals)[i].died;
                 mlet = mons[i].mlet;
                 if (class_header && mlet != prev_mlet) {
                     Strcpy(buf, def_monsyms[(int) mlet].explain);
@@ -2087,7 +2032,7 @@ num_genocides()
     int i, n = 0;
 
     for (i = LOW_PM; i < NUMMONS; ++i) {
-        if (mvitals[i].mvflags & G_GENOD) {
+        if (NH_G(mvitals)[i].mvflags & G_GENOD) {
             ++n;
             if (UniqCritterIndx(i))
                 impossible("unique creature '%d: %s' genocided?",
@@ -2105,7 +2050,7 @@ num_extinct()
     for (i = LOW_PM; i < NUMMONS; ++i) {
         if (UniqCritterIndx(i))
             continue;
-        if ((mvitals[i].mvflags & G_GONE) == G_EXTINCT)
+        if ((NH_G(mvitals)[i].mvflags & G_GONE) == G_EXTINCT)
             ++n;
     }
     return n;
@@ -2153,7 +2098,7 @@ boolean ask;
                    however, they're never reported as extinct, so skip them */
                 if (UniqCritterIndx(i))
                     continue;
-                if (mvitals[i].mvflags & G_GONE) {
+                if (NH_G(mvitals)[i].mvflags & G_GONE) {
                     Sprintf(buf, " %s", makeplural(mons[i].mname));
                     /*
                      * "Extinct" is unfortunate terminology.  A species
@@ -2161,7 +2106,7 @@ boolean ask;
                      * but there might be members of the species still
                      * alive, contradicting the meaning of the word.
                      */
-                    if ((mvitals[i].mvflags & G_GONE) == G_EXTINCT)
+                    if ((NH_G(mvitals)[i].mvflags & G_GONE) == G_EXTINCT)
                         Strcat(buf, " (extinct)");
                     putstr(klwin, 0, buf);
                 }
@@ -2201,13 +2146,13 @@ const char *killername;
         k = (struct kinfo *) alloc(sizeof (struct kinfo));
         (void) memset((genericptr_t) k, 0, sizeof (struct kinfo));
         k->id = id;
-        k->next = killer.next;
-        killer.next = k;
+        k->next = NH_G(killer).next;
+        NH_G(killer).next = k;
     }
 
     k->format = format;
     Strcpy(k->name, killername ? killername : "");
-    killer.name[0] = 0;
+    NH_G(killer).name[0] = 0;
 }
 
 struct kinfo *
@@ -2216,7 +2161,7 @@ int id;
 {
     struct kinfo *k;
 
-    for (k = killer.next; k != (struct kinfo *) 0; k = k->next) {
+    for (k = NH_G(killer).next; k != (struct kinfo *) 0; k = k->next) {
         if (k->id == id)
             break;
     }
@@ -2227,11 +2172,11 @@ void
 dealloc_killer(kptr)
 struct kinfo *kptr;
 {
-    struct kinfo *prev = &killer, *k;
+    struct kinfo *prev = &NH_G(killer), *k;
 
     if (kptr == (struct kinfo *) 0)
         return;
-    for (k = killer.next; k != (struct kinfo *) 0; k = k->next) {
+    for (k = NH_G(killer).next; k != (struct kinfo *) 0; k = k->next) {
         if (k == kptr)
             break;
         prev = k;
@@ -2254,15 +2199,15 @@ int mode;
     struct kinfo *kptr;
 
     if (perform_bwrite(mode)) {
-        for (kptr = &killer; kptr != (struct kinfo *) 0; kptr = kptr->next) {
+        for (kptr = &NH_G(killer); kptr != (struct kinfo *) 0; kptr = kptr->next) {
             bwrite(fd, (genericptr_t) kptr, sizeof (struct kinfo));
         }
     }
     if (release_data(mode)) {
-        while (killer.next) {
-            kptr = killer.next->next;
-            free((genericptr_t) killer.next);
-            killer.next = kptr;
+        while (NH_G(killer).next) {
+            kptr = NH_G(killer).next->next;
+            free((genericptr_t) NH_G(killer).next);
+            NH_G(killer).next = kptr;
         }
     }
 }
@@ -2273,7 +2218,7 @@ int fd;
 {
     struct kinfo *kptr;
 
-    for (kptr = &killer; kptr != (struct kinfo *) 0; kptr = kptr->next) {
+    for (kptr = &NH_G(killer); kptr != (struct kinfo *) 0; kptr = kptr->next) {
         mread(fd, (genericptr_t) kptr, sizeof (struct kinfo));
         if (kptr->next) {
             kptr->next = (struct kinfo *) alloc(sizeof (struct kinfo));
@@ -2354,3 +2299,20 @@ char *in;
 }
 
 /*end.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_END_C_DONE
+#define NH_INIT_END_C_DONE
+void
+nh_init_end_c(void)
+{
+    {
+        struct val_list nh_tmp[3] = { { gems, sizeof gems / sizeof *gems },
+                  { amulets, sizeof amulets / sizeof *amulets },
+                  { 0, 0 } };
+        memcpy(&(nh_g->s_end_c_valuables), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

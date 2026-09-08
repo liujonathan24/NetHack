@@ -4,50 +4,16 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 #include "sp_lev.h"
 #include "lev.h" /* save & restore info */
 
-/* File-statics migrated to nle_ctx_t for per-env
- * isolation. `bughack` is a lev_region value at the source level; the ctx
- * field is a pointer to that struct (forward-declared in nle.h as
- * `struct nle_lev_region_s`). Lazy-allocated via nle_get_bughack() the
- * first time a baalz wall_cleanup / fix_wall_spines fires for this env.
- * The canonical "uninitialized" lev_region in the original code is
- * { {COLNO, ROWNO, 0, 0}, {COLNO, ROWNO, 0, 0}, ... } and the reset block
- * in baalz_fixup() restores it to that same state after use; we mirror
- * that init exactly in the alloc path. */
-static lev_region *
-nle_get_bughack(void)
-{
-    if (!current_nle_ctx->s_bughack) {
-        lev_region *p = (lev_region *) alloc(sizeof(lev_region));
-        (void) memset((genericptr_t) p, 0, sizeof(lev_region));
-        p->inarea.x1 = COLNO;
-        p->inarea.y1 = ROWNO;
-        p->inarea.x2 = 0;
-        p->inarea.y2 = 0;
-        p->delarea.x1 = COLNO;
-        p->delarea.y1 = ROWNO;
-        p->delarea.x2 = 0;
-        p->delarea.y2 = 0;
-        current_nle_ctx->s_bughack = (struct nle_lev_region_s *) p;
-    }
-    return (lev_region *) current_nle_ctx->s_bughack;
-}
-#define bughack   (*nle_get_bughack())
-#define wportal   (current_nle_ctx->s_wportal)
-
-/* Lregions/num_lregions are NON-static cross-TU globals that
- * were freed in mkmaze.c:649 against the heap pointer set in sp_lev.c.
- * Migrated to per-env nle_ctx_t fields; the extern decls are replaced
- * with macros routing to current_nle_ctx (same per-env slot as sp_lev.c). */
-#define lregions       ((lev_region *) current_nle_ctx->s_sp_lregions_p)
-#define num_lregions   (current_nle_ctx->s_sp_num_lregions)
-#define set_lregions(p) \
-    (current_nle_ctx->s_sp_lregions_p = (struct nle_lev_region_s *) (p))
+/* from sp_lev.c, for fixup_special() */
+/* lregions: per-env, see nh_globals.h */
+/* num_lregions: per-env, see nh_globals.h */
 /* for preserving the insect legs when wallifying baalz level */
-/* bughack moved to nle_ctx_t — see macro above. */
+#define bughack (*(lev_region *) nh_g->s_mkmaze_c_bughack)
+const lev_region nh_tmpl_s_mkmaze_c_bughack =
+{ {COLNO, ROWNO, 0, 0}, {COLNO, ROWNO, 0, 0} };
 
 STATIC_DCL int FDECL(iswall, (int, int));
 STATIC_DCL int FDECL(iswall_or_stone, (int, int));
@@ -300,7 +266,7 @@ xchar lx, ly, hx, hy;
 {
     return (boolean) (occupied(x, y)
                       || within_bounded_area(x, y, lx, ly, hx, hy)
-                      || !((levl[x][y].typ == CORR && level.lflags.is_maze_lev)
+                      || !((levl[x][y].typ == CORR && NH_G(level).flags.is_maze_lev)
                            || levl[x][y].typ == ROOM
                            || levl[x][y].typ == AIR));
 }
@@ -323,7 +289,7 @@ d_level *lev;
          * if there are rooms and this a branch, let place_branch choose
          * the branch location (to avoid putting branches in corridors).
          */
-        if (rtype == LR_BRANCH && current_nle_ctx->s_nroom) {
+        if (rtype == LR_BRANCH && NH_G(nroom)) {
             place_branch(Is_branchlev(&u.uz), 0, 0);
             return;
         }
@@ -507,7 +473,7 @@ fixup_special()
     boolean added_branch = FALSE;
 
     if (Is_waterlevel(&u.uz) || Is_airlevel(&u.uz)) {
-        level.lflags.hero_memory = 0;
+        NH_G(level).flags.hero_memory = 0;
         /* water level is an odd beast - it has to be set up
            before calling place_lregions etc. */
         setup_waterlevel();
@@ -616,7 +582,7 @@ fixup_special()
         /* using an unfilled morgue for rm id */
         croom = search_special(MORGUE);
         /* avoid inappropriate morgue-related messages */
-        level.lflags.graveyard = level.lflags.has_morgue = 0;
+        NH_G(level).flags.graveyard = NH_G(level).flags.has_morgue = 0;
         croom->rtype = OROOM; /* perhaps it should be set to VAULT? */
         /* stock the main vault */
         for (x = croom->lx; x <= croom->hx; x++)
@@ -627,9 +593,9 @@ fixup_special()
             }
     } else if (Role_if(PM_PRIEST) && In_quest(&u.uz)) {
         /* less chance for undead corpses (lured from lower morgues) */
-        level.lflags.graveyard = 1;
+        NH_G(level).flags.graveyard = 1;
     } else if (Is_stronghold(&u.uz)) {
-        level.lflags.graveyard = 1;
+        NH_G(level).flags.graveyard = 1;
     } else if (Is_sanctum(&u.uz)) {
         croom = search_special(TEMPLE);
 
@@ -646,14 +612,12 @@ fixup_special()
     } else if (on_level(&u.uz, &baalzebub_level)) {
         /* custom wallify the "beetle" potion of the level */
         baalz_fixup();
-    } else if (u.uz.dnum == mines_dnum && current_nle_ctx->ransacked) {
+    } else if (u.uz.dnum == mines_dnum && ransacked) {
        stolen_booty();
     }
 
-    if (lregions) {
-        free((genericptr_t) lregions);
-        set_lregions(0);
-    }
+    if (lregions)
+        free((genericptr_t) lregions), lregions = 0;
     num_lregions = 0;
 }
 
@@ -662,7 +626,7 @@ check_ransacked(s)
 char *s;
 {
     /* this kludge only works as long as orctown is minetn-1 */
-    current_nle_ctx->ransacked = (u.uz.dnum == mines_dnum && !strcmp(s, "minetn-1"));
+    ransacked = (u.uz.dnum == mines_dnum && !strcmp(s, "minetn-1"));
 }
 
 #define ORC_LEADER 1
@@ -839,7 +803,7 @@ stolen_booty(VOID_ARGS)
             migrate_orc(mtmp, 0UL);
         }
     }
-    current_nle_ctx->ransacked = 0;
+    ransacked = 0;
 }
 
 #undef ORC_LEADER
@@ -926,7 +890,7 @@ int wallthick;
     rdx = (x_maze_max / scale);
     rdy = (y_maze_max / scale);
 
-    if (level.lflags.corrmaze)
+    if (NH_G(level).flags.corrmaze)
         for (x = 2; x < (rdx * 2); x++)
             for (y = 2; y < (rdy * 2); y++)
                 levl[x][y].typ = STONE;
@@ -944,7 +908,7 @@ int wallthick;
     walkfrom((int) mm.x, (int) mm.y, 0);
 
     if (!rn2(5))
-        maze_remove_deadends((level.lflags.corrmaze) ? CORR : ROOM);
+        maze_remove_deadends((NH_G(level).flags.corrmaze) ? CORR : ROOM);
 
     /* restore bounds */
     x_maze_max = tmp_xmax;
@@ -1058,8 +1022,8 @@ const char *s;
         impossible("Couldn't load \"%s\" - making a maze.", protofile);
     }
 
-    level.lflags.is_maze_lev = TRUE;
-    level.lflags.corrmaze = !rn2(3);
+    NH_G(level).flags.is_maze_lev = TRUE;
+    NH_G(level).flags.corrmaze = !rn2(3);
 
     if (!Invocation_lev(&u.uz) && rn2(2)) {
         int corrscale = rnd(4);
@@ -1068,7 +1032,7 @@ const char *s;
         create_maze(1,1);
     }
 
-    if (!level.lflags.corrmaze)
+    if (!NH_G(level).flags.corrmaze)
         wallification(2, 2, x_maze_max, y_maze_max);
 
     mazexy(&mm);
@@ -1211,7 +1175,7 @@ schar typ;
     int dirs[4];
 
     if (!typ) {
-        if (level.lflags.corrmaze)
+        if (NH_G(level).flags.corrmaze)
             typ = CORR;
         else
             typ = ROOM;
@@ -1220,7 +1184,7 @@ schar typ;
     if (!IS_DOOR(levl[x][y].typ)) {
         /* might still be on edge of MAP, so don't overwrite */
         levl[x][y].typ = typ;
-        levl[x][y].rmflags = 0;
+        levl[x][y].flags = 0;
     }
 
     while (1) {
@@ -1253,7 +1217,7 @@ coord *cc;
         cpt++;
     } while (cpt < 100
              && levl[cc->x][cc->y].typ
-                    != (level.lflags.corrmaze ? CORR : ROOM));
+                    != (NH_G(level).flags.corrmaze ? CORR : ROOM));
     if (cpt >= 100) {
         int x, y;
 
@@ -1263,7 +1227,7 @@ coord *cc;
                 cc->x = x;
                 cc->y = y;
                 if (levl[cc->x][cc->y].typ
-                    == (level.lflags.corrmaze ? CORR : ROOM))
+                    == (NH_G(level).flags.corrmaze ? CORR : ROOM))
                     return;
             }
         panic("mazexy: can't find a place!");
@@ -1305,7 +1269,7 @@ bound_digging()
             }
         }
     }
-    xmin -= (nonwall || !level.lflags.is_maze_lev) ? 2 : 1;
+    xmin -= (nonwall || !NH_G(level).flags.is_maze_lev) ? 2 : 1;
     if (xmin < 0)
         xmin = 0;
 
@@ -1321,7 +1285,7 @@ bound_digging()
             }
         }
     }
-    xmax += (nonwall || !level.lflags.is_maze_lev) ? 2 : 1;
+    xmax += (nonwall || !NH_G(level).flags.is_maze_lev) ? 2 : 1;
     if (xmax >= COLNO)
         xmax = COLNO - 1;
 
@@ -1337,7 +1301,7 @@ bound_digging()
             }
         }
     }
-    ymin -= (nonwall || !level.lflags.is_maze_lev) ? 2 : 1;
+    ymin -= (nonwall || !NH_G(level).flags.is_maze_lev) ? 2 : 1;
 
     found = nonwall = FALSE;
     for (ymax = ROWNO - 1; !found && ymax >= 0; ymax--) {
@@ -1351,7 +1315,7 @@ bound_digging()
             }
         }
     }
-    ymax += (nonwall || !level.lflags.is_maze_lev) ? 2 : 1;
+    ymax += (nonwall || !NH_G(level).flags.is_maze_lev) ? 2 : 1;
 
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
@@ -1414,24 +1378,19 @@ fumaroles()
  * other source files, but they are all so nicely encapsulated here.
  */
 
-/* Water-level bubble linked-list head/tail + bounds were
- * file-scope statics. Two envs concurrently entering the water level
- * (Plane of Water) would clobber each other's lists. Migrated to per-env.
- * NB: this block is below bound_digging() (which has its own locals named
- * xmin/xmax/ymin/ymax) so the macros only affect code from here downward. */
-#define bbubbles (*(struct bubble **) &current_nle_ctx->s_bbubbles)
-#define ebubbles (*(struct bubble **) &current_nle_ctx->s_ebubbles)
+#define bbubbles (nh_g->s_mkmaze_c_bbubbles)
+#define ebubbles (nh_g->s_mkmaze_c_ebubbles)
 
-/* wportal moved to nle_ctx_t */
-#define xmin (current_nle_ctx->s_water_xmin)
-#define ymin (current_nle_ctx->s_water_ymin)
-#define xmax (current_nle_ctx->s_water_xmax)
-#define ymax (current_nle_ctx->s_water_ymax)
+#define wportal (nh_g->s_mkmaze_c_wportal)
+/* xmin: per-env nh_g->s_mkmaze_c_xmin */
+/* ymin: per-env nh_g->s_mkmaze_c_ymin */
+/* xmax: per-env nh_g->s_mkmaze_c_xmax */
+/* ymax: per-env nh_g->s_mkmaze_c_ymax */ /* level boundaries */
 /* bubble movement boundaries */
-#define bxmin (xmin + 1)
-#define bymin (ymin + 1)
-#define bxmax (xmax - 1)
-#define bymax (ymax - 1)
+#define bxmin (NH_G(s_mkmaze_c_xmin) + 1)
+#define bymin (NH_G(s_mkmaze_c_ymin) + 1)
+#define bxmax (NH_G(s_mkmaze_c_xmax) - 1)
+#define bymax (NH_G(s_mkmaze_c_ymax) - 1)
 
 STATIC_DCL void NDECL(set_wportal);
 STATIC_DCL void FDECL(mk_bubble, (int, int, int));
@@ -1444,11 +1403,7 @@ movebubbles()
                                          0, 0, 0, 0, 0, 0 };
     static const struct rm air_pos = { cmap_to_glyph(S_cloud), AIR, 0, 0, 0,
                                        1, 0, 0, 0, 0 };
-    /* `static boolean up = FALSE;` migrated to per-env
-     * current_nle_ctx->s_movebubbles_up (calloc zero = FALSE). Renamed
-     * to nle_mb_up to avoid shadowing/colliding with generic `up`
-     * identifiers in headers. */
-#define up (current_nle_ctx->s_movebubbles_up)
+    /* up: per-env nh_g->l_mkmaze_c_movebubbles_up */
     struct bubble *b;
     struct container *cons;
     struct trap *btrap;
@@ -1469,7 +1424,7 @@ movebubbles()
          * Pick up everything inside of a bubble then fill all bubble
          * locations.
          */
-        for (b = up ? bbubbles : ebubbles; b; b = up ? b->next : b->prev) {
+        for (b = NH_G(l_mkmaze_c_movebubbles_up) ? bbubbles : ebubbles; b; b = NH_G(l_mkmaze_c_movebubbles_up) ? b->next : b->prev) {
             if (b->cons)
                 panic("movebubbles: cons != null");
             for (i = 0, x = b->x; i < (int) b->bm[0]; i++, x++)
@@ -1484,7 +1439,7 @@ movebubbles()
                         if (OBJ_AT(x, y)) {
                             struct obj *olist = (struct obj *) 0, *otmp;
 
-                            while ((otmp = level.objs[x][y]) != 0) {
+                            while ((otmp = NH_G(level).objects[x][y]) != 0) {
                                 remove_object(otmp);
                                 otmp->ox = otmp->oy = 0;
                                 otmp->nexthere = olist;
@@ -1570,8 +1525,8 @@ movebubbles()
      * all the junk that changes owners when bubbles overlap
      * would eventually end up in the last bubble in the chain.
      */
-    up = !up;
-    for (b = up ? bbubbles : ebubbles; b; b = up ? b->next : b->prev) {
+    NH_G(l_mkmaze_c_movebubbles_up) = !NH_G(l_mkmaze_c_movebubbles_up);
+    for (b = NH_G(l_mkmaze_c_movebubbles_up) ? bbubbles : ebubbles; b; b = NH_G(l_mkmaze_c_movebubbles_up) ? b->next : b->prev) {
         int rx = rn2(3), ry = rn2(3);
 
         mv_bubble(b, b->dx + 1 - (!b->dx ? rx : (rx ? 1 : 0)),
@@ -1583,7 +1538,6 @@ movebubbles()
         lift_covet_and_placebc(bcpin);
     vision_full_recalc = 1;
 }
-#undef up /* Scope of macro limited to movebubbles. */
 
 /* when moving in water, possibly (1 in 3) alter the intended destination */
 void
@@ -1634,10 +1588,10 @@ int fd, mode;
         for (b = bbubbles; b; b = b->next)
             ++n;
         bwrite(fd, (genericptr_t) &n, sizeof n);
-        bwrite(fd, (genericptr_t) &xmin, sizeof xmin);
-        bwrite(fd, (genericptr_t) &ymin, sizeof ymin);
-        bwrite(fd, (genericptr_t) &xmax, sizeof xmax);
-        bwrite(fd, (genericptr_t) &ymax, sizeof ymax);
+        bwrite(fd, (genericptr_t) &NH_G(s_mkmaze_c_xmin), sizeof NH_G(s_mkmaze_c_xmin));
+        bwrite(fd, (genericptr_t) &NH_G(s_mkmaze_c_ymin), sizeof NH_G(s_mkmaze_c_ymin));
+        bwrite(fd, (genericptr_t) &NH_G(s_mkmaze_c_xmax), sizeof NH_G(s_mkmaze_c_xmax));
+        bwrite(fd, (genericptr_t) &NH_G(s_mkmaze_c_ymax), sizeof NH_G(s_mkmaze_c_ymax));
         for (b = bbubbles; b; b = b->next)
             bwrite(fd, (genericptr_t) b, sizeof *b);
     }
@@ -1665,10 +1619,10 @@ int fd;
 
     set_wportal();
     mread(fd, (genericptr_t) &n, sizeof n);
-    mread(fd, (genericptr_t) &xmin, sizeof xmin);
-    mread(fd, (genericptr_t) &ymin, sizeof ymin);
-    mread(fd, (genericptr_t) &xmax, sizeof xmax);
-    mread(fd, (genericptr_t) &ymax, sizeof ymax);
+    mread(fd, (genericptr_t) &NH_G(s_mkmaze_c_xmin), sizeof NH_G(s_mkmaze_c_xmin));
+    mread(fd, (genericptr_t) &NH_G(s_mkmaze_c_ymin), sizeof NH_G(s_mkmaze_c_ymin));
+    mread(fd, (genericptr_t) &NH_G(s_mkmaze_c_xmax), sizeof NH_G(s_mkmaze_c_xmax));
+    mread(fd, (genericptr_t) &NH_G(s_mkmaze_c_ymax), sizeof NH_G(s_mkmaze_c_ymax));
     for (i = 0; i < n; i++) {
         btmp = b;
         b = (struct bubble *) alloc(sizeof *b);
@@ -1736,15 +1690,15 @@ setup_waterlevel()
               (int) u.uz.dnum, (int) u.uz.dlevel);
 
     /* ouch, hardcoded... (file scope statics and used in bxmin,bymax,&c) */
-    xmin = 3;
-    ymin = 1;
+    NH_G(s_mkmaze_c_xmin) = 3;
+    NH_G(s_mkmaze_c_ymin) = 1;
     /* use separate statements so that compiler won't complain about min()
        comparing two constants; the alternative is to do this in the
        preprocessor: #if (20 > ROWNO-1) ymax=ROWNO-1 #else ymax=20 #endif */
-    xmax = 78;
-    xmax = min(xmax, (COLNO - 1) - 1);
-    ymax = 20;
-    ymax = min(ymax, (ROWNO - 1));
+    NH_G(s_mkmaze_c_xmax) = 78;
+    NH_G(s_mkmaze_c_xmax) = min(NH_G(s_mkmaze_c_xmax), (COLNO - 1) - 1);
+    NH_G(s_mkmaze_c_ymax) = 20;
+    NH_G(s_mkmaze_c_ymax) = min(NH_G(s_mkmaze_c_ymax), (ROWNO - 1));
 
     /* entire level is remembered as one glyph and any unspecified portion
        should default to level's base element rather than to usual stone */
@@ -2010,3 +1964,15 @@ boolean ini;
 }
 
 /*mkmaze.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_MKMAZE_C_DONE
+#define NH_INIT_MKMAZE_C_DONE
+void
+nh_init_mkmaze_c(void)
+{
+    memcpy(nh_g->s_mkmaze_c_bughack, &nh_tmpl_s_mkmaze_c_bughack, sizeof nh_tmpl_s_mkmaze_c_bughack);
+}
+#endif

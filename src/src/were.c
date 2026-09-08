@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 void
 were_change(mon)
@@ -15,8 +14,8 @@ register struct monst *mon;
 
     if (is_human(mon->data)) {
         if (!Protection_from_shape_changers
-            && !rn2(night() ? (flags.moonphase == FULL_MOON ? 3 : 30)
-                            : (flags.moonphase == FULL_MOON ? 10 : 50))) {
+            && !rn2(night() ? (NH_G(flags).moonphase == FULL_MOON ? 3 : 30)
+                            : (NH_G(flags).moonphase == FULL_MOON ? 10 : 50))) {
             new_were(mon); /* change into animal form */
             if (!Deaf && !canseemon(mon)) {
                 const char *howler;

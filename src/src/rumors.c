@@ -4,12 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "lev.h"
 #include "dlb.h"
-
-/* Misc-2 per-env redirect (rumors.c) */
-#define true_rumor_size (current_nle_ctx->s_true_rumor_size)
 
 /*      [note: this comment is fairly old, but still accurate for 3.1]
  * Rumors have been entirely rewritten to speed up the access.  This is
@@ -49,40 +45,19 @@ STATIC_DCL void FDECL(init_rumors, (dlb *));
 STATIC_DCL void FDECL(init_oracles, (dlb *));
 STATIC_DCL void FDECL(couldnt_open_file, (const char *));
 
-/* Per-env rumors.c state. false_rumor_size / true_rumor_start /
- * false_rumor_start / true_rumor_end / false_rumor_end bundled into
- * one struct, lazily allocated via nle_rumors(). true_rumor_size was
- * already migrated to nle_ctx_t.s_true_rumor_size. */
-struct nle_rumors_state {
-    long          _false_rumor_size;
-    unsigned long _true_rumor_start;
-    unsigned long _false_rumor_start;
-    long          _true_rumor_end;
-    long          _false_rumor_end;
-};
-static struct nle_rumors_state *
-nle_rumors(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_rumors_state *s = (struct nle_rumors_state *) current_nle_ctx->s_rumors_state;
-    if (!s) {
-        s = (struct nle_rumors_state *) nle_arena_calloc(1, sizeof(struct nle_rumors_state));
-        current_nle_ctx->s_rumors_state = s;
-    }
-    return s;
-}
-#define false_rumor_size   (nle_rumors()->_false_rumor_size)
-#define true_rumor_start   (nle_rumors()->_true_rumor_start)
-#define false_rumor_start  (nle_rumors()->_false_rumor_start)
-#define true_rumor_end     (nle_rumors()->_true_rumor_end)
-#define false_rumor_end    (nle_rumors()->_false_rumor_end)
+/* rumor size variables are signed so that value -1 can be used as a flag */
+#define true_rumor_size (nh_g->s_rumors_c_true_rumor_size)
+#define false_rumor_size (nh_g->s_rumors_c_false_rumor_size)
+/* rumor start offsets are unsigned because they're handled via %lx format */
+#define true_rumor_start (nh_g->s_rumors_c_true_rumor_start)
+#define false_rumor_start (nh_g->s_rumors_c_false_rumor_start)
+/* rumor end offsets are signed because they're compared with [dlb_]ftell() */
+#define true_rumor_end (nh_g->s_rumors_c_true_rumor_end)
+#define false_rumor_end (nh_g->s_rumors_c_false_rumor_end)
 /* oracles are handled differently from rumors... */
-/* Oracle state per-env. oracle_flg/oracle_loc were __thread;
- * oracle_cnt was a plain static (process-global) but is decremented as oracles
- * are used — so it must be per-env too. */
-#define oracle_flg (current_nle_ctx->s_oracle_flg)
-#define oracle_loc (current_nle_ctx->s_oracle_loc)
-#define oracle_cnt (current_nle_ctx->s_oracle_cnt)
+#define oracle_flg (nh_g->s_rumors_c_oracle_flg) /* -1=>don't use, 0=>need init, 1=>init done */
+#define oracle_cnt (nh_g->s_rumors_c_oracle_cnt)
+#define oracle_loc (nh_g->s_rumors_c_oracle_loc)
 
 STATIC_OVL void
 init_rumors(fp)
@@ -518,7 +493,7 @@ struct monst *oracl;
     int add_xpts;
     char qbuf[QBUFSZ];
 
-    current_nle_ctx->multi = 0;
+    multi = 0;
     umoney = money_cnt(invent);
 
     if (!oracl) {
@@ -586,16 +561,16 @@ STATIC_OVL void
 couldnt_open_file(filename)
 const char *filename;
 {
-    int save_something = current_nle_ctx->program_state.something_worth_saving;
+    int save_something = NH_G(program_state).something_worth_saving;
 
     /* most likely the file is missing, so suppress impossible()'s
-       "saving and current_nle_ctx->restoring might fix this" (unless the fuzzer,
+       "saving and restoring might fix this" (unless the fuzzer,
        which escalates impossible to panic, is running) */
     if (!iflags.debug_fuzzer)
-        current_nle_ctx->program_state.something_worth_saving = 0;
+        NH_G(program_state).something_worth_saving = 0;
 
     impossible("Can't open '%s' file.", filename);
-    current_nle_ctx->program_state.something_worth_saving = save_something;
+    NH_G(program_state).something_worth_saving = save_something;
 }
 
 /*rumors.c*/

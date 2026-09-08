@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 STATIC_PTR int NDECL(stealarm);
 
@@ -122,7 +121,7 @@ register struct monst *mtmp;
             monflee(mtmp, 0, FALSE, FALSE);
         }
     } else if (ygold) {
-        const int gold_price = objects[GOLD_PIECE].oc_cost;
+        const int gold_price = NH_G(objects)[GOLD_PIECE].oc_cost;
 
         tmp = (somegold(money_cnt(invent)) + gold_price - 1) / gold_price;
         tmp = min(tmp, ygold->quan);
@@ -141,10 +140,8 @@ register struct monst *mtmp;
 }
 
 /* steal armor after you finish taking it off */
-/* stealoid/stealmid — migrated to nle_ctx_t. File-local macros only
- * (uhitm.c has an unrelated local `struct obj *stealoid`). */
-#define stealoid (current_nle_ctx->stealoid_v)
-#define stealmid (current_nle_ctx->stealmid_v)
+/* stealoid: per-env nh_g->stealoid */ /* object to be stolen */
+/* stealmid: per-env, see nh_globals.h */ /* monster doing the stealing */
 
 STATIC_PTR int
 stealarm(VOID_ARGS)
@@ -153,7 +150,7 @@ stealarm(VOID_ARGS)
     register struct obj *otmp;
 
     for (otmp = invent; otmp; otmp = otmp->nobj) {
-        if (otmp->o_id == stealoid) {
+        if (otmp->o_id == NH_G(stealoid)) {
             for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
                 if (mtmp->m_id == stealmid) {
                     if (DEADMONSTER(mtmp))
@@ -177,7 +174,7 @@ stealarm(VOID_ARGS)
         }
     }
  botm:
-    stealoid = 0;
+    NH_G(stealoid) = 0;
     return 0;
 }
 
@@ -329,7 +326,7 @@ char *objnambuf;
         otmp = uarm;
 
  gotobj:
-    if (otmp->o_id == stealoid)
+    if (otmp->o_id == NH_G(stealoid))
         return 0;
 
     if (otmp->otyp == BOULDER && !throws_rocks(mtmp->data)) {
@@ -392,7 +389,7 @@ char *objnambuf;
             remove_worn_item(otmp, TRUE);
             break;
         case ARMOR_CLASS:
-            armordelay = objects[otmp->otyp].oc_delay;
+            armordelay = NH_G(objects)[otmp->otyp].oc_delay;
             if (olddelay > 0 && olddelay < armordelay)
                 armordelay = olddelay;
             if (monkey_business) {
@@ -411,8 +408,8 @@ char *objnambuf;
                 /* can't charm you without first waking you */
                 if (Unaware)
                     unmul((char *) 0);
-                slowly = (armordelay >= 1 || current_nle_ctx->multi < 0);
-                if (flags.female)
+                slowly = (armordelay >= 1 || multi < 0);
+                if (NH_G(flags).female)
                     pline("%s charms you.  You gladly %s your %s.",
                           !seen ? "She" : Monnam(mtmp),
                           curssv ? "let her take"
@@ -430,18 +427,18 @@ char *objnambuf;
                                                       : "you start taking",
                           equipname(otmp));
                 named++;
-                /* the following is to set current_nle_ctx->multi for later on */
+                /* the following is to set multi for later on */
                 nomul(-armordelay);
-                current_nle_ctx->multi_reason = "taking off clothes";
+                multi_reason = "taking off clothes";
                 nomovemsg = 0;
                 remove_worn_item(otmp, TRUE);
                 otmp->cursed = curssv;
-                if (current_nle_ctx->multi < 0) {
+                if (multi < 0) {
                     /*
-                    current_nle_ctx->multi = 0;
+                    multi = 0;
                     afternmv = 0;
                     */
-                    stealoid = otmp->o_id;
+                    NH_G(stealoid) = otmp->o_id;
                     stealmid = mtmp->m_id;
                     afternmv = stealarm;
                     return 0;
@@ -477,7 +474,7 @@ char *objnambuf;
         minstapetrify(mtmp, TRUE);
         return -1;
     }
-    return (current_nle_ctx->multi < 0) ? 0 : 1;
+    return (multi < 0) ? 0 : 1;
 }
 
 /* Returns 1 if otmp is free'd, 0 otherwise. */
@@ -751,7 +748,7 @@ boolean is_pet; /* If true, pet should keep wielded/worn items */
 
     while ((otmp = (is_pet ? droppables(mtmp) : mtmp->minvent)) != 0) {
         obj_extract_self(otmp);
-        mdrop_obj(mtmp, otmp, is_pet && flags.verbose);
+        mdrop_obj(mtmp, otmp, is_pet && NH_G(flags).verbose);
     }
 
     if (show && cansee(omx, omy))

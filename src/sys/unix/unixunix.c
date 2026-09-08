@@ -6,7 +6,6 @@
 /* This file collects some Unix dependencies */
 
 #include "hack.h" /* mainly for index() which depends on BSD */
-#include "nle.h" /* current_nle_ctx */
 
 #include <errno.h>
 #include <sys/stat.h>
@@ -50,7 +49,7 @@ int fd;
     (void) time(&date);
 #endif
     if (date - buf.st_mtime < 3L * 24L * 60L * 60L) { /* recent */
-        int lockedpid; /* should be the same size as current_nle_ctx->hackpid */
+        int lockedpid; /* should be the same size as hackpid */
 
         if (read(fd, (genericptr_t) &lockedpid, sizeof lockedpid)
             != sizeof lockedpid)
@@ -76,7 +75,7 @@ eraseoldlocks()
 {
     register int i;
 
-    current_nle_ctx->program_state.preserve_locks = 0; /* not required but shows intent */
+    NH_G(program_state).preserve_locks = 0; /* not required but shows intent */
     /* cannot use maxledgerno() here, because we need to find a lock name
      * before starting everything (including the dungeon initialization
      * that sets astral_level, needed for maxledgerno()) up
@@ -121,15 +120,15 @@ getlock()
     /* default value of lock[] is "1lock" where '1' gets changed to
        'a','b',&c below; override the default and use <uid><charname>
        if we aren't restricting the number of simultaneous games */
-    if (!current_nle_ctx->locknum)
+    if (!locknum)
         Sprintf(lock, "%u%s", (unsigned) getuid(), plname);
 
     regularize(lock);
     set_levelfile_name(lock, 0);
 
-    if (current_nle_ctx->locknum) {
-        if (current_nle_ctx->locknum > 25)
-            current_nle_ctx->locknum = 25;
+    if (locknum) {
+        if (locknum > 25)
+            locknum = 25;
 
         do {
             lock[0] = 'a' + i++;
@@ -147,7 +146,7 @@ getlock()
             if (veryold(fd) && eraseoldlocks())
                 goto gotlock;
             (void) close(fd);
-        } while (i < current_nle_ctx->locknum);
+        } while (i < locknum);
 
         unlock_file(HLOCK);
         error("Too many hacks running now.");
@@ -205,8 +204,8 @@ gotlock:
     if (fd == -1) {
         error("cannot creat lock file (%s).", fq_lock);
     } else {
-        if (write(fd, (genericptr_t) &current_nle_ctx->hackpid, sizeof current_nle_ctx->hackpid)
-            != sizeof current_nle_ctx->hackpid) {
+        if (write(fd, (genericptr_t) &hackpid, sizeof hackpid)
+            != sizeof hackpid) {
             error("cannot write lock (%s)", fq_lock);
         }
         if (close(fd) == -1) {

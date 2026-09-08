@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 /*
  *      These routines provide basic data for any type of monster.
  */
@@ -89,7 +88,7 @@ struct permonst *ptr;
 {
     /* non-stone golems turn into stone golems unless latter is genocided */
     return (boolean) (is_golem(ptr) && ptr != &mons[PM_STONE_GOLEM]
-                      && !(mvitals[PM_STONE_GOLEM].mvflags & G_GENOD));
+                      && !(NH_G(mvitals)[PM_STONE_GOLEM].mvflags & G_GENOD));
     /* allow G_EXTINCT */
 }
 
@@ -138,7 +137,7 @@ struct monst *mon;
         slotmask |= W_SWAPWEP;
     for (; o; o = o->nobj)
         if (((o->owornmask & slotmask) != 0L
-             && objects[o->otyp].oc_oprop == ANTIMAGIC)
+             && NH_G(objects)[o->otyp].oc_oprop == ANTIMAGIC)
             || (o->oartifact && defends_when_carried(AD_MAGM, o)))
             return TRUE;
     return FALSE;
@@ -176,7 +175,7 @@ struct monst *mon;
         slotmask |= W_SWAPWEP;
     for (; o; o = o->nobj)
         if (((o->owornmask & slotmask) != 0L
-             && objects[o->otyp].oc_oprop == BLINDED)
+             && NH_G(objects)[o->otyp].oc_oprop == BLINDED)
             || (o->oartifact && defends_when_carried(AD_BLND, o)))
             return TRUE;
     return FALSE;
@@ -263,7 +262,7 @@ struct obj *obj; /* aatyp == AT_WEAP, AT_SPIT */
         o = (mdef == &youmonst) ? invent : mdef->minvent;
         for (; o; o = o->nobj)
             if ((o->owornmask & W_ARMH)
-                && (s = OBJ_DESCR(objects[o->otyp])) != (char *) 0
+                && (s = OBJ_DESCR(NH_G(objects)[o->otyp])) != (char *) 0
                 && !strcmp(s, "visored helmet"))
                 return FALSE;
     }
@@ -823,12 +822,12 @@ int *mndx_p;
        such partial matches must start at beginning of a word.  Some
        class descriptions include "foo or bar" and "foo or other foo"
        so we don't want to accept "or", "other", "or other" there. */
-    static const char *const falsematch[] = {
+    static NEARDATA const char *const falsematch[] = {
         /* multiple-letter input which matches any of these gets rejected */
         "an", "the", "or", "other", "or other", 0
     };
     /* positive pm_val => specific monster; negative => class */
-    static const struct alt_spl truematch[] = {
+    static NEARDATA const struct alt_spl truematch[] = {
         /* "long worm" won't match "worm" class but would accidentally match
            "long worm tail" class before the comparison with monster types */
         { "long worm", PM_LONG_WORM },

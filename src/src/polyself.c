@@ -20,10 +20,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Misc-2 per-env redirect (polyself.c) */
-#define sex_change_ok (current_nle_ctx->s_sex_change_ok)
 
 STATIC_DCL void FDECL(check_strangling, (BOOLEAN_P));
 STATIC_DCL void FDECL(polyman, (const char *, const char *));
@@ -38,8 +34,8 @@ STATIC_VAR const char no_longer_petrify_resistant[] =
     "No longer petrify-resistant, you";
 
 /* controls whether taking on new form or becoming new man can also
-   change sex (ought to be an arg to polymon() and newman() instead).
-   Migrated to nle_ctx_t.s_sex_change_ok. */
+   change sex (ought to be an arg to polymon() and newman() instead) */
+#define sex_change_ok (nh_g->s_polyself_c_sex_change_ok)
 
 /* update the youmonst.data structure pointer and intrinsics */
 void
@@ -175,7 +171,7 @@ const char *fmt, *arg;
         u.acurr = u.macurr; /* restore old attribs */
         u.amax = u.mamax;
         u.umonnum = u.umonster;
-        flags.female = u.mfemale;
+        NH_G(flags).female = u.mfemale;
     }
     set_uasmon();
 
@@ -188,7 +184,7 @@ const char *fmt, *arg;
         uunstick();
     find_ac();
     if (was_mimicking) {
-        if (current_nle_ctx->multi < 0)
+        if (multi < 0)
             unmul("");
         youmonst.m_ap_type = M_AP_NOTHING;
         youmonst.mappearance = 0;
@@ -203,11 +199,11 @@ const char *fmt, *arg;
         struct kinfo *kptr = find_delayed_killer(POLYMORPH);
 
         if (kptr != (struct kinfo *) 0 && kptr->name[0]) {
-            killer.format = kptr->format;
-            Strcpy(killer.name, kptr->name);
+            NH_G(killer).format = kptr->format;
+            Strcpy(NH_G(killer).name, kptr->name);
         } else {
-            killer.format = KILLED_BY;
-            Strcpy(killer.name, "self-genocide");
+            NH_G(killer).format = KILLED_BY;
+            Strcpy(NH_G(killer).name, "self-genocide");
         }
         dealloc_killer(kptr);
         done(GENOCIDED);
@@ -247,22 +243,22 @@ change_sex()
     if (!already_polyd
         || (!is_male(youmonst.data) && !is_female(youmonst.data)
             && !is_neuter(youmonst.data)))
-        flags.female = !flags.female;
+        NH_G(flags).female = !NH_G(flags).female;
     if (already_polyd) /* poly'd: also change saved sex */
         u.mfemale = !u.mfemale;
     max_rank_sz(); /* [this appears to be superfluous] */
-    if ((already_polyd ? u.mfemale : flags.female) && urole.name.f)
+    if ((already_polyd ? u.mfemale : NH_G(flags).female) && urole.name.f)
         Strcpy(pl_character, urole.name.f);
     else
         Strcpy(pl_character, urole.name.m);
-    u.umonster = ((already_polyd ? u.mfemale : flags.female)
+    u.umonster = ((already_polyd ? u.mfemale : NH_G(flags).female)
                   && urole.femalenum != NON_PM)
                      ? urole.femalenum
                      : urole.malenum;
     if (!already_polyd) {
         u.umonnum = u.umonster;
     } else if (u.umonnum == PM_SUCCUBUS || u.umonnum == PM_INCUBUS) {
-        flags.female = !flags.female;
+        NH_G(flags).female = !NH_G(flags).female;
         /* change monster type to match new sex */
         u.umonnum = (u.umonnum == PM_SUCCUBUS) ? PM_INCUBUS : PM_SUCCUBUS;
         set_uasmon();
@@ -360,8 +356,8 @@ newman()
         dead: /* we come directly here if their experience level went to 0 or
                  less */
             Your("new form doesn't seem healthy enough to survive.");
-            killer.format = KILLED_BY_AN;
-            Strcpy(killer.name, "unsuccessful polymorph");
+            NH_G(killer).format = KILLED_BY_AN;
+            Strcpy(NH_G(killer).name, "unsuccessful polymorph");
             done(DIED);
             newuhs(FALSE);
             return; /* lifesaved */
@@ -370,7 +366,7 @@ newman()
     newuhs(FALSE);
     polyman("feel like a new %s!",
             /* use saved gender we're about to revert to, not current */
-            ((Upolyd ? u.mfemale : flags.female) && urace.individual.f)
+            ((Upolyd ? u.mfemale : NH_G(flags).female) && urace.individual.f)
                 ? urace.individual.f
                 : (urace.individual.m)
                    ? urace.individual.m
@@ -497,7 +493,7 @@ int psflags;
         if (draconian) {
         do_merge:
             mntmp = armor_to_dragon(uarm->otyp);
-            if (!(mvitals[mntmp].mvflags & G_GENOD)) {
+            if (!(NH_G(mvitals)[mntmp].mvflags & G_GENOD)) {
                 /* allow G_EXTINCT */
                 if (Is_dragon_scales(uarm)) {
                     /* dragon scales remain intact as uskin */
@@ -603,7 +599,7 @@ int mntmp;
             was_blind = !!Blind, dochange = FALSE;
     int mlvl;
 
-    if (mvitals[mntmp].mvflags & G_GENOD) { /* allow G_EXTINCT */
+    if (NH_G(mvitals)[mntmp].mvflags & G_GENOD) { /* allow G_EXTINCT */
         You_feel("rather %s-ish.", mons[mntmp].mname);
         exercise(A_WIS, TRUE);
         return 0;
@@ -621,18 +617,18 @@ int mntmp;
         /* Human to monster; save human stats */
         u.macurr = u.acurr;
         u.mamax = u.amax;
-        u.mfemale = flags.female;
+        u.mfemale = NH_G(flags).female;
     } else {
         /* Monster to monster; restore human stats, to be
          * immediately changed to provide stats for the new monster
          */
         u.acurr = u.macurr;
         u.amax = u.mamax;
-        flags.female = u.mfemale;
+        NH_G(flags).female = u.mfemale;
     }
 
     /* if stuck mimicking gold, stop immediately */
-    if (current_nle_ctx->multi < 0 && U_AP_TYPE == M_AP_OBJECT
+    if (multi < 0 && U_AP_TYPE == M_AP_OBJECT
         && youmonst.data->mlet != S_MIMIC)
         unmul("");
     /* if becoming a non-mimic, stop mimicking anything */
@@ -642,10 +638,10 @@ int mntmp;
         youmonst.mappearance = 0;
     }
     if (is_male(&mons[mntmp])) {
-        if (flags.female)
+        if (NH_G(flags).female)
             dochange = TRUE;
     } else if (is_female(&mons[mntmp])) {
-        if (!flags.female)
+        if (!NH_G(flags).female)
             dochange = TRUE;
     } else if (!is_neuter(&mons[mntmp]) && mntmp != u.ulycn) {
         if (sex_change_ok && !rn2(10))
@@ -654,9 +650,9 @@ int mntmp;
 
     Strcpy(buf, (u.umonnum != mntmp) ? "" : "new ");
     if (dochange) {
-        flags.female = !flags.female;
+        NH_G(flags).female = !NH_G(flags).female;
         Strcat(buf, (is_male(&mons[mntmp]) || is_female(&mons[mntmp]))
-                       ? "" : flags.female ? "female " : "male ");
+                       ? "" : NH_G(flags).female ? "female " : "male ");
     }
     Strcat(buf, mons[mntmp].mname);
     You("%s %s!", (u.umonnum != mntmp) ? "turn into" : "feel like", an(buf));
@@ -763,7 +759,7 @@ int mntmp;
             dismount_steed(DISMOUNT_POLY);
     }
 
-    if (flags.verbose) {
+    if (NH_G(flags).verbose) {
         static const char use_thec[] = "Use the command #%s to %s.";
         static const char monsterc[] = "monster";
 
@@ -792,7 +788,7 @@ int mntmp;
         if (is_vampire(youmonst.data))
             pline(use_thec, monsterc, "change shape");
 
-        if (lays_eggs(youmonst.data) && flags.female &&
+        if (lays_eggs(youmonst.data) && NH_G(flags).female &&
             !(youmonst.data == &mons[PM_GIANT_EEL]
                 || youmonst.data == &mons[PM_ELECTRIC_EEL]))
             pline(use_thec, "sit",
@@ -1073,8 +1069,8 @@ rehumanize()
     /* You can't revert back while unchanging */
     if (Unchanging) {
         if (u.mh < 1) {
-            killer.format = NO_KILLER_PREFIX;
-            Strcpy(killer.name, "killed while stuck in creature form");
+            NH_G(killer).format = NO_KILLER_PREFIX;
+            Strcpy(NH_G(killer).name, "killed while stuck in creature form");
             done(DIED);
         } else if (uamul && uamul->otyp == AMULET_OF_UNCHANGING) {
             Your("%s %s!", simpleonames(uamul), otense(uamul, "fail"));
@@ -1091,8 +1087,8 @@ rehumanize()
         /* can only happen if some bit of code reduces u.uhp
            instead of u.mh while poly'd */
         Your("old form was not healthy enough to survive.");
-        Sprintf(killer.name, "reverting to unhealthy %s form", urace.adj);
-        killer.format = KILLED_BY;
+        Sprintf(NH_G(killer).name, "reverting to unhealthy %s form", urace.adj);
+        NH_G(killer).format = KILLED_BY;
         done(DIED);
     }
     nomul(0);
@@ -1367,10 +1363,10 @@ dogaze()
                        || M_AP_TYPE(mtmp) == M_AP_OBJECT) {
                 looked--;
                 continue;
-            } else if (flags.safe_dog && mtmp->mtame && !Confusion) {
+            } else if (NH_G(flags).safe_dog && mtmp->mtame && !Confusion) {
                 You("avoid gazing at %s.", y_monnam(mtmp));
             } else {
-                if (flags.confirm && mtmp->mpeaceful && !Confusion) {
+                if (NH_G(flags).confirm && mtmp->mpeaceful && !Confusion) {
                     Sprintf(qbuf, "Really %s %s?",
                             (adtyp == AD_CONF) ? "confuse" : "attack",
                             mon_nam(mtmp));
@@ -1426,7 +1422,7 @@ dogaze()
                                   ? -d((int) mtmp->m_lev + 1,
                                        (int) mtmp->data->mattk[0].damd)
                                   : -200);
-                        current_nle_ctx->multi_reason = "frozen by a monster's gaze";
+                        multi_reason = "frozen by a monster's gaze";
                         nomovemsg = 0;
                         return 1;
                     } else
@@ -1443,8 +1439,8 @@ dogaze()
                           l_monnam(mtmp));
                     /* as if gazing at a sleeping anything is fruitful... */
                     You("turn to stone...");
-                    killer.format = KILLED_BY;
-                    Strcpy(killer.name, "deliberately meeting Medusa's gaze");
+                    NH_G(killer).format = KILLED_BY;
+                    Strcpy(NH_G(killer).name, "deliberately meeting Medusa's gaze");
                     done(STONING);
                 }
             }
@@ -1489,7 +1485,7 @@ dohide()
         u.uundetected = 0;
         return 0;
     }
-    if (hides_under(youmonst.data) && !level.objs[u.ux][u.uy]) {
+    if (hides_under(youmonst.data) && !NH_G(level).objects[u.ux][u.uy]) {
         There("is nothing to hide under here.");
         u.uundetected = 0;
         return 0;
@@ -1608,7 +1604,7 @@ mbodypart(mon, part)
 struct monst *mon;
 int part;
 {
-    static const char
+    static NEARDATA const char
         *humanoid_parts[] = { "arm",       "eye",  "face",         "finger",
                               "fingertip", "foot", "hand",         "handed",
                               "head",      "leg",  "light headed", "neck",
@@ -1776,7 +1772,7 @@ poly_gender()
      */
     if (is_neuter(youmonst.data) || !humanoid(youmonst.data))
         return 2;
-    return flags.female;
+    return NH_G(flags).female;
 }
 
 void
@@ -1885,12 +1881,12 @@ polysense()
 boolean
 ugenocided()
 {
-    return (boolean) ((mvitals[urole.malenum].mvflags & G_GENOD)
+    return (boolean) ((NH_G(mvitals)[urole.malenum].mvflags & G_GENOD)
                       || (urole.femalenum != NON_PM
-                          && (mvitals[urole.femalenum].mvflags & G_GENOD))
-                      || (mvitals[urace.malenum].mvflags & G_GENOD)
+                          && (NH_G(mvitals)[urole.femalenum].mvflags & G_GENOD))
+                      || (NH_G(mvitals)[urace.malenum].mvflags & G_GENOD)
                       || (urace.femalenum != NON_PM
-                          && (mvitals[urace.femalenum].mvflags & G_GENOD)));
+                          && (NH_G(mvitals)[urace.femalenum].mvflags & G_GENOD)));
 }
 
 /* how hero feels "inside" after self-genocide of role or race */

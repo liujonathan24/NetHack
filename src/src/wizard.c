@@ -9,7 +9,6 @@
 /*             - generalized for 3.1 (mike@bullns.on01.bull.ca) */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "qtext.h"
 
 STATIC_DCL short FDECL(which_arti, (int));
@@ -27,7 +26,7 @@ STATIC_DCL unsigned long FDECL(strategy, (struct monst *));
    only four lawful candidates, so lawful summoners tended to summon more
    (trying to get lawful or neutral but obtaining chaotic instead) than
    their chaotic counterparts */
-static const int nasties[] = {
+static NEARDATA const int nasties[] = {
     /* neutral */
     PM_COCKATRICE, PM_ETTIN, PM_STALKER, PM_MINOTAUR,
     PM_OWLBEAR, PM_PURPLE_WORM, PM_XAN, PM_UMBER_HULK,
@@ -47,7 +46,7 @@ static const int nasties[] = {
        they're summoners so would aggravate excessive summoning) */
 };
 
-static const unsigned wizapp[] = {
+static NEARDATA const unsigned wizapp[] = {
     PM_HUMAN,      PM_WATER_DEMON,  PM_VAMPIRE,       PM_RED_DRAGON,
     PM_TROLL,      PM_UMBER_HULK,   PM_XORN,          PM_XAN,
     PM_COCKATRICE, PM_FLOATING_EYE, PM_GUARDIAN_NAGA, PM_TRAPPER,

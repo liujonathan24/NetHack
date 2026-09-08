@@ -4,94 +4,75 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
-#ifdef NLE_OBJECTS_GLOBAL
-int NDECL((*afternmv));
-int NDECL((*occupation));
-#endif
+/* afternmv: per-env, see nh_globals.h */
+/* occupation: per-env, see nh_globals.h */
 
 /* from xxxmain.c */
-const char *hname = 0; /* name of the game (argv[0] of main) */
-/* hackpid migrated to nle_ctx_t (refactor stage 3c). */
+/* hname: per-env, see nh_globals.h */ /* name of the game (argv[0] of main) */
+/* hackpid: per-env, see nh_globals.h */       /* current process id */
 #if defined(UNIX) || defined(VMS)
+/* locknum: per-env, see nh_globals.h */ /* max num of simultaneous users */
 #endif
 #ifdef DEF_PAGER
 char *catmore = 0; /* default pager */
 #endif
-char chosen_windowtype[WINTYPELEN];
+/* chosen_windowtype: per-env, see nh_globals.h */
 
-#ifdef NLE_OBJECTS_GLOBAL
-int bases[MAXOCLASSES];
-/* Build-tool stubs — only used by makedefs/lev_comp linking. */
-NEARDATA int doorindex = 0;
-NEARDATA int in_doagain = 0;
-NEARDATA boolean in_mklev = FALSE;
-NEARDATA coord bhitpos = DUMMY;
-NEARDATA char plname[PL_NSIZ] = DUMMY;
-NEARDATA char pl_character[PL_CSIZ] = DUMMY;
-NEARDATA char pl_race = '\0';
-NEARDATA char pl_fruit[PL_FSIZ] = DUMMY;
-NEARDATA char tune[6] = DUMMY;
-/* Build-tool stubs. */
-NEARDATA char dogname[PL_PSIZ] = DUMMY;
-NEARDATA char catname[PL_PSIZ] = DUMMY;
-NEARDATA char horsename[PL_PSIZ] = DUMMY;
-NEARDATA char *save_cm = 0;
-struct fruit;
-NEARDATA struct fruit *ffruit = (struct fruit *) 0;
-#endif
-/* For libnethack, bases is a macro to nle_ctx_t. See decl.h. */
+/* bases: per-env, see nh_globals.h */
 
-/* Nroom/nsubroom were NEARDATA __thread globals that the
- * per-step swap in nle.c copied in and out of the env's nle_ctx_t slot.
- * The struct field has existed since stage 3f (nle.h:136-137); this
- * migration drops the storage from decl.c and rewires decl.h (which is
- * the canonical extern point) to a per-env macro. The corresponding
- * swap in nle_swap_in/out (nle.c:825/845) is removed. Build-tool
- * binaries (makedefs, lev_comp) need the storage; they are now declared
- * under #ifdef NLE_OBJECTS_GLOBAL alongside other build-tool stubs. */
-#ifdef NLE_OBJECTS_GLOBAL
-NEARDATA int nroom = 0;
-NEARDATA int nsubroom = 0;
-#endif
+/* multi: per-env, see nh_globals.h */
+/* multi_reason: per-env, see nh_globals.h */
+/* nroom: per-env nh_g->nroom */
+/* nsubroom: per-env, see nh_globals.h */
+/* occtime: per-env, see nh_globals.h */
 
 /* maze limits must be even; masking off lowest bit guarantees that */
-#ifdef NLE_OBJECTS_GLOBAL
-int x_maze_max = (COLNO - 1) & ~1, y_maze_max = (ROWNO - 1) & ~1;
-#endif
+/* x_maze_max: per-env, see nh_globals.h */
+const int nh_tmpl_x_maze_max = (COLNO - 1) & ~1;
+/* y_maze_max: per-env, see nh_globals.h */
+const int nh_tmpl_y_maze_max = (ROWNO - 1) & ~1;
 
+/* otg_temp: per-env, see nh_globals.h */ /* used by object_to_glyph() [otg] */
 
-/* in_doagain — migrated to nle_ctx_t. */
+/* in_doagain: per-env, see nh_globals.h */
 
 /*
  *      The following structure will be initialized at startup time with
  *      the level numbers of some "important" things in the game.
  */
-/* dungeon_topology migrated to nle_ctx_t (stage 6'). Allocated in init_nle. */
+/* dungeon_topology: per-env, see nh_globals.h */
+const struct dgn_topology nh_tmpl_dungeon_topology =
+{ DUMMY };
 
-/* quest_status — stage 9' batch C migrated to nle_ctx_t. */
+/* quest_status: per-env, see nh_globals.h */
 
-/* smeq — per-env room-equivalence work array, migrated to nle_ctx_t. */
-/* doorindex — migrated to nle_ctx_t. */
-/* save_cm — migrated to nle_ctx_t. */
+/* warn_obj_cnt: per-env, see nh_globals.h */
+/* smeq: per-env, see nh_globals.h */
+/* doorindex: per-env, see nh_globals.h */
+/* save_cm: per-env, see nh_globals.h */
 
-/* killer — stage 9' batch C migrated to nle_ctx_t. */
-#ifdef NLE_OBJECTS_GLOBAL
-const char *nomovemsg = 0;
-#endif
-/* plname/pl_character/pl_race/pl_fruit/tune — migrated to nle_ctx_t. */
-/* ffruit — migrated to nle_ctx_t. */
+/* killer: per-env nh_g->killer */
+/* done_money: per-env, see nh_globals.h */
+/* nomovemsg: per-env, see nh_globals.h */
+/* plname: per-env, see nh_globals.h */ /* player name */
+/* pl_character: per-env, see nh_globals.h */
+/* pl_race: per-env, see nh_globals.h */
 
-#ifdef NLE_OBJECTS_GLOBAL
-const char *occtxt = DUMMY;
-#endif
+/* pl_fruit: per-env, see nh_globals.h */
+/* ffruit: per-env, see nh_globals.h */
+
+/* tune: per-env, see nh_globals.h */
+/* ransacked: per-env, see nh_globals.h */
+
+/* occtxt: per-env, see nh_globals.h */
 const char quitchars[] = " \r\n\033";
 const char vowels[] = "aeiouAEIOU";
 const char ynchars[] = "yn";
 const char ynqchars[] = "ynq";
 const char ynaqchars[] = "ynaq";
 const char ynNaqchars[] = "yn#aq";
+/* yn_number: per-env, see nh_globals.h */
 
 const char disclosure_options[] = "iavgco";
 
@@ -110,82 +91,111 @@ const char *alllevels = "levels.*";
 const char *allbones = "bones*.*";
 #endif
 
-/* level_info — stage 7' partial migrated to nle_ctx_t (MAXLINFO entries). */
+/* level_info: per-env, see nh_globals.h */
 
-/* struct sinfo program_state migrated to nle_ctx_t (refactor stage 3b). */
+/* program_state: per-env nh_g->program_state */
 
 /* x/y/z deltas for the 10 movement directions (8 compass pts, 2 up/down) */
 const schar xdir[10] = { -1, -1, 0, 1, 1, 1, 0, -1, 0, 0 };
 const schar ydir[10] = { 0, -1, -1, -1, 0, 1, 1, 1, 0, 0 };
 const schar zdir[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, -1 };
 
+/* tbx: per-env, see nh_globals.h */
+/* tby: per-env, see nh_globals.h */ /* mthrowu: target */
 
 /* for xname handling of multiple shot missile volleys:
    number of shots, index of current one, validity check, shoot vs throw */
-/* m_shot — stage 9' batch C migrated to nle_ctx_t. Initial value
- * ({0,0,STRANGE_OBJECT,FALSE}) gets re-set in init_nle. */
+/* m_shot: per-env, see nh_globals.h */
+const struct multishot nh_tmpl_m_shot =
+{ 0, 0, STRANGE_OBJECT, FALSE };
 
-/* dungeons[], sp_levchn, upstair, dnstair, upladder, dnladder, sstairs,
- * updest, dndest, inv_pos migrated to nle_ctx_t (stage 6').
- * All heap-allocated zero-init in init_nle; equivalent to the previous
- * { 0, 0, { 0, 0 }, 0 } / { 0, ... } / {0,0} static initializers. */
+/* dungeons: per-env, see nh_globals.h */ /* ini'ed by init_dungeon() */
+/* sp_levchn: per-env, see nh_globals.h */
+/* upstair: per-env, see nh_globals.h */
+const stairway nh_tmpl_upstair = { 0, 0, { 0, 0 }, 0 };
+/* dnstair: per-env, see nh_globals.h */
+const stairway nh_tmpl_dnstair = { 0, 0, { 0, 0 }, 0 };
+/* upladder: per-env, see nh_globals.h */
+const stairway nh_tmpl_upladder = { 0, 0, { 0, 0 }, 0 };
+/* dnladder: per-env, see nh_globals.h */
+const stairway nh_tmpl_dnladder = { 0, 0, { 0, 0 }, 0 };
+/* sstairs: per-env, see nh_globals.h */
+const stairway nh_tmpl_sstairs =
+{ 0, 0, { 0, 0 }, 0 };
+/* updest: per-env, see nh_globals.h */
+const dest_area nh_tmpl_updest =
+{ 0, 0, 0, 0, 0, 0, 0, 0 };
+/* dndest: per-env, see nh_globals.h */
+const dest_area nh_tmpl_dndest =
+{ 0, 0, 0, 0, 0, 0, 0, 0 };
+/* inv_pos: per-env, see nh_globals.h */
+const coord nh_tmpl_inv_pos =
+{ 0, 0 };
 
-/* in_mklev — migrated to nle_ctx_t. */
+/* defer_see_monsters: per-env, see nh_globals.h */
+/* in_mklev: per-env, see nh_globals.h */
+/* stoned: per-env, see nh_globals.h */ /* done to monsters hit by 'c' */
+/* unweapon: per-env, see nh_globals.h */
+/* mrg_to_wielded: per-env, see nh_globals.h */
 /* weapon picked is merged with wielded one */
 
-/* has_strong_rngseed migrated to nle_ctx_t (refactor stage 3a). */
+/* in_steed_dismounting: per-env, see nh_globals.h */
+/* has_strong_rngseed: per-env, see nh_globals.h */
 
-/* bhitpos — migrated to nle_ctx_t. Allocated in init_nle. */
-/* doors / rooms / subrooms / upstairs_room / dnstairs_room / sstairs_room
- * / ftrap — stage 7' partial migrated to nle_ctx_t (heap, see init_nle).
- * subrooms is initialized to point at rooms[MAXNROFROOMS+1] in init_nle
- * directly (no longer needs the per-startup subrooms_init() shim). */
-/* level — stage 7' completed: per-env on nle_ctx_t (s7_level_p).
- * The blocker (struct dig_info.level token collision) was solved by
- * renaming that struct field to `dlvl`. */
+/* bhitpos: per-env, see nh_globals.h */
+/* doors: per-env, see nh_globals.h */
+const coord nh_tmpl_doors[DOORMAX] =
+{ DUMMY };
 
-void
-subrooms_init(void)
-{
-    /* no-op retained: init_nle now points subrooms at rooms[MAXNROFROOMS+1]
-     * directly. Kept so the existing call-site doesn't break. */
-}
-/* youmonst — stage 9' batch C migrated to nle_ctx_t. */
-/* context — migrated to nle_ctx_t (per-game state). */
-/* flags — migrated to nle_ctx_t.flags_ptr (per-env, heap).
- * The 12 struct-field `flags` collisions were renamed first so the
- * `#define flags (*current_nle_ctx->flags_ptr)` macro in flag.h is now
- * unambiguous. The storage formerly here was a process-global swapped on
- * every nle_step; that swap is retired in nle.c. */
+/* rooms: per-env, see nh_globals.h */
+const struct mkroom nh_tmpl_rooms[(MAXNROFROOMS+1)*2] =
+{ DUMMY };
+/* subrooms: per-env, see nh_globals.h */
+/* upstairs_room: per-env, see nh_globals.h */
+/* dnstairs_room: per-env, see nh_globals.h */
+/* sstairs_room: per-env, see nh_globals.h */
+
+/* level: per-env nh_g->level */ /* level map */
+/* ftrap: per-env, see nh_globals.h */
+/* youmonst: per-env, see nh_globals.h */
+/* context: per-env, see nh_globals.h */
+/* flags: per-env nh_g->flags */
 #ifdef SYSFLAGS
-/* sysflags — migrated to nle_ctx_t.sysflags_ptr. */
+NEARDATA struct sysflag sysflags = DUMMY;
 #endif
-/* iflags — migrated to nle_ctx_t.iflags_ptr (per-env, heap). */
-/* struct you u migrated to nle_ctx_t (stage 4). Heap-allocated in
- * init_nle, accessed via the `u` macro in decl.h. */
-/* ubirthday migrated direct (stage 9' batch A). */
-/* urealtime — stage 9' batch C migrated to nle_ctx_t. */
+/* iflags: per-env, see nh_globals.h */
+/* u: per-env, see nh_globals.h */
+/* ubirthday: per-env, see nh_globals.h */
+/* urealtime: per-env, see nh_globals.h */
 
-/* lastseentyp — stage 7' partial migrated to nle_ctx_t. */
+/* lastseentyp: per-env, see nh_globals.h */
+const schar nh_tmpl_lastseentyp[COLNO][ROWNO] =
+{
+    DUMMY
+}; /* last seen/touched dungeon typ */
 
-/* Body-slot pointers — stage 9' batch D migrated to nle_ctx_t (s9_u*).
- * worn[] now uses offsetof-based resolution; no TLS address pinning.
- * Definitions retained here only for build-tool (NLE_OBJECTS_GLOBAL) builds. */
-#ifdef NLE_OBJECTS_GLOBAL
-NEARDATA struct obj
-    *uwep = (struct obj *) 0, *uarm = (struct obj *) 0,
-    *uswapwep = (struct obj *) 0,
-    *uquiver = (struct obj *) 0,       /* quiver */
-        *uarmu = (struct obj *) 0,     /* under-wear, so to speak */
-                *uarmc = (struct obj *) 0, *uarmh = (struct obj *) 0,
-    *uarms = (struct obj *) 0, *uarmg = (struct obj *) 0,
-    *uarmf = (struct obj *) 0, *uamul = (struct obj *) 0,
-    *uright = (struct obj *) 0, *uleft = (struct obj *) 0,
-    *ublindf = (struct obj *) 0, *uchain = (struct obj *) 0,
-    *uball = (struct obj *) 0;
-#endif /* NLE_OBJECTS_GLOBAL */
-/* invent, uskin, current_wand, thrownobj, kickedobj migrated to nle_ctx_t
- * (stage 9' batch A/B). */
+/* invent: per-env, see nh_globals.h */
+/* uwep: per-env, see nh_globals.h */
+/* uarm: per-env, see nh_globals.h */
+/* uswapwep: per-env, see nh_globals.h */
+/* uquiver: per-env, see nh_globals.h */
+/* uarmu: per-env, see nh_globals.h */
+/* uskin: per-env, see nh_globals.h */
+/* uarmc: per-env, see nh_globals.h */
+/* uarmh: per-env, see nh_globals.h */
+/* uarms: per-env, see nh_globals.h */
+/* uarmg: per-env, see nh_globals.h */
+/* uarmf: per-env, see nh_globals.h */
+/* uamul: per-env, see nh_globals.h */
+/* uright: per-env, see nh_globals.h */
+/* uleft: per-env, see nh_globals.h */
+/* ublindf: per-env, see nh_globals.h */
+/* uchain: per-env, see nh_globals.h */
+/* uball: per-env, see nh_globals.h */
+/* some objects need special handling during destruction or placement */
+/* current_wand: per-env, see nh_globals.h */
+/* thrownobj: per-env, see nh_globals.h */
+/* kickedobj: per-env, see nh_globals.h */     /* object in flight due to kicking */
 
 #ifdef TEXTCOLOR
 /*
@@ -212,39 +222,55 @@ const int shield_static[SHIELD_COUNT] = {
     S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
 };
 
-/* spl_book — stage 9' batch C migrated to nle_ctx_t (MAXSPELL+1 entries). */
+/* spl_book: per-env, see nh_globals.h */
+const struct spell nh_tmpl_spl_book[MAXSPELL+1] =
+{ DUMMY };
 
-/* moves/monstermoves/wailmsg migrated direct (stage 9' batch A).
- * Init to 1L,1L,0L deferred to init_nle / c_reset path. */
+/* moves: per-env, see nh_globals.h */
+const long nh_tmpl_moves = 1L;
+/* monstermoves: per-env, see nh_globals.h */
+const long nh_tmpl_monstermoves = 1L;
+/* These diverge when player is Fast */
+/* wailmsg: per-env, see nh_globals.h */
 
-/* migrating_objs, billobjs migrated direct (stage 9' batch B). */
+/* objects that are moving to another dungeon level */
+/* migrating_objs: per-env, see nh_globals.h */
+/* objects not yet paid for */
+/* billobjs: per-env, see nh_globals.h */
 
 /* used to zero all elements of a struct obj and a struct monst */
-/* zeroobj / zeromonst — read-only sentinels (DUMMY = {0}). Dropped
- * NEARDATA so they live as a single shared symbol. */
-const struct obj zeroobj = DUMMY;
-const struct monst zeromonst = DUMMY;
+NEARDATA const struct obj zeroobj = DUMMY;
+NEARDATA const struct monst zeromonst = DUMMY;
 /* used to zero out union any; initializer deliberately omitted */
-const anything zeroany;
+NEARDATA const anything zeroany;
 
 /* originally from dog.c */
-/* dogname/catname/horsename — migrated to nle_ctx_t. */
-#ifdef NLE_OBJECTS_GLOBAL
-char preferred_pet; /* '\0', 'c', 'd', 'n' (none) */
-#endif
-/* mydogs, migrating_mons, apelist migrated direct (stage 9' batch B). */
-/* mvitals — stage 9' batch C migrated to nle_ctx_t (heap, NUMMONS entries). */
-/* domove_attempting, domove_succeeded migrated direct (stage 9' batch A). */
+/* dogname: per-env, see nh_globals.h */
+/* catname: per-env, see nh_globals.h */
+/* horsename: per-env, see nh_globals.h */
+/* preferred_pet: per-env, see nh_globals.h */ /* '\0', 'c', 'd', 'n' (none) */
+/* monsters that went down/up together with @ */
+/* mydogs: per-env, see nh_globals.h */
+/* monsters that are moving to another dungeon level */
+/* migrating_mons: per-env, see nh_globals.h */
+/* apelist: per-env, see nh_globals.h */
 
-/* c_color_names — read-only color-name table; drop NEARDATA. */
-const struct c_color_names c_color_names = {
+/* mvitals: per-env nh_g->mvitals */
+/* domove_attempting: per-env, see nh_globals.h */
+/* domove_succeeded: per-env, see nh_globals.h */
+
+/* c_color_names: per-env nh_g->c_color_names */
+const struct c_color_names nh_tmpl_c_color_names =
+{
     "black",  "amber", "golden", "light blue", "red",   "green",
     "silver", "blue",  "purple", "white",      "orange"
 };
 
-struct menucoloring *menu_colorings = NULL;
+/* menu_colorings: per-env, see nh_globals.h */
 
-const char *c_obj_colors[] = {
+/* c_obj_colors: per-env, see nh_globals.h */
+const char *const nh_tmpl_c_obj_colors[] =
+{
     "black",          /* CLR_BLACK */
     "red",            /* CLR_RED */
     "green",          /* CLR_GREEN */
@@ -263,7 +289,9 @@ const char *c_obj_colors[] = {
     "white",          /* CLR_WHITE */
 };
 
-struct c_common_strings c_common_strings = { "Nothing happens.",
+/* c_common_strings: per-env nh_g->c_common_strings */
+const struct c_common_strings nh_tmpl_c_common_strings =
+{ "Nothing happens.",
                                              "That's enough tries!",
                                              "That is a silly thing to %s.",
                                              "shudder for a moment.",
@@ -277,24 +305,42 @@ struct c_common_strings c_common_strings = { "Nothing happens.",
 
 /* NOTE: the order of these words exactly corresponds to the
    order of oc_material values #define'd in objclass.h. */
-const char *materialnm[] = { "mysterious", "liquid",  "wax",        "organic",
+/* materialnm: per-env, see nh_globals.h */
+const char *const nh_tmpl_materialnm[] =
+{ "mysterious", "liquid",  "wax",        "organic",
                              "flesh",      "paper",   "cloth",      "leather",
                              "wooden",     "bone",    "dragonhide", "iron",
                              "metal",      "copper",  "silver",     "gold",
                              "platinum",   "mithril", "plastic",    "glass",
                              "gemstone",   "stone" };
 
-/* Vision — stage 8' migrated to nle_ctx_t (vision_full_recalc, viz_array). */
+/* Vision */
+/* vision_full_recalc: per-env, see nh_globals.h */
+/* viz_array: per-env, see nh_globals.h */ /* used in cansee() and couldsee() macros */
 
-/* Global windowing data — stage 8' migrated to nle_ctx_t
- * (WIN_MESSAGE/STATUS/MAP/INVEN, toplines).
- * tc_gbl_data deferred (struct-tag self-reference). */
-/* tc_gbl_data — stage 8' migrated to nle_ctx_t. Heap-alloc'd in init_nle. */
+/* Global windowing data, defined here for multi-window-system support */
+/* WIN_MESSAGE: per-env, see nh_globals.h */
+const winid nh_tmpl_WIN_MESSAGE =
+WIN_ERR;
+/* WIN_STATUS: per-env, see nh_globals.h */
+const winid nh_tmpl_WIN_STATUS =
+WIN_ERR;
+/* WIN_MAP: per-env, see nh_globals.h */
+const winid nh_tmpl_WIN_MAP = WIN_ERR;
+/* WIN_INVEN: per-env, see nh_globals.h */
+const winid nh_tmpl_WIN_INVEN = WIN_ERR;
+/* toplines: per-env, see nh_globals.h */
+/* Windowing stuff that's really tty oriented, but present for all ports */
+/* tc_gbl_data: per-env nh_g->tc_gbl_data */
+const struct tc_gbl_data nh_tmpl_tc_gbl_data =
+{ 0, 0, 0, 0 }; /* AS,AE, LI,CO */
 
-/* `fqn_prefix[]` migrated to current_nle_ctx->s_fqn_prefix.
- * Each env's table is zero-initialized when nle_ctx_t is calloc'd in
- * nle_start(); nle.c's main_loop_real() then populates each slot from
- * settings->hackdir (per-env) on the first step. */
+/* fqn_prefix: per-env, see nh_globals.h */
+char *const nh_tmpl_fqn_prefix[PREFIX_COUNT] =
+{ (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0, (char *) 0, (char *) 0,
+                                   (char *) 0 };
 #ifdef WIN32
 boolean fqn_prefix_locked[PREFIX_COUNT] = { FALSE, FALSE, FALSE,
                                             FALSE, FALSE, FALSE,
@@ -303,13 +349,17 @@ boolean fqn_prefix_locked[PREFIX_COUNT] = { FALSE, FALSE, FALSE,
 #endif
 
 #ifdef PREFIXES_IN_USE
-const char *fqn_prefix_names[PREFIX_COUNT] = {
+/* fqn_prefix_names: per-env, see nh_globals.h */
+const char *const nh_tmpl_fqn_prefix_names[PREFIX_COUNT] =
+{
     "hackdir",  "leveldir", "savedir",    "bonesdir",  "datadir",
     "scoredir", "lockdir",  "sysconfdir", "configdir", "troubledir"
 };
 #endif
 
-NEARDATA struct savefile_info sfcap = {
+/* sfcap: per-env, see nh_globals.h */
+const struct savefile_info nh_tmpl_sfcap =
+{
 #ifdef NHSTDC
     0x00000000UL
 #else
@@ -332,18 +382,39 @@ NEARDATA struct savefile_info sfcap = {
 #endif
 };
 
-/* Sfrestinfo and sfsaveinfo migrated to nle_ctx_t (per-env).
- * Per-env init mirroring the original sfsaveinfo initializer happens in
- * init_nle (nle.c). sfrestinfo is calloc-zero-initialized like before. */
+/* sfrestinfo: per-env, see nh_globals.h */
+/* sfsaveinfo: per-env, see nh_globals.h */
+const struct savefile_info nh_tmpl_sfsaveinfo = {
+#ifdef NHSTDC
+    0x00000000UL
+#else
+    0x00000000L
+#endif
+#if defined(COMPRESS) || defined(ZLIB_COMP)
+        | SFI1_EXTERNALCOMP
+#endif
+#if defined(ZEROCOMP)
+        | SFI1_ZEROCOMP
+#endif
+#if defined(RLECOMP)
+        | SFI1_RLECOMP
+#endif
+    ,
+#ifdef NHSTDC
+    0x00000000UL, 0x00000000UL
+#else
+    0x00000000L, 0x00000000L
+#endif
+};
 
-struct plinemsg_type *plinemsg_types = (struct plinemsg_type *) 0;
+/* plinemsg_types: per-env, see nh_globals.h */
 
 #ifdef PANICTRACE
-const char *ARGV0;
+/* ARGV0: per-env, see nh_globals.h */
 #endif
 
 /* support for lint.h */
-unsigned nhUse_dummy = 0;
+/* nhUse_dummy: per-env, see nh_globals.h */
 
 /* dummy routine used to force linkage */
 void
@@ -353,3 +424,18 @@ decl_init()
 }
 
 /*decl.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_DECL_C_DONE
+#define NH_INIT_DECL_C_DONE
+void
+nh_init_decl_c(void)
+{
+    {
+        struct mkroom *nh_tmp = &rooms[MAXNROFROOMS + 1];
+        memcpy(&subrooms, &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

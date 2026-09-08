@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 /* Note: Arrays are column first, while the screen is row first */
 static int explosion[3][3] = { { S_explode1, S_explode4, S_explode7 },
@@ -56,7 +55,7 @@ int expltype;
             exploding_wand_typ = (short) type;
             /* most attack wands produce specific explosions;
                other types produce a generic magical explosion */
-            if (objects[type].oc_dir == RAY
+            if (NH_G(objects)[type].oc_dir == RAY
                 && type != WAN_DIGGING && type != WAN_SLEEP) {
                 type -= WAN_MAGIC_MISSILE;
                 if (type < 0 || type > 9) {
@@ -117,7 +116,7 @@ int expltype;
     if (olet == MON_EXPLODE) {
         /* when explode() is called recursively, killer.name might change so
            we need to retain a copy of the current value for this explosion */
-        str = strcpy(killr_buf, killer.name);
+        str = strcpy(killr_buf, NH_G(killer).name);
         do_hallu = (Hallucination
                     && (strstri(str, "'s explosion")
                         || strstri(str, "s' explosion")));
@@ -268,7 +267,7 @@ int expltype;
             }
         curs_on_u(); /* will flush screen and output */
 
-        if (any_shield && flags.sparkle) { /* simulate shield effect */
+        if (any_shield && NH_G(flags).sparkle) { /* simulate shield effect */
             for (k = 0; k < SHIELD_COUNT; k++) {
                 for (i = 0; i < 3; i++)
                     for (j = 0; j < 3; j++) {
@@ -482,7 +481,7 @@ int expltype;
     if (uhurt) {
         /* give message for any monster-induced explosion
            or player-induced one other than scroll of fire */
-        if (flags.verbose && (type < 0 || olet != SCROLL_CLASS)) {
+        if (NH_G(flags).verbose && (type < 0 || olet != SCROLL_CLASS)) {
             if (do_hallu) { /* (see explanation above) */
                 do {
                     Sprintf(hallu_buf, "%s explosion",
@@ -532,19 +531,19 @@ int expltype;
                 if (olet == MON_EXPLODE) {
                     if (generic) /* explosion was unseen; str=="explosion", */
                         ;        /* killer.name=="gas spore's explosion"    */
-                    else if (str != killer.name && str != hallu_buf)
-                        Strcpy(killer.name, str);
-                    killer.format = KILLED_BY_AN;
+                    else if (str != NH_G(killer).name && str != hallu_buf)
+                        Strcpy(NH_G(killer).name, str);
+                    NH_G(killer).format = KILLED_BY_AN;
                 } else if (type >= 0 && olet != SCROLL_CLASS) {
-                    killer.format = NO_KILLER_PREFIX;
-                    Sprintf(killer.name, "caught %sself in %s own %s", uhim(),
+                    NH_G(killer).format = NO_KILLER_PREFIX;
+                    Sprintf(NH_G(killer).name, "caught %sself in %s own %s", uhim(),
                             uhis(), str);
                 } else {
-                    killer.format = (!strcmpi(str, "tower of flame")
+                    NH_G(killer).format = (!strcmpi(str, "tower of flame")
                                      || !strcmpi(str, "fireball"))
                                         ? KILLED_BY_AN
                                         : KILLED_BY;
-                    Strcpy(killer.name, str);
+                    Strcpy(NH_G(killer).name, str);
                 }
                 if (iflags.last_msg == PLNMSG_CAUGHT_IN_EXPLOSION
                     || iflags.last_msg == PLNMSG_TOWER_OF_FLAME) /*seffects()*/
@@ -621,7 +620,7 @@ struct obj *obj; /* only scatter this obj        */
         impossible("scattered object <%d,%d> not at scatter site <%d,%d>",
                    obj->ox, obj->oy, sx, sy);
 
-    while ((otmp = (individual_object ? obj : level.objs[sx][sy])) != 0) {
+    while ((otmp = (individual_object ? obj : NH_G(level).objects[sx][sy])) != 0) {
         if (otmp == uball || otmp == uchain) {
             boolean waschain = (otmp == uchain);
             pline_The("chain shatters!");
@@ -674,7 +673,7 @@ struct obj *obj; /* only scatter this obj        */
 
             /* 1 in 10 chance of destruction of obj; glass, egg destruction */
         } else if ((scflags & MAY_DESTROY) != 0
-                   && (!rn2(10) || (objects[otmp->otyp].oc_material == GLASS
+                   && (!rn2(10) || (NH_G(objects)[otmp->otyp].oc_material == GLASS
                                     || otmp->otyp == EGG))) {
             if (breaks(otmp, (xchar) sx, (xchar) sy))
                 used_up = TRUE;
@@ -731,7 +730,7 @@ struct obj *obj; /* only scatter this obj        */
                     if (scflags & MAY_HITYOU) {
                         int hitvalu, hitu;
 
-                        if (current_nle_ctx->multi)
+                        if (multi)
                             nomul(0);
                         hitvalu = 8 + stmp->obj->spe;
                         if (bigmonst(youmonst.data))

@@ -4,10 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
-
-/* Function-local statics migrated to nle_ctx_t */
-#define lastchk       (current_nle_ctx->s_ck_server_admin_msg_lastchk)
 
 #ifdef MAIL
 #ifdef SIMPLE_MAIL
@@ -65,11 +61,6 @@ extern struct passwd *FDECL(getpwuid, (int));
 #endif
 #endif
 #endif
-/* Process-static OK — these are dead code in our build because
- * the entire enclosing #ifdef MAIL block is compiled out (the nethack target
- * is built with -DNOMAIL via vendor/nle/src/build/CMakeFiles/nethack.dir/flags.make,
- * and include/unixconf.h:151 only defines MAIL when NOMAIL is undefined).
- * Leaving these declarations untouched preserves the upstream-merge surface. */
 static struct stat omstat, nmstat;
 static char *mailbox = (char *) 0;
 static long laststattime;
@@ -280,7 +271,7 @@ coord *startp; /* starting position (read only) */
 }
 
 /* Let the mail daemon have a larger vocabulary. */
-static const char *mail_text[] = { "Gangway!", "Look out!",
+static NEARDATA const char *mail_text[] = { "Gangway!", "Look out!",
                                             "Pardon me!" };
 #define md_exclamations() (mail_text[rn2(3)])
 
@@ -669,7 +660,7 @@ ck_server_admin_msg()
 {
 #ifdef SERVER_ADMIN_MSG
     static struct stat ost,nst;
-    /* Lastchk migrated to nle_ctx_t */
+    static long lastchk = 0;
 
     if (moves < lastchk + SERVER_ADMIN_MSG_CKFREQ) return;
     lastchk = moves;

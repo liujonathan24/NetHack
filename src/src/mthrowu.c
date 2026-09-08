@@ -4,16 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Combat tick per-env (mthrowu.c statics). */
-#define mesg_given (current_nle_ctx->s_mesg_given)
-/* Notonhead/target/archer per-env via nle_ctx_t.
- * `target` and `archer` were file-local STATIC_OVL; original definitions
- * removed below. `notonhead` was an extern boolean (cross-file). */
-#define notonhead         (current_nle_ctx->s_notonhead)
-#define target            (current_nle_ctx->s_mthrowu_target)
-#define archer            (current_nle_ctx->s_mthrowu_archer)
 
 STATIC_DCL int FDECL(monmulti, (struct monst *, struct obj *, struct obj *));
 STATIC_DCL void FDECL(monshoot, (struct monst *, struct obj *, struct obj *));
@@ -36,9 +26,8 @@ STATIC_OVL NEARDATA const char *breathwep[] = {
     "strange breath #9"
 };
 
-/* (mesg_given migrated to current_nle_ctx->s_mesg_given
- * via macro at top of file; original `STATIC_VAR int mesg_given;` removed.)
- * (notonhead migrated; extern declaration removed.) */
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
+#define mesg_given (nh_g->s_mthrowu_c_mesg_given) /* for m_throw()/thitu() 'miss' message */
 
 /* hero is hit by something other than a monster */
 int
@@ -74,7 +63,7 @@ const char *name; /* if null, then format `*objp' */
 
     if (u.uac + tlev <= (dieroll = rnd(20))) {
         ++mesg_given;
-        if (Blind || !flags.verbose) {
+        if (Blind || !NH_G(flags).verbose) {
             pline("It misses.");
         } else if (u.uac + tlev <= dieroll - 2) {
             if (onm != onmbuf)
@@ -84,7 +73,7 @@ const char *name; /* if null, then format `*objp' */
             You("are almost hit by %s.", onm);
         return 0;
     } else {
-        if (Blind || !flags.verbose)
+        if (Blind || !NH_G(flags).verbose)
             You("are hit%s", exclam(dam));
         else
             You("are hit by %s%s", onm, exclam(dam));
@@ -97,7 +86,7 @@ const char *name; /* if null, then format `*objp' */
             potionhit(&youmonst, obj, POTHIT_OTHER_THROW);
             *objp = obj = 0; /* potionhit() uses up the potion */
         } else {
-            if (obj && objects[obj->otyp].oc_material == SILVER
+            if (obj && NH_G(objects)[obj->otyp].oc_material == SILVER
                 && Hate_silver) {
                 /* extra damage already applied by dmgval() */
                 pline_The("silver sears your flesh!");
@@ -158,9 +147,10 @@ int x, y;
     return retvalu;
 }
 
-/* Target/archer migrated to current_nle_ctx->s_mthrowu_*;
- * macros at top of file. Originals (STATIC_OVL struct monst *target/archer)
- * removed. The monster being shot at / the shooter. */
+/* The monster that's being shot at when one monster shoots at another */
+#define target (nh_g->s_mthrowu_c_target)
+/* The monster that's doing the shooting/throwing */
+#define archer (nh_g->s_mthrowu_c_archer)
 
 /* calculate multishot volley count for mtmp throwing otmp (if not ammo) or
    shooting otmp with mwep (if otmp is ammo and mwep appropriate launcher) */
@@ -169,7 +159,7 @@ monmulti(mtmp, otmp, mwep)
 struct monst *mtmp;
 struct obj *otmp, *mwep;
 {
-    int skill = (int) objects[otmp->otyp].oc_skill;
+    int skill = (int) NH_G(objects)[otmp->otyp].oc_skill;
     int multishot = 1;
 
     if (otmp->quan > 1L /* no point checking if there's only 1 */
@@ -263,7 +253,7 @@ struct obj *otmp, *mwep;
                      mtarg ? mtarg->my : mtmp->muy),
         multishot = monmulti(mtmp, otmp, mwep);
         /*
-         * Caller must have called linedup() to set up current_nle_ctx->tbx, current_nle_ctx->tby.
+         * Caller must have called linedup() to set up tbx, tby.
          */
 
     if (canseemon(mtmp)) {
@@ -293,7 +283,7 @@ struct obj *otmp, *mwep;
     }
     m_shot.n = multishot;
     for (m_shot.i = 1; m_shot.i <= m_shot.n; m_shot.i++) {
-        m_throw(mtmp, mtmp->mx, mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby), dm, otmp);
+        m_throw(mtmp, mtmp->mx, mtmp->my, sgn(tbx), sgn(tby), dm, otmp);
         /* conceptually all N missiles are in flight at once, but
            if mtmp gets killed (shot kills adjacent gas spore and
            triggers explosion, perhaps), inventory will be dropped
@@ -396,7 +386,7 @@ boolean verbose;    /* give message(s) even when you can't see what happened */
                 }
             }
         }
-        if (objects[otmp->otyp].oc_material == SILVER
+        if (NH_G(objects)[otmp->otyp].oc_material == SILVER
             && mon_hates_silver(mtmp)) {
             boolean flesh = (!noncorporeal(mtmp->data)
                              && !amorphous(mtmp->data));
@@ -531,7 +521,7 @@ struct obj *obj;         /* missile (or stack providing it) */
     singleobj->owornmask = 0; /* threw one of multiple weapons in hand? */
 
     if ((singleobj->cursed || singleobj->greased) && (dx || dy) && !rn2(7)) {
-        if (canseemon(mon) && flags.verbose) {
+        if (canseemon(mon) && NH_G(flags).verbose) {
             if (is_ammo(singleobj))
                 pline("%s misfires!", Monnam(mon));
             else
@@ -571,7 +561,7 @@ struct obj *obj;         /* missile (or stack providing it) */
             if (ohitmon(mtmp, singleobj, range, TRUE))
                 break;
         } else if (bhitpos.x == u.ux && bhitpos.y == u.uy) {
-            if (current_nle_ctx->multi)
+            if (multi)
                 nomul(0);
 
             if (singleobj->oclass == GEM_CLASS
@@ -621,7 +611,7 @@ struct obj *obj;         /* missile (or stack providing it) */
                 if (hitv < -4)
                     hitv = -4;
                 if (is_elf(mon->data)
-                    && objects[singleobj->otyp].oc_skill == P_BOW) {
+                    && NH_G(objects)[singleobj->otyp].oc_skill == P_BOW) {
                     hitv++;
                     if (MON_WEP(mon) && MON_WEP(mon)->otyp == ELVEN_BOW)
                         hitv++;
@@ -791,7 +781,7 @@ struct attack *mattk;
             if (canseemon(mtmp))
                 pline("%s spits venom!", Monnam(mtmp));
             target = mtarg;
-            m_throw(mtmp, mtmp->mx, mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby),
+            m_throw(mtmp, mtmp->mx, mtmp->my, sgn(tbx), sgn(tby),
                     distmin(mtmp->mx,mtmp->my,mtarg->mx,mtarg->my), otmp);
             target = (struct monst *)0;
             nomul(0);
@@ -836,7 +826,7 @@ struct attack  *mattk;
                 if (canseemon(mtmp))
                     pline("%s breathes %s!", Monnam(mtmp), breathwep[typ - 1]);
                 dobuzz((int) (-20 - (typ - 1)), (int) mattk->damn,
-                       mtmp->mx, mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby), FALSE);
+                       mtmp->mx, mtmp->my, sgn(tbx), sgn(tby), FALSE);
                 nomul(0);
                 /* breath runs out sometimes. Also, give monster some
                  * cunning; don't breath if the target fell asleep.
@@ -992,7 +982,7 @@ struct attack *mattk;
                  - distmin(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy))) {
             if (canseemon(mtmp))
                 pline("%s spits venom!", Monnam(mtmp));
-            m_throw(mtmp, mtmp->mx, mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby),
+            m_throw(mtmp, mtmp->mx, mtmp->my, sgn(tbx), sgn(tby),
                     distmin(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy), otmp);
             nomul(0);
             return 0;
@@ -1029,7 +1019,7 @@ struct attack *mattk;
                     pline("%s breathes %s!", Monnam(mtmp),
                           breathwep[typ - 1]);
                 buzz((int) (-20 - (typ - 1)), (int) mattk->damn, mtmp->mx,
-                     mtmp->my, sgn(current_nle_ctx->tbx), sgn(current_nle_ctx->tby));
+                     mtmp->my, sgn(tbx), sgn(tby));
                 nomul(0);
                 /* breath runs out sometimes. Also, give monster some
                  * cunning; don't breath if the player fell asleep.
@@ -1053,16 +1043,16 @@ int boulderhandling; /* 0=block, 1=ignore, 2=conditionally block */
     int dx, dy, boulderspots;
 
     /* These two values are set for use after successful return. */
-    current_nle_ctx->tbx = ax - bx;
-    current_nle_ctx->tby = ay - by;
+    tbx = ax - bx;
+    tby = ay - by;
 
     /* sometimes displacement makes a monster think that you're at its
        own location; prevent it from throwing and zapping in that case */
-    if (!current_nle_ctx->tbx && !current_nle_ctx->tby)
+    if (!tbx && !tby)
         return FALSE;
 
-    if ((!current_nle_ctx->tbx || !current_nle_ctx->tby || abs(current_nle_ctx->tbx) == abs(current_nle_ctx->tby)) /* straight line or diagonal */
-        && distmin(current_nle_ctx->tbx, current_nle_ctx->tby, 0, 0) < BOLT_LIM) {
+    if ((!tbx || !tby || abs(tbx) == abs(tby)) /* straight line or diagonal */
+        && distmin(tbx, tby, 0, 0) < BOLT_LIM) {
         if ((ax == u.ux && ay == u.uy) ? (boolean) couldsee(bx, by)
                                        : clear_path(ax, ay, bx, by))
             return TRUE;
@@ -1155,8 +1145,8 @@ boolean your_fault, from_invent;
     else if (obj_type == BOULDER || obj_type == HEAVY_IRON_BALL)
         pline("Whang!");
     else if (otmp->oclass == COIN_CLASS
-             || objects[obj_type].oc_material == GOLD
-             || objects[obj_type].oc_material == SILVER)
+             || NH_G(objects)[obj_type].oc_material == GOLD
+             || NH_G(objects)[obj_type].oc_material == SILVER)
         pline("Clink!");
     else
         pline("Clonk!");
@@ -1177,7 +1167,7 @@ int whodidit;   /* 1==hero, 0=other, -1==just check whether it'll pass thru */
     if (!hits)
         switch (otmp->oclass) {
         case WEAPON_CLASS: {
-            int oskill = objects[obj_type].oc_skill;
+            int oskill = NH_G(objects)[obj_type].oc_skill;
 
             hits = (oskill != -P_BOW && oskill != -P_CROSSBOW
                     && oskill != -P_DART && oskill != -P_SHURIKEN
@@ -1186,7 +1176,7 @@ int whodidit;   /* 1==hero, 0=other, -1==just check whether it'll pass thru */
             break;
         }
         case ARMOR_CLASS:
-            hits = (objects[obj_type].oc_armcat != ARM_GLOVES);
+            hits = (NH_G(objects)[obj_type].oc_armcat != ARM_GLOVES);
             break;
         case TOOL_CLASS:
             hits = (obj_type != SKELETON_KEY && obj_type != LOCK_PICK

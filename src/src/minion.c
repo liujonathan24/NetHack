@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 void
 newemin(mtmp)
@@ -125,7 +124,7 @@ struct monst *mon;
      * If this daemon is unique and being re-summoned (the only way we
      * could get this far with an extinct dtype), try another.
      */
-    if (mvitals[dtype].mvflags & G_GONE) {
+    if (NH_G(mvitals)[dtype].mvflags & G_GONE) {
         dtype = ndemon(atyp);
         if (dtype == NON_PM)
             return 0;
@@ -245,7 +244,7 @@ register struct monst *mtmp;
         reset_faint(); /* if fainted - wake up */
     } else {
         stop_occupation();
-        if (current_nle_ctx->multi > 0) {
+        if (multi > 0) {
             nomul(0);
             unmul((char *) 0);
         }
@@ -265,7 +264,7 @@ register struct monst *mtmp;
     if (youmonst.data->mlet == S_DEMON) { /* Won't blackmail their own. */
         if (!Deaf)
             pline("%s says, \"Good hunting, %s.\"", Amonnam(mtmp),
-                  flags.female ? "Sister" : "Brother");
+                  NH_G(flags).female ? "Sister" : "Brother");
         else if (canseemon(mtmp))
             pline("%s says something.", Amonnam(mtmp));
         if (!tele_restrict(mtmp))
@@ -276,7 +275,7 @@ register struct monst *mtmp;
     demand = (cash * (rnd(80) + 20 * Athome))
            / (100 * (1 + (sgn(u.ualign.type) == sgn(mtmp->data->maligntyp))));
 
-    if (!demand || current_nle_ctx->multi < 0) { /* you have no gold or can't move */
+    if (!demand || multi < 0) { /* you have no gold or can't move */
         mtmp->mpeaceful = 0;
         set_malign(mtmp);
         return 0;
@@ -356,7 +355,7 @@ aligntyp atyp;
 
     for (tryct = !In_endgame(&u.uz) ? 20 : 0; tryct > 0; --tryct) {
         pm = rn1(PM_DEMOGORGON + 1 - PM_ORCUS, PM_ORCUS);
-        if (!(mvitals[pm].mvflags & G_GONE)
+        if (!(NH_G(mvitals)[pm].mvflags & G_GONE)
             && (atyp == A_NONE || sgn(mons[pm].maligntyp) == sgn(atyp)))
             return pm;
     }
@@ -371,7 +370,7 @@ aligntyp atyp;
 
     for (tryct = !In_endgame(&u.uz) ? 20 : 0; tryct > 0; --tryct) {
         pm = rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, PM_JUIBLEX);
-        if (!(mvitals[pm].mvflags & G_GONE)
+        if (!(NH_G(mvitals)[pm].mvflags & G_GONE)
             && (atyp == A_NONE || sgn(mons[pm].maligntyp) == sgn(atyp)))
             return pm;
     }
@@ -382,7 +381,7 @@ aligntyp atyp;
 int
 llord()
 {
-    if (!(mvitals[PM_ARCHON].mvflags & G_GONE))
+    if (!(NH_G(mvitals)[PM_ARCHON].mvflags & G_GONE))
         return PM_ARCHON;
 
     return lminion(); /* approximate */

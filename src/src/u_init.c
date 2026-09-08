@@ -4,15 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
-struct trobj {
-    short trotyp;
-    schar trspe;
-    char trclass;
-    Bitfield(trquan, 6);
-    Bitfield(trbless, 2);
-};
+/* struct trobj moved to nh_globals.h */
 
 STATIC_DCL void FDECL(ini_inv, (struct trobj *));
 STATIC_DCL void FDECL(knows_object, (int));
@@ -27,7 +20,9 @@ STATIC_DCL boolean FDECL(restricted_spell_discipline, (int));
  *      Initial inventory for the various roles.
  */
 
-static struct trobj Archeologist[] = {
+#define Archeologist (nh_g->s_u_init_c_Archeologist)
+const struct trobj nh_tmpl_s_u_init_c_Archeologist[] =
+{
     /* if adventure has a name...  idea from tan@uvm-gen */
     { BULLWHIP, 2, WEAPON_CLASS, 1, UNDEF_BLESS },
     { LEATHER_JACKET, 0, ARMOR_CLASS, 1, UNDEF_BLESS },
@@ -39,7 +34,9 @@ static struct trobj Archeologist[] = {
     { SACK, 0, TOOL_CLASS, 1, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Barbarian[] = {
+#define Barbarian (nh_g->s_u_init_c_Barbarian)
+const struct trobj nh_tmpl_s_u_init_c_Barbarian[] =
+{
 #define B_MAJOR 0 /* two-handed sword or battle-axe  */
 #define B_MINOR 1 /* matched with axe or short sword */
     { TWO_HANDED_SWORD, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
@@ -48,7 +45,9 @@ static struct trobj Barbarian[] = {
     { FOOD_RATION, 0, FOOD_CLASS, 1, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Cave_man[] = {
+#define Cave_man (nh_g->s_u_init_c_Cave_man)
+const struct trobj nh_tmpl_s_u_init_c_Cave_man[] =
+{
 #define C_AMMO 2
     { CLUB, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
     { SLING, 2, WEAPON_CLASS, 1, UNDEF_BLESS },
@@ -57,7 +56,9 @@ static struct trobj Cave_man[] = {
     { LEATHER_ARMOR, 0, ARMOR_CLASS, 1, UNDEF_BLESS },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Healer[] = {
+#define Healer (nh_g->s_u_init_c_Healer)
+const struct trobj nh_tmpl_s_u_init_c_Healer[] =
+{
     { SCALPEL, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
     { LEATHER_GLOVES, 1, ARMOR_CLASS, 1, UNDEF_BLESS },
     { STETHOSCOPE, 0, TOOL_CLASS, 1, 0 },
@@ -71,7 +72,9 @@ static struct trobj Healer[] = {
     { APPLE, 0, FOOD_CLASS, 5, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Knight[] = {
+#define Knight (nh_g->s_u_init_c_Knight)
+const struct trobj nh_tmpl_s_u_init_c_Knight[] =
+{
     { LONG_SWORD, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
     { LANCE, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
     { RING_MAIL, 1, ARMOR_CLASS, 1, UNDEF_BLESS },
@@ -82,7 +85,9 @@ static struct trobj Knight[] = {
     { CARROT, 0, FOOD_CLASS, 10, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Monk[] = {
+#define Monk (nh_g->s_u_init_c_Monk)
+const struct trobj nh_tmpl_s_u_init_c_Monk[] =
+{
 #define M_BOOK 2
     { LEATHER_GLOVES, 2, ARMOR_CLASS, 1, UNDEF_BLESS },
     { ROBE, 1, ARMOR_CLASS, 1, UNDEF_BLESS },
@@ -98,7 +103,9 @@ static struct trobj Monk[] = {
     { FORTUNE_COOKIE, 0, FOOD_CLASS, 3, UNDEF_BLESS },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Priest[] = {
+#define Priest (nh_g->s_u_init_c_Priest)
+const struct trobj nh_tmpl_s_u_init_c_Priest[] =
+{
     { MACE, 1, WEAPON_CLASS, 1, 1 },
     { ROBE, 0, ARMOR_CLASS, 1, UNDEF_BLESS },
     { SMALL_SHIELD, 0, ARMOR_CLASS, 1, UNDEF_BLESS },
@@ -108,7 +115,9 @@ static struct trobj Priest[] = {
     { UNDEF_TYP, UNDEF_SPE, SPBOOK_CLASS, 2, UNDEF_BLESS },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Ranger[] = {
+#define Ranger (nh_g->s_u_init_c_Ranger)
+const struct trobj nh_tmpl_s_u_init_c_Ranger[] =
+{
 #define RAN_BOW 1
 #define RAN_TWO_ARROWS 2
 #define RAN_ZERO_ARROWS 3
@@ -120,7 +129,9 @@ static struct trobj Ranger[] = {
     { CRAM_RATION, 0, FOOD_CLASS, 4, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Rogue[] = {
+#define Rogue (nh_g->s_u_init_c_Rogue)
+const struct trobj nh_tmpl_s_u_init_c_Rogue[] =
+{
 #define R_DAGGERS 1
     { SHORT_SWORD, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
     { DAGGER, 0, WEAPON_CLASS, 10, 0 }, /* quan is variable */
@@ -130,7 +141,9 @@ static struct trobj Rogue[] = {
     { SACK, 0, TOOL_CLASS, 1, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Samurai[] = {
+#define Samurai (nh_g->s_u_init_c_Samurai)
+const struct trobj nh_tmpl_s_u_init_c_Samurai[] =
+{
 #define S_ARROWS 3
     { KATANA, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
     { SHORT_SWORD, 0, WEAPON_CLASS, 1, UNDEF_BLESS }, /* wakizashi */
@@ -139,7 +152,9 @@ static struct trobj Samurai[] = {
     { SPLINT_MAIL, 0, ARMOR_CLASS, 1, UNDEF_BLESS },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Tourist[] = {
+#define Tourist (nh_g->s_u_init_c_Tourist)
+const struct trobj nh_tmpl_s_u_init_c_Tourist[] =
+{
 #define T_DARTS 0
     { DART, 2, WEAPON_CLASS, 25, UNDEF_BLESS }, /* quan is variable */
     { UNDEF_TYP, UNDEF_SPE, FOOD_CLASS, 10, 0 },
@@ -150,14 +165,18 @@ static struct trobj Tourist[] = {
     { CREDIT_CARD, 0, TOOL_CLASS, 1, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Valkyrie[] = {
+#define Valkyrie (nh_g->s_u_init_c_Valkyrie)
+const struct trobj nh_tmpl_s_u_init_c_Valkyrie[] =
+{
     { LONG_SWORD, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
     { DAGGER, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
     { SMALL_SHIELD, 3, ARMOR_CLASS, 1, UNDEF_BLESS },
     { FOOD_RATION, 0, FOOD_CLASS, 1, 0 },
     { 0, 0, 0, 0, 0 }
 };
-static struct trobj Wizard[] = {
+#define Wizard (nh_g->s_u_init_c_Wizard)
+const struct trobj nh_tmpl_s_u_init_c_Wizard[] =
+{
 #define W_MULTSTART 2
 #define W_MULTEND 6
     { QUARTERSTAFF, 1, WEAPON_CLASS, 1, 1 },
@@ -175,26 +194,46 @@ static struct trobj Wizard[] = {
  *      Optional extra inventory items.
  */
 
-static struct trobj Tinopener[] = { { TIN_OPENER, 0, TOOL_CLASS, 1, 0 },
+#define Tinopener (nh_g->s_u_init_c_Tinopener)
+const struct trobj nh_tmpl_s_u_init_c_Tinopener[] =
+{ { TIN_OPENER, 0, TOOL_CLASS, 1, 0 },
                                     { 0, 0, 0, 0, 0 } };
-static struct trobj Magicmarker[] = { { MAGIC_MARKER, UNDEF_SPE, TOOL_CLASS,
+#define Magicmarker (nh_g->s_u_init_c_Magicmarker)
+const struct trobj nh_tmpl_s_u_init_c_Magicmarker[] =
+{ { MAGIC_MARKER, UNDEF_SPE, TOOL_CLASS,
                                         1, 0 },
                                       { 0, 0, 0, 0, 0 } };
-static struct trobj Lamp[] = { { OIL_LAMP, 1, TOOL_CLASS, 1, 0 },
+#define Lamp (nh_g->s_u_init_c_Lamp)
+const struct trobj nh_tmpl_s_u_init_c_Lamp[] =
+{ { OIL_LAMP, 1, TOOL_CLASS, 1, 0 },
                                { 0, 0, 0, 0, 0 } };
-static struct trobj Blindfold[] = { { BLINDFOLD, 0, TOOL_CLASS, 1, 0 },
+#define Blindfold (nh_g->s_u_init_c_Blindfold)
+const struct trobj nh_tmpl_s_u_init_c_Blindfold[] =
+{ { BLINDFOLD, 0, TOOL_CLASS, 1, 0 },
                                     { 0, 0, 0, 0, 0 } };
-static struct trobj Instrument[] = { { WOODEN_FLUTE, 0, TOOL_CLASS, 1, 0 },
+#define Instrument (nh_g->s_u_init_c_Instrument)
+const struct trobj nh_tmpl_s_u_init_c_Instrument[] =
+{ { WOODEN_FLUTE, 0, TOOL_CLASS, 1, 0 },
                                      { 0, 0, 0, 0, 0 } };
-static struct trobj Xtra_food[] = { { UNDEF_TYP, UNDEF_SPE, FOOD_CLASS, 2, 0 },
+#define Xtra_food (nh_g->s_u_init_c_Xtra_food)
+const struct trobj nh_tmpl_s_u_init_c_Xtra_food[] =
+{ { UNDEF_TYP, UNDEF_SPE, FOOD_CLASS, 2, 0 },
                                     { 0, 0, 0, 0, 0 } };
-static struct trobj Leash[] = { { LEASH, 0, TOOL_CLASS, 1, 0 },
+#define Leash (nh_g->s_u_init_c_Leash)
+const struct trobj nh_tmpl_s_u_init_c_Leash[] =
+{ { LEASH, 0, TOOL_CLASS, 1, 0 },
                                 { 0, 0, 0, 0, 0 } };
-static struct trobj Towel[] = { { TOWEL, 0, TOOL_CLASS, 1, 0 },
+#define Towel (nh_g->s_u_init_c_Towel)
+const struct trobj nh_tmpl_s_u_init_c_Towel[] =
+{ { TOWEL, 0, TOOL_CLASS, 1, 0 },
                                 { 0, 0, 0, 0, 0 } };
-static struct trobj Wishing[] = { { WAN_WISHING, 3, WAND_CLASS, 1, 0 },
+#define Wishing (nh_g->s_u_init_c_Wishing)
+const struct trobj nh_tmpl_s_u_init_c_Wishing[] =
+{ { WAN_WISHING, 3, WAND_CLASS, 1, 0 },
                                   { 0, 0, 0, 0, 0 } };
-static struct trobj Money[] = { { GOLD_PIECE, 0, COIN_CLASS, 1, 0 },
+#define Money (nh_g->s_u_init_c_Money)
+const struct trobj nh_tmpl_s_u_init_c_Money[] =
+{ { GOLD_PIECE, 0, COIN_CLASS, 1, 0 },
                                 { 0, 0, 0, 0, 0 } };
 
 /* race-based substitutions for initial inventory;
@@ -563,7 +602,7 @@ knows_object(obj)
 register int obj;
 {
     discover_object(obj, TRUE, FALSE);
-    objects[obj].oc_pre_discovered = 1; /* not a "discovery" */
+    NH_G(objects)[obj].oc_pre_discovered = 1; /* not a "discovery" */
 }
 
 /* Know ordinary (non-magical) objects of a certain class,
@@ -575,7 +614,7 @@ register char sym;
 {
     register int ct;
     for (ct = 1; ct < NUM_OBJECTS; ct++)
-        if (objects[ct].oc_class == sym && !objects[ct].oc_magic)
+        if (NH_G(objects)[ct].oc_class == sym && !NH_G(objects)[ct].oc_magic)
             knows_object(ct);
 }
 
@@ -585,8 +624,8 @@ u_init()
     register int i;
     struct u_roleplay tmpuroleplay = u.uroleplay; /* set by rcfile options */
 
-    flags.female = flags.initgend;
-    flags.beginner = 1;
+    NH_G(flags).female = NH_G(flags).initgend;
+    NH_G(flags).beginner = 1;
 
     /* zero u, including pointer values --
      * necessary when aborting from a failed restore */
@@ -626,7 +665,7 @@ u_init()
     u.umortality = 0;
     u.ugrave_arise = NON_PM;
 
-    u.umonnum = u.umonster = (flags.female && urole.femalenum != NON_PM)
+    u.umonnum = u.umonster = (NH_G(flags).female && urole.femalenum != NON_PM)
                                  ? urole.femalenum
                                  : urole.malenum;
     u.ulycn = NON_PM;
@@ -644,7 +683,7 @@ u_init()
         spl_book[i].sp_id = NO_SPELL;
     u.ublesscnt = 300; /* no prayers just yet */
     u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =
-        aligns[flags.initalign].value;
+        aligns[NH_G(flags).initalign].value;
 
 #if defined(BSD) && !defined(POSIX_TYPES)
     (void) time((long *) &ubirthday);
@@ -968,6 +1007,14 @@ int otyp;
     return TRUE;
 }
 
+const short nh_tmpl_l_u_init_c_ini_inv_nocreate = STRANGE_OBJECT;
+
+const short nh_tmpl_l_u_init_c_ini_inv_nocreate2 = STRANGE_OBJECT;
+
+const short nh_tmpl_l_u_init_c_ini_inv_nocreate3 = STRANGE_OBJECT;
+
+const short nh_tmpl_l_u_init_c_ini_inv_nocreate4 = STRANGE_OBJECT;
+
 STATIC_OVL void
 ini_inv(trop)
 register struct trobj *trop;
@@ -975,15 +1022,16 @@ register struct trobj *trop;
     struct obj *obj;
     int otyp, i;
     /* The trobj arrays passed in here (Archeologist[], Monk[], ...) are
-     * file-scope static. ini_inv mutates trop->trquan via --trop->trquan
-     * (and trop->trquan = 1 for weapons). In a single-libnethack vecenv
-     * setup, that mutation persists across envs — env 2 sees env 1's
-     * decremented trquan and ends up with the wrong initial inventory
-     * (zero quantities, wrong-class items, duplicate spellbooks).
+     * per-environment fields in nh_g, but ini_inv still mutates
+     * trop->trquan via --trop->trquan (and trop->trquan = 1 for weapons).
+     * Anything that reuses a context (a second game in the same nh_g, or
+     * any future context reuse) would see the decremented trquan and end
+     * up with the wrong initial inventory (zero quantities, wrong-class
+     * items, duplicate spellbooks).
      *
-     * Fix: snapshot onto a stack-local copy and walk that instead. The
-     * buffer lives for the whole function (one stack frame), so trop is
-     * valid until ini_inv returns. */
+     * Fix: snapshot onto a stack-local copy and walk that instead, which
+     * makes the list's mutation harmless. The buffer lives for the whole
+     * function (one stack frame), so trop is valid until ini_inv returns. */
     struct trobj _trop_local[24];   /* generous; longest list is ~12 rows */
     {
         int n = 0;
@@ -998,10 +1046,10 @@ register struct trobj *trop;
         if (otyp != UNDEF_TYP) {
             obj = mksobj(otyp, TRUE, FALSE);
         } else { /* UNDEF_TYP */
-            static NEARDATA short nocreate = STRANGE_OBJECT;
-            static NEARDATA short nocreate2 = STRANGE_OBJECT;
-            static NEARDATA short nocreate3 = STRANGE_OBJECT;
-            static NEARDATA short nocreate4 = STRANGE_OBJECT;
+            /* nocreate: per-env nh_g->l_u_init_c_ini_inv_nocreate */
+            /* nocreate2: per-env nh_g->l_u_init_c_ini_inv_nocreate2 */
+            /* nocreate3: per-env nh_g->l_u_init_c_ini_inv_nocreate3 */
+            /* nocreate4: per-env nh_g->l_u_init_c_ini_inv_nocreate4 */
             /*
              * For random objects, do not create certain overly powerful
              * items: wand of wishing, ring of levitation, or the
@@ -1014,9 +1062,9 @@ register struct trobj *trop;
              */
             obj = mkobj(trop->trclass, FALSE);
             otyp = obj->otyp;
-            while (otyp == WAN_WISHING || otyp == nocreate
-                   || otyp == nocreate2 || otyp == nocreate3
-                   || otyp == nocreate4 || otyp == RIN_LEVITATION
+            while (otyp == WAN_WISHING || otyp == NH_G(l_u_init_c_ini_inv_nocreate)
+                   || otyp == NH_G(l_u_init_c_ini_inv_nocreate2) || otyp == NH_G(l_u_init_c_ini_inv_nocreate3)
+                   || otyp == NH_G(l_u_init_c_ini_inv_nocreate4) || otyp == RIN_LEVITATION
                    /* 'useless' items */
                    || otyp == POT_HALLUCINATION
                    || otyp == POT_ACID
@@ -1037,7 +1085,7 @@ register struct trobj *trop;
                       low level players or unbalancing; also
                       spells in restricted skill categories */
                    || (obj->oclass == SPBOOK_CLASS
-                       && (objects[otyp].oc_level > 3
+                       && (NH_G(objects)[otyp].oc_level > 3
                            || restricted_spell_discipline(otyp)))) {
                 dealloc_obj(obj);
                 obj = mkobj(trop->trclass, FALSE);
@@ -1045,7 +1093,7 @@ register struct trobj *trop;
             }
 
             /* Don't start with +0 or negative rings */
-            if (objects[otyp].oc_charged && obj->spe <= 0)
+            if (NH_G(objects)[otyp].oc_charged && obj->spe <= 0)
                 obj->spe = rne(3);
 
             /* Heavily relies on the fact that 1) we create wands
@@ -1058,16 +1106,16 @@ register struct trobj *trop;
             case WAN_POLYMORPH:
             case RIN_POLYMORPH:
             case POT_POLYMORPH:
-                nocreate = RIN_POLYMORPH_CONTROL;
+                NH_G(l_u_init_c_ini_inv_nocreate) = RIN_POLYMORPH_CONTROL;
                 break;
             case RIN_POLYMORPH_CONTROL:
-                nocreate = RIN_POLYMORPH;
-                nocreate2 = SPE_POLYMORPH;
-                nocreate3 = POT_POLYMORPH;
+                NH_G(l_u_init_c_ini_inv_nocreate) = RIN_POLYMORPH;
+                NH_G(l_u_init_c_ini_inv_nocreate2) = SPE_POLYMORPH;
+                NH_G(l_u_init_c_ini_inv_nocreate3) = POT_POLYMORPH;
             }
             /* Don't have 2 of the same ring or spellbook */
             if (obj->oclass == RING_CLASS || obj->oclass == SPBOOK_CLASS)
-                nocreate4 = otyp;
+                NH_G(l_u_init_c_ini_inv_nocreate4) = otyp;
         }
 
         if (urace.malenum != PM_HUMAN) {
@@ -1079,9 +1127,9 @@ register struct trobj *trop;
                 if (inv_subs[i].race_pm == urace.malenum
                     && otyp == inv_subs[i].item_otyp) {
                     debugpline3("ini_inv: substituting %s for %s%s",
-                                OBJ_NAME(objects[inv_subs[i].subs_otyp]),
+                                OBJ_NAME(NH_G(objects)[inv_subs[i].subs_otyp]),
                                 (trop->trotyp == UNDEF_TYP) ? "random " : "",
-                                OBJ_NAME(objects[otyp]));
+                                OBJ_NAME(NH_G(objects)[otyp]));
                     otyp = obj->otyp = inv_subs[i].subs_otyp;
                     break;
                 }
@@ -1098,7 +1146,7 @@ register struct trobj *trop;
             /* no "blessed" or "identified" money */
             obj->quan = u.umoney0;
         } else {
-            if (objects[otyp].oc_uses_known)
+            if (NH_G(objects)[otyp].oc_uses_known)
                 obj->known = 1;
             obj->dknown = obj->bknown = obj->rknown = 1;
             if (Is_container(obj) || obj->otyp == STATUE) {
@@ -1125,7 +1173,7 @@ register struct trobj *trop;
         obj = addinv(obj);
 
         /* Make the type known if necessary */
-        if (OBJ_DESCR(objects[otyp]) && obj->known)
+        if (OBJ_DESCR(NH_G(objects)[otyp]) && obj->known)
             discover_object(otyp, TRUE, FALSE);
         if (otyp == OIL_LAMP)
             discover_object(POT_OIL, TRUE, FALSE);

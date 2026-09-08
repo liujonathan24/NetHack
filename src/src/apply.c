@@ -4,15 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
-
-/* Jumping_is_magic was a file-scope static set in jump() before
- * walk_path() invokes the get_valid_jump_position callback; under N envs in
- * one process this raced. Migrate to per-env. */
-#define jumping_is_magic  (current_nle_ctx->s_jumping_is_magic)
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
 
 STATIC_DCL int FDECL(use_camera, (struct obj *));
 STATIC_DCL int FDECL(use_towel, (struct obj *));
@@ -215,7 +208,7 @@ int rx, ry, *resp;
     } else if (Hallucination) {
         if (!corpse) {
             /* it's a statue */
-            Strcpy(buf, "You're both current_nle_ctx->stoned");
+            Strcpy(buf, "You're both stoned");
         } else if (corpse->quan == 1L && !more_corpses) {
             int gndr = 2; /* neuter: "it" */
             struct monst *mtmp = get_mtraits(corpse, FALSE);
@@ -424,7 +417,7 @@ register struct obj *obj;
             pline("%s %s %s really %s.",
                   use_plural ? "Those" : "That", what,
                   use_plural ? "are" : "is", mnm);
-        } else if (flags.verbose && !canspotmon(mtmp)) {
+        } else if (NH_G(flags).verbose && !canspotmon(mtmp)) {
             There("is %s there.", mnm);
         }
 
@@ -445,7 +438,7 @@ register struct obj *obj;
         return res;
     case SCORR:
         You_hear(hollow_str, "passage");
-        lev->typ = CORR, lev->rmflags = 0;
+        lev->typ = CORR, lev->flags = 0;
         unblock_point(rx, ry);
         feel_newsym(rx, ry);
         return res;
@@ -786,7 +779,7 @@ register xchar x, y;
             } else if (otmp->cursed && !breathless(mtmp->data)) {
                 if (um_dist(mtmp->mx, mtmp->my, 5)
                     || (mtmp->mhp -= rnd(2)) <= 0) {
-                    long save_pacifism = u.uconduct.killcount;
+                    long save_pacifism = u.uconduct.killer;
 
                     Your("leash chokes %s to death!", mon_nam(mtmp));
                     /* hero might not have intended to kill pet, but
@@ -796,7 +789,7 @@ register xchar x, y;
                     xkilled(mtmp, XKILL_NOMSG);
                     /* life-saving doesn't ordinarily reset this */
                     if (!DEADMONSTER(mtmp))
-                        u.uconduct.killcount = save_pacifism;
+                        u.uconduct.killer = save_pacifism;
                 } else {
                     pline("%s is choked by the leash!", Monnam(mtmp));
                     /* tameness eventually drops to 1 here (never 0) */
@@ -874,7 +867,7 @@ struct obj *obj;
                         pline("Yikes!  You've frozen yourself!");
                     if (!Hallucination || !rn2(4)) {
                         nomul(-rnd(MAXULEV + 6 - u.ulevel));
-                        current_nle_ctx->multi_reason = "gazing into a mirror";
+                        multi_reason = "gazing into a mirror";
                     }
                     nomovemsg = 0; /* default, "you can move again" */
                 }
@@ -952,7 +945,7 @@ struct obj *obj;
             return 1;
         if (vis)
             pline("%s is turned to stone!", Monnam(mtmp));
-        current_nle_ctx->stoned = TRUE;
+        stoned = TRUE;
         killed(mtmp);
     } else if (monable && mtmp->data == &mons[PM_FLOATING_EYE]) {
         int tmp = d((int) mtmp->m_lev, (int) mtmp->data->mattk[0].damd);
@@ -1043,9 +1036,9 @@ struct obj **optr;
 #endif
         if (obj->cursed && !rn2(4)
             /* note: once any of them are gone, we stop all of them */
-            && !(mvitals[PM_WOOD_NYMPH].mvflags & G_GONE)
-            && !(mvitals[PM_WATER_NYMPH].mvflags & G_GONE)
-            && !(mvitals[PM_MOUNTAIN_NYMPH].mvflags & G_GONE)
+            && !(NH_G(mvitals)[PM_WOOD_NYMPH].mvflags & G_GONE)
+            && !(NH_G(mvitals)[PM_WATER_NYMPH].mvflags & G_GONE)
+            && !(NH_G(mvitals)[PM_MOUNTAIN_NYMPH].mvflags & G_GONE)
             && (mtmp = makemon(mkclass(S_NYMPH, 0), u.ux, u.uy, NO_MINVENT))
                    != 0) {
             You("summon %s!", a_monnam(mtmp));
@@ -1062,7 +1055,7 @@ struct obj **optr;
                     break;
                 case 2: /* no explanation; it just happens... */
                     nomovemsg = "";
-                    current_nle_ctx->multi_reason = NULL;
+                    multi_reason = NULL;
                     nomul(-rnd(2));
                     break;
                 }
@@ -1396,7 +1389,7 @@ struct obj *obj;
             pline("%s flame%s %s%s", s_suffix(Yname2(obj)), plur(obj->quan),
                   otense(obj, "burn"), Blind ? "." : " brightly!");
             if (obj->unpaid && costly_spot(u.ux, u.uy)
-                && obj->age == 20L * (long) objects[obj->otyp].oc_cost) {
+                && obj->age == 20L * (long) NH_G(objects)[obj->otyp].oc_cost) {
                 const char *ithem = (obj->quan > 1L) ? "them" : "it";
 
                 verbalize("You burn %s, you bought %s!", ithem, ithem);
@@ -1465,7 +1458,7 @@ struct obj **optr;
     *optr = obj;
 }
 
-static const char cuddly[] = { TOOL_CLASS, GEM_CLASS, 0 };
+static NEARDATA const char cuddly[] = { TOOL_CLASS, GEM_CLASS, 0 };
 
 int
 dorub()
@@ -1631,7 +1624,7 @@ boolean showmsg;
     return TRUE;
 }
 
-/* Jumping_is_magic migrated to nle_ctx_t (macro above). */
+#define jumping_is_magic (nh_g->s_apply_c_jumping_is_magic)
 
 STATIC_OVL boolean
 get_valid_jump_position(x,y)
@@ -1821,7 +1814,7 @@ int magic; /* 0=Physical, otherwise skill level */
         teleds(cc.x, cc.y, FALSE);
         sokoban_guilt();
         nomul(-1);
-        current_nle_ctx->multi_reason = "jumping around";
+        multi_reason = "jumping around";
         nomovemsg = "";
         morehungry(rnd(25));
         return 1;
@@ -2133,7 +2126,7 @@ long timeout;
     mtmp = make_familiar(figurine, cc.x, cc.y, TRUE);
     if (mtmp) {
         char and_vanish[BUFSZ];
-        struct obj *mshelter = level.objs[mtmp->mx][mtmp->my];
+        struct obj *mshelter = NH_G(level).objects[mtmp->mx][mtmp->my];
 
         /* [m_monnam() yields accurate mon type, overriding hallucination] */
         Sprintf(monnambuf, "%s", an(m_monnam(mtmp)));
@@ -2265,7 +2258,7 @@ struct obj **optr;
             return;
     }
     if (!getdir((char *) 0)) {
-        context.move = current_nle_ctx->multi = 0;
+        context.move = multi = 0;
         return;
     }
     x = u.ux + u.dx;
@@ -2291,7 +2284,7 @@ struct obj **optr;
     *optr = 0;
 }
 
-static const char lubricables[] = { ALL_CLASSES, ALLOW_NONE, 0 };
+static NEARDATA const char lubricables[] = { ALL_CLASSES, ALLOW_NONE, 0 };
 
 STATIC_OVL void
 use_grease(obj)
@@ -2366,7 +2359,7 @@ struct obj *tstone;
     /* when the touchstone is fully known, don't bother listing extra
        junk as likely candidates for rubbing */
     choices = (tstone->otyp == TOUCHSTONE && tstone->dknown
-               && objects[TOUCHSTONE].oc_name_known)
+               && NH_G(objects)[TOUCHSTONE].oc_name_known)
                   ? coins_gems
                   : allowall;
     Sprintf(stonebuf, "rub on the stone%s", plur(tstone->quan));
@@ -2406,8 +2399,8 @@ struct obj *tstone;
     oclass = obj->oclass;
     /* prevent non-gemstone rings from being treated like gems */
     if (oclass == RING_CLASS
-        && objects[obj->otyp].oc_material != GEMSTONE
-        && objects[obj->otyp].oc_material != MINERAL)
+        && NH_G(objects)[obj->otyp].oc_material != GEMSTONE
+        && NH_G(objects)[obj->otyp].oc_material != MINERAL)
         oclass = RANDOM_CLASS; /* something that's neither gem nor ring */
 
     switch (oclass) {
@@ -2425,16 +2418,16 @@ struct obj *tstone;
             return;
         } else {
             /* either a ring or the touchstone was not effective */
-            if (objects[obj->otyp].oc_material == GLASS) {
+            if (NH_G(objects)[obj->otyp].oc_material == GLASS) {
                 do_scratch = TRUE;
                 break;
             }
         }
-        streak_color = c_obj_colors[objects[obj->otyp].oc_color];
+        streak_color = c_obj_colors[NH_G(objects)[obj->otyp].oc_color];
         break; /* gem or ring */
 
     default:
-        switch (objects[obj->otyp].oc_material) {
+        switch (NH_G(objects)[obj->otyp].oc_material) {
         case CLOTH:
             pline("%s a little more polished now.", Tobjnam(tstone, "look"));
             return;
@@ -2463,7 +2456,7 @@ struct obj *tstone;
                scratch a stone.  They will leave streaks on
                non-touchstones and touchstones alike. */
             if (is_flimsy(obj))
-                streak_color = c_obj_colors[objects[obj->otyp].oc_color];
+                streak_color = c_obj_colors[NH_G(objects)[obj->otyp].oc_color];
             else
                 do_scratch = (tstone->otyp != TOUCHSTONE);
             break;
@@ -2483,33 +2476,13 @@ struct obj *tstone;
     return;
 }
 
-/* Per-env apply.c state. trapinfo fields bundled into one struct.
- * The struct layout matches the original `struct trapinfo` exactly so that
- * `trapinfo.tobj` etc. continue to work via the macro below. */
-struct nle_apply_state {
-    struct obj *tobj;
-    xchar tx, ty;
-    int time_needed;
-    boolean force_bungle;
-};
-static struct nle_apply_state *
-nle_apply(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_apply_state *s = (struct nle_apply_state *) current_nle_ctx->s_apply_state;
-    if (!s) {
-        s = (struct nle_apply_state *) nle_arena_calloc(1, sizeof(struct nle_apply_state));
-        current_nle_ctx->s_apply_state = s;
-    }
-    return s;
-}
-#define trapinfo (*nle_apply())
+/* trapinfo: per-env nh_g->s_apply_c_trapinfo */
 
 void
 reset_trapset()
 {
-    trapinfo.tobj = 0;
-    trapinfo.force_bungle = 0;
+    NH_G(s_apply_c_trapinfo).tobj = 0;
+    NH_G(s_apply_c_trapinfo).force_bungle = 0;
 }
 
 /* Place a landmine/bear trap.  Helge Hafting */
@@ -2556,22 +2529,22 @@ struct obj *otmp;
         return;
     }
     ttyp = (otmp->otyp == LAND_MINE) ? LANDMINE : BEAR_TRAP;
-    if (otmp == trapinfo.tobj && u.ux == trapinfo.tx && u.uy == trapinfo.ty) {
+    if (otmp == NH_G(s_apply_c_trapinfo).tobj && u.ux == NH_G(s_apply_c_trapinfo).tx && u.uy == NH_G(s_apply_c_trapinfo).ty) {
         You("resume setting %s%s.", shk_your(buf, otmp),
             defsyms[trap_to_defsym(what_trap(ttyp, rn2))].explanation);
         set_occupation(set_trap, occutext, 0);
         return;
     }
-    trapinfo.tobj = otmp;
-    trapinfo.tx = u.ux, trapinfo.ty = u.uy;
+    NH_G(s_apply_c_trapinfo).tobj = otmp;
+    NH_G(s_apply_c_trapinfo).tx = u.ux, NH_G(s_apply_c_trapinfo).ty = u.uy;
     tmp = ACURR(A_DEX);
-    trapinfo.time_needed =
+    NH_G(s_apply_c_trapinfo).time_needed =
         (tmp > 17) ? 2 : (tmp > 12) ? 3 : (tmp > 7) ? 4 : 5;
     if (Blind)
-        trapinfo.time_needed *= 2;
+        NH_G(s_apply_c_trapinfo).time_needed *= 2;
     tmp = ACURR(A_STR);
     if (ttyp == BEAR_TRAP && tmp < 18)
-        trapinfo.time_needed += (tmp > 12) ? 1 : (tmp > 7) ? 2 : 4;
+        NH_G(s_apply_c_trapinfo).time_needed += (tmp > 12) ? 1 : (tmp > 7) ? 2 : 4;
     /*[fumbling and/or confusion and/or cursed object check(s)
        should be incorporated here instead of in set_trap]*/
     if (u.usteed && P_SKILL(P_RIDING) < P_BASIC) {
@@ -2589,8 +2562,8 @@ struct obj *otmp;
             if (chance) {
                 switch (ttyp) {
                 case LANDMINE: /* set it off */
-                    trapinfo.time_needed = 0;
-                    trapinfo.force_bungle = TRUE;
+                    NH_G(s_apply_c_trapinfo).time_needed = 0;
+                    NH_G(s_apply_c_trapinfo).force_bungle = TRUE;
                     break;
                 case BEAR_TRAP: /* drop it without arming it */
                     reset_trapset();
@@ -2616,18 +2589,18 @@ STATIC_PTR
 int
 set_trap()
 {
-    struct obj *otmp = trapinfo.tobj;
+    struct obj *otmp = NH_G(s_apply_c_trapinfo).tobj;
     struct trap *ttmp;
     int ttyp;
 
-    if (!otmp || !carried(otmp) || u.ux != trapinfo.tx
-        || u.uy != trapinfo.ty) {
+    if (!otmp || !carried(otmp) || u.ux != NH_G(s_apply_c_trapinfo).tx
+        || u.uy != NH_G(s_apply_c_trapinfo).ty) {
         /* ?? */
         reset_trapset();
         return 0;
     }
 
-    if (--trapinfo.time_needed > 0)
+    if (--NH_G(s_apply_c_trapinfo).time_needed > 0)
         return 1; /* still busy */
 
     ttyp = (otmp->otyp == LAND_MINE) ? LANDMINE : BEAR_TRAP;
@@ -2638,13 +2611,13 @@ set_trap()
         if (*in_rooms(u.ux, u.uy, SHOPBASE)) {
             add_damage(u.ux, u.uy, 0L); /* schedule removal */
         }
-        if (!trapinfo.force_bungle)
+        if (!NH_G(s_apply_c_trapinfo).force_bungle)
             You("finish arming %s.",
                 the(defsyms[trap_to_defsym(what_trap(ttyp, rn2))].explanation));
         if (((otmp->cursed || Fumbling) && (rnl(10) > 5))
-            || trapinfo.force_bungle)
+            || NH_G(s_apply_c_trapinfo).force_bungle)
             dotrap(ttmp,
-                   (unsigned) (trapinfo.force_bungle ? FORCEBUNGLE : 0));
+                   (unsigned) (NH_G(s_apply_c_trapinfo).force_bungle ? FORCEBUNGLE : 0));
     } else {
         /* this shouldn't happen */
         Your("trap setting attempt fails.");
@@ -2725,7 +2698,7 @@ struct obj *obj;
         }
         if (Levitation || u.usteed) {
             /* Have a shot at snaring something on the floor */
-            otmp = level.objs[u.ux][u.uy];
+            otmp = NH_G(level).objects[u.ux][u.uy];
             if (otmp && otmp->otyp == CORPSE && otmp->corpsenm == PM_HORSE) {
                 pline("Why beat a dead horse?");
                 return 1;
@@ -2953,7 +2926,7 @@ int min_range, max_range;
             if (!impaired
                 && glyph_is_monster(glyph)
                 && (mtmp = m_at(x, y)) != 0
-                && (mtmp->mtame || (mtmp->mpeaceful && flags.confirm)))
+                && (mtmp->mtame || (mtmp->mpeaceful && NH_G(flags).confirm)))
                 continue;
             if (glyph_is_monster(glyph)
                 || glyph_is_warning(glyph)
@@ -2971,9 +2944,12 @@ int min_range, max_range;
     return TRUE;
 }
 
-/* Per-env (was __thread). Polearm targeting bounds. */
-#define polearm_range_min (current_nle_ctx->s_polearm_range_min)
-#define polearm_range_max (current_nle_ctx->s_polearm_range_max)
+#define polearm_range_min (nh_g->s_apply_c_polearm_range_min)
+const int nh_tmpl_s_apply_c_polearm_range_min =
+-1;
+#define polearm_range_max (nh_g->s_apply_c_polearm_range_max)
+const int nh_tmpl_s_apply_c_polearm_range_max =
+-1;
 
 STATIC_OVL boolean
 get_valid_polearm_position(x, y)
@@ -3253,7 +3229,7 @@ struct obj *obj;
         /* FIXME -- untrap needs to deal with non-adjacent traps */
         break;
     case 1: /* Object */
-        if ((otmp = level.objs[cc.x][cc.y]) != 0) {
+        if ((otmp = NH_G(level).objects[cc.x][cc.y]) != 0) {
             You("snag an object from the %s!", surface(cc.x, cc.y));
             (void) pickup_object(otmp, 1L, FALSE);
             /* If pickup fails, leave it alone */
@@ -3266,12 +3242,12 @@ struct obj *obj;
         if ((mtmp = m_at(cc.x, cc.y)) == (struct monst *) 0)
             break;
         notonhead = (bhitpos.x != mtmp->mx || bhitpos.y != mtmp->my);
-        save_confirm = flags.confirm;
+        save_confirm = NH_G(flags).confirm;
         if (verysmall(mtmp->data) && !rn2(4)
             && enexto(&cc, u.ux, u.uy, (struct permonst *) 0)) {
-            flags.confirm = FALSE;
+            NH_G(flags).confirm = FALSE;
             (void) attack_checks(mtmp, uwep);
-            flags.confirm = save_confirm;
+            NH_G(flags).confirm = save_confirm;
             check_caitiff(mtmp); /* despite fact there's no damage */
             You("pull in %s!", mon_nam(mtmp));
             mtmp->mundetected = 0;
@@ -3279,9 +3255,9 @@ struct obj *obj;
             return 1;
         } else if ((!bigmonst(mtmp->data) && !strongmonst(mtmp->data))
                    || rn2(4)) {
-            flags.confirm = FALSE;
+            NH_G(flags).confirm = FALSE;
             (void) attack_checks(mtmp, uwep);
-            flags.confirm = save_confirm;
+            NH_G(flags).confirm = save_confirm;
             check_caitiff(mtmp);
             (void) thitmonst(mtmp, uwep);
             return 1;
@@ -3325,7 +3301,7 @@ struct obj *obj;
     boolean fillmsg = FALSE;
     int expltype = EXPL_MAGICAL;
     char confirm[QBUFSZ], buf[BUFSZ];
-    boolean is_fragile = (!strcmp(OBJ_DESCR(objects[obj->otyp]), "balsa"));
+    boolean is_fragile = (!strcmp(OBJ_DESCR(NH_G(objects)[obj->otyp]), "balsa"));
 
     if (!paranoid_query(ParanoidBreakwand,
                        safe_qbuf(confirm,
@@ -3452,7 +3428,7 @@ struct obj *obj;
                  */
                 typ = fillholetyp(x, y, FALSE);
                 if (typ != ROOM) {
-                    levl[x][y].typ = typ, levl[x][y].rmflags = 0;
+                    levl[x][y].typ = typ, levl[x][y].flags = 0;
                     liquid_flow(x, y, typ, t_at(x, y),
                                 fillmsg
                                   ? (char *) 0
@@ -3484,7 +3460,7 @@ struct obj *obj;
                 (void) bhitm(mon, obj);
                 /* if (context.botl) bot(); */
             }
-            if (affects_objects && level.objs[x][y]) {
+            if (affects_objects && NH_G(level).objects[x][y]) {
                 (void) bhitpile(obj, bhito, x, y, 0);
                 if (context.botl)
                     bot(); /* potion effects */
@@ -3502,7 +3478,7 @@ struct obj *obj;
              * of obj->bypass in the zap code to accomplish that last case
              * since it's also used by retouch_equipment() for polyself.)
              */
-            if (affects_objects && level.objs[x][y]) {
+            if (affects_objects && NH_G(level).objects[x][y]) {
                 (void) bhitpile(obj, bhito, x, y, 0);
                 if (context.botl)
                     bot(); /* potion effects */
@@ -3560,20 +3536,20 @@ char class_list[];
     int otyp;
     boolean knowoil, knowtouchstone, addpotions, addstones, addfood;
 
-    knowoil = objects[POT_OIL].oc_name_known;
-    knowtouchstone = objects[TOUCHSTONE].oc_name_known;
+    knowoil = NH_G(objects)[POT_OIL].oc_name_known;
+    knowtouchstone = NH_G(objects)[TOUCHSTONE].oc_name_known;
     addpotions = addstones = addfood = FALSE;
     for (otmp = invent; otmp; otmp = otmp->nobj) {
         otyp = otmp->otyp;
         if (otyp == POT_OIL
             || (otmp->oclass == POTION_CLASS
                 && (!otmp->dknown
-                    || (!knowoil && !objects[otyp].oc_name_known))))
+                    || (!knowoil && !NH_G(objects)[otyp].oc_name_known))))
             addpotions = TRUE;
         if (otyp == TOUCHSTONE
             || (is_graystone(otmp)
                 && (!otmp->dknown
-                    || (!knowtouchstone && !objects[otyp].oc_name_known))))
+                    || (!knowtouchstone && !NH_G(objects)[otyp].oc_name_known))))
             addstones = TRUE;
         if (otyp == CREAM_PIE || otyp == EUCALYPTUS_LEAF)
             addfood = TRUE;

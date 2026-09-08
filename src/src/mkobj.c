@@ -4,10 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env return buffer for where_name() */
-#define unknown (current_nle_ctx->s_mkobj_unknown)
 
 STATIC_DCL void FDECL(mkbox_cnts, (struct obj *));
 STATIC_DCL unsigned FDECL(nextoid, (struct obj *, struct obj *));
@@ -266,10 +262,10 @@ boolean artif;
     }
 
     i = bases[(int) oclass];
-    while ((prob -= objects[i].oc_prob) > 0)
+    while ((prob -= NH_G(objects)[i].oc_prob) > 0)
         i++;
 
-    if (objects[i].oc_class != oclass || !OBJ_NAME(objects[i]))
+    if (NH_G(objects)[i].oc_class != oclass || !OBJ_NAME(NH_G(objects)[i]))
         panic("probtype error, oclass=%d i=%d", (int) oclass, i);
 
     return mksobj(i, TRUE, artif);
@@ -611,7 +607,7 @@ struct obj *otmp;
         obj->nobj = otmp;
         obj->nexthere = otmp;
         extract_nobj(obj, &fobj);
-        extract_nexthere(obj, &level.objs[obj->ox][obj->oy]);
+        extract_nexthere(obj, &NH_G(level).objects[obj->ox][obj->oy]);
         break;
     default:
         panic("replace_object: obj position");
@@ -779,7 +775,7 @@ boolean artif;
 {
     int mndx, tryct;
     struct obj *otmp;
-    char let = objects[otyp].oc_class;
+    char let = NH_G(objects)[otyp].oc_class;
 
     otmp = newobj();
     *otmp = zeroobj;
@@ -794,9 +790,9 @@ boolean artif;
     otmp->dknown = index(dknowns, let) ? 0 : 1;
     if ((otmp->otyp >= ELVEN_SHIELD && otmp->otyp <= ORCISH_SHIELD)
         || otmp->otyp == SHIELD_OF_REFLECTION
-        || objects[otmp->otyp].oc_merge)
+        || NH_G(objects)[otmp->otyp].oc_merge)
         otmp->dknown = 0;
-    if (!objects[otmp->otyp].oc_uses_known)
+    if (!NH_G(objects)[otmp->otyp].oc_uses_known)
         otmp->known = 1;
     otmp->lknown = 0;
     otmp->cknown = 0;
@@ -828,7 +824,7 @@ boolean artif;
                 tryct = 50;
                 do
                     otmp->corpsenm = undead_to_corpse(rndmonnum());
-                while ((mvitals[otmp->corpsenm].mvflags & G_NOCORPSE)
+                while ((NH_G(mvitals)[otmp->corpsenm].mvflags & G_NOCORPSE)
                        && (--tryct > 0));
                 if (tryct == 0) {
                     /* perhaps rndmonnum() only wants to make G_NOCORPSE
@@ -858,7 +854,7 @@ boolean artif;
                     for (tryct = 200; tryct > 0; --tryct) {
                         mndx = undead_to_corpse(rndmonnum());
                         if (mons[mndx].cnutrit
-                            && !(mvitals[mndx].mvflags & G_NOCORPSE)) {
+                            && !(NH_G(mvitals)[mndx].mvflags & G_NOCORPSE)) {
                             otmp->corpsenm = mndx;
                             set_tin_variety(otmp, RANDOM_TIN);
                             break;
@@ -868,7 +864,7 @@ boolean artif;
                 break;
             case SLIME_MOLD:
                 otmp->spe = context.current_fruit;
-                flags.made_fruit = TRUE;
+                NH_G(flags).made_fruit = TRUE;
                 break;
             case KELP_FROND:
                 otmp->quan = (long) rnd(2);
@@ -904,7 +900,7 @@ boolean artif;
             case WAX_CANDLE:
                 otmp->spe = 1;
                 otmp->age = 20L * /* 400 or 200 */
-                            (long) objects[otmp->otyp].oc_cost;
+                            (long) NH_G(objects)[otmp->otyp].oc_cost;
                 otmp->lamplit = 0;
                 otmp->quan = 1L + (long) (rn2(2) ? rn2(7) : 0);
                 blessorcurse(otmp, 5);
@@ -1025,12 +1021,12 @@ boolean artif;
                 otmp->spe = rnd(3);
             else
                 otmp->spe =
-                    rn1(5, (objects[otmp->otyp].oc_dir == NODIR) ? 11 : 4);
+                    rn1(5, (NH_G(objects)[otmp->otyp].oc_dir == NODIR) ? 11 : 4);
             blessorcurse(otmp, 17);
             otmp->recharged = 0; /* used to control recharging */
             break;
         case RING_CLASS:
-            if (objects[otmp->otyp].oc_charged) {
+            if (NH_G(objects)[otmp->otyp].oc_charged) {
                 blessorcurse(otmp, 3);
                 if (rn2(10)) {
                     if (rn2(10) && bcsign(otmp))
@@ -1068,7 +1064,7 @@ boolean artif;
                but most callers aren't prepared to deal with Null result
                and cluttering them up to do so is pointless */
             panic("mksobj tried to make type %d, class %d.",
-                  (int) otmp->otyp, (int) objects[otmp->otyp].oc_class);
+                  (int) otmp->otyp, (int) NH_G(objects)[otmp->otyp].oc_class);
             /*NOTREACHED*/
         }
     }
@@ -1080,7 +1076,7 @@ boolean artif;
     case CORPSE:
         if (otmp->corpsenm == NON_PM) {
             otmp->corpsenm = undead_to_corpse(rndmonnum());
-            if (mvitals[otmp->corpsenm].mvflags & (G_NOCORPSE | G_GONE))
+            if (NH_G(mvitals)[otmp->corpsenm].mvflags & (G_NOCORPSE | G_GONE))
                 otmp->corpsenm = urole.malenum;
         }
         /*FALLTHRU*/
@@ -1109,7 +1105,7 @@ boolean artif;
     }
 
     /* unique objects may have an associated artifact entry */
-    if (objects[otyp].oc_unique && !otmp->oartifact)
+    if (NH_G(objects)[otyp].oc_unique && !otmp->oartifact)
         otmp = mk_artifact(otmp, (aligntyp) A_NONE);
     otmp->owt = weight(otmp);
     return otmp;
@@ -1420,7 +1416,7 @@ int
 weight(obj)
 register struct obj *obj;
 {
-    int wt = (int) objects[obj->otyp].oc_weight;
+    int wt = (int) NH_G(objects)[obj->otyp].oc_weight;
 
     /* glob absorpsion means that merging globs accumulates weight while
        quantity stays 1, so update 'wt' to reflect that, unless owt is 0,
@@ -1470,7 +1466,7 @@ register struct obj *obj;
     } else if (obj->otyp == HEAVY_IRON_BALL && obj->owt != 0) {
         return (int) obj->owt; /* kludge for "very" heavy iron ball */
     } else if (obj->otyp == CANDELABRUM_OF_INVOCATION && obj->spe) {
-        return wt + obj->spe * (int) objects[TALLOW_CANDLE].oc_weight;
+        return wt + obj->spe * (int) NH_G(objects)[TALLOW_CANDLE].oc_weight;
     }
     return (wt ? wt * (int) obj->quan : ((int) obj->quan + 1) >> 1);
 }
@@ -1710,7 +1706,7 @@ is_flammable(otmp)
 register struct obj *otmp;
 {
     int otyp = otmp->otyp;
-    int omat = objects[otyp].oc_material;
+    int omat = NH_G(objects)[otyp].oc_material;
 
     /* Candles can be burned, but they're not flammable in the sense that
      * they can't get fire damage and it makes no sense for them to be
@@ -1719,7 +1715,7 @@ register struct obj *otmp;
     if (Is_candle(otmp))
         return FALSE;
 
-    if (objects[otyp].oc_oprop == FIRE_RES || otyp == WAN_FIRE)
+    if (NH_G(objects)[otyp].oc_oprop == FIRE_RES || otyp == WAN_FIRE)
         return FALSE;
 
     return (boolean) ((omat <= WOOD && omat != LIQUID) || omat == PLASTIC);
@@ -1731,12 +1727,12 @@ register struct obj *otmp;
 {
     int otyp = otmp->otyp;
 
-    return (boolean) (objects[otyp].oc_material <= WOOD
-                      && objects[otyp].oc_material != LIQUID);
+    return (boolean) (NH_G(objects)[otyp].oc_material <= WOOD
+                      && NH_G(objects)[otyp].oc_material != LIQUID);
 }
 
 /*
- * These routines maintain the single-linked lists headed in level.objs[][]
+ * These routines maintain the single-linked lists headed in level.objects[][]
  * and threaded through the nexthere fields in the object-instance structure.
  */
 
@@ -1746,7 +1742,7 @@ place_object(otmp, x, y)
 register struct obj *otmp;
 int x, y;
 {
-    register struct obj *otmp2 = level.objs[x][y];
+    register struct obj *otmp2 = NH_G(level).objects[x][y];
 
     if (!isok(x, y)) { /* validate location */
         void VDECL((*func), (const char *, ...)) PRINTF_F(1, 2);
@@ -1781,7 +1777,7 @@ int x, y;
     } else {
         /* put on top of current pile */
         otmp->nexthere = otmp2;
-        level.objs[x][y] = otmp;
+        NH_G(level).objects[x][y] = otmp;
     }
 
     /* set the new object's location */
@@ -1808,12 +1804,12 @@ boolean do_buried;
 {
     struct obj *otmp;
 
-    for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere) {
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere) {
         if (otmp->timed)
             obj_timer_checks(otmp, x, y, 0);
     }
     if (do_buried) {
-        for (otmp = level.buriedobjlist; otmp; otmp = otmp->nobj) {
+        for (otmp = NH_G(level).buriedobjlist; otmp; otmp = otmp->nobj) {
             if (otmp->ox == x && otmp->oy == y) {
                 if (otmp->timed)
                     obj_timer_checks(otmp, x, y, 0);
@@ -1924,7 +1920,7 @@ register struct obj *otmp;
 
     if (otmp->where != OBJ_FLOOR)
         panic("remove_object: obj not on floor");
-    extract_nexthere(otmp, &level.objs[x][y]);
+    extract_nexthere(otmp, &NH_G(level).objects[x][y]);
     extract_nobj(otmp, &fobj);
     /* update vision iff this was the only boulder at its spot */
     if (otmp->otyp == BOULDER && !sobj_at(BOULDER, x, y))
@@ -1998,7 +1994,7 @@ struct obj *obj;
         extract_nobj(obj, &migrating_objs);
         break;
     case OBJ_BURIED:
-        extract_nobj(obj, &level.buriedobjlist);
+        extract_nobj(obj, &NH_G(level).buriedobjlist);
         break;
     case OBJ_ONBILL:
         extract_nobj(obj, &billobjs);
@@ -2137,8 +2133,8 @@ struct obj *obj;
         panic("add_to_buried: obj not free");
 
     obj->where = OBJ_BURIED;
-    obj->nobj = level.buriedobjlist;
-    level.buriedobjlist = obj;
+    obj->nobj = NH_G(level).buriedobjlist;
+    NH_G(level).buriedobjlist = obj;
 }
 
 /* Recalculate the weight of this container and all of _its_ containers. */
@@ -2214,7 +2210,7 @@ boolean tipping; /* caller emptying entire contents; affects shop handling */
         consume_obj_charge(horn, !tipping);
         if (!rn2(13)) {
             obj = mkobj(POTION_CLASS, FALSE);
-            if (objects[obj->otyp].oc_magic)
+            if (NH_G(objects)[obj->otyp].oc_magic)
                 do {
                     obj->otyp = rnd_class(POT_BOOZE, POT_WATER);
                 } while (obj->otyp == POT_SICKNESS);
@@ -2299,7 +2295,7 @@ obj_sanity_check()
        the floor list so container contents are skipped here */
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
-            for (obj = level.objs[x][y]; obj; obj = obj->nexthere) {
+            for (obj = NH_G(level).objects[x][y]; obj; obj = obj->nexthere) {
                 /* <ox,oy> should match <x,y>; <0,*> should always be empty */
                 if (obj->where != OBJ_FLOOR || x == 0
                     || obj->ox != x || obj->oy != y) {
@@ -2314,7 +2310,7 @@ obj_sanity_check()
 
     objlist_sanity(invent, OBJ_INVENT, "invent sanity");
     objlist_sanity(migrating_objs, OBJ_MIGRATING, "migrating sanity");
-    objlist_sanity(level.buriedobjlist, OBJ_BURIED, "buried sanity");
+    objlist_sanity(NH_G(level).buriedobjlist, OBJ_BURIED, "buried sanity");
     objlist_sanity(billobjs, OBJ_ONBILL, "bill sanity");
 
     mon_obj_sanity(fmon, "minvent sanity");
@@ -2434,15 +2430,15 @@ STATIC_OVL const char *
 where_name(obj)
 struct obj *obj;
 {
-    /* Unknown migrated to nle_ctx_t */
+    /* unknown: per-env nh_g->l_mkobj_c_where_name_unknown */ /* big enough to handle rogue 64-bit int */
     int where;
 
     if (!obj)
         return "nowhere";
     where = obj->where;
     if (where < 0 || where >= NOBJ_STATES || !obj_state_names[where]) {
-        Sprintf(unknown, "unknown[%d]", where);
-        return unknown;
+        Sprintf(NH_G(l_mkobj_c_where_name_unknown), "unknown[%d]", where);
+        return NH_G(l_mkobj_c_where_name_unknown);
     }
     return obj_state_names[where];
 }
@@ -2488,13 +2484,13 @@ long oquan;
      if (obj) {
          *obj = zeroobj;
          obj->otyp = otyp;
-         obj->oclass = objects[otyp].oc_class;
+         obj->oclass = NH_G(objects)[otyp].oc_class;
          /* obj->dknown = 0; */
          /* suppress known except for amulets (needed for fakes & real AoY) */
          obj->known = (obj->oclass == AMULET_CLASS)
                        ? obj->known
                          /* default is "on" for types which don't use it */
-                         : !objects[otyp].oc_uses_known;
+                         : !NH_G(objects)[otyp].oc_uses_known;
          obj->quan = oquan ? oquan : 1L;
          obj->corpsenm = NON_PM; /* suppress statue and figurine details */
          /* but suppressing fruit details leads to "bad fruit #0" */
@@ -2564,7 +2560,7 @@ const char *mesg;
         || obj->otyp < LOWEST_GLOB || obj->otyp > HIGHEST_GLOB
         /* a partially eaten glob could have any non-zero weight but an
            intact one should weigh an exact multiple of base weight (20) */
-        || ((obj->owt % objects[obj->otyp].oc_weight) != 0 && !obj->oeaten)) {
+        || ((obj->owt % NH_G(objects)[obj->otyp].oc_weight) != 0 && !obj->oeaten)) {
         char mesgbuf[BUFSZ], globbuf[QBUFSZ];
 
         Sprintf(globbuf, " glob %d,quan=%ld,owt=%u ",

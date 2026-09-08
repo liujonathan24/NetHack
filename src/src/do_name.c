@@ -4,18 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env return buffers for two functions that previously held
- * function-local `static char buf[…]`. Renamed to unique tags so the
- * file-level macros don't collide with the many other `buf` locals here. */
-#define dxdy_buf      (current_nle_ctx->s_do_name_dxdy_buf)
-#define rndmonnam_buf (current_nle_ctx->s_do_name_rndmonnam_buf)
-
-/* Per-env replacements for three do_name.c file-statics. */
-#define gloc_filter_map                      (current_nle_ctx->s_gloc_filter_map)
-#define gloc_filter_floodfill_match_glyph    (current_nle_ctx->s_gloc_filter_floodfill_match_glyph)
-#define via_naming                           (current_nle_ctx->s_via_naming)
 
 STATIC_DCL char *NDECL(nextmbuf);
 STATIC_DCL void FDECL(getpos_help, (BOOLEAN_P, const char *));
@@ -39,35 +27,22 @@ extern const char what_is_an_unknown_object[]; /* from pager.c */
 STATIC_OVL char *
 nextmbuf()
 {
-    /* bufs/bufidx migrated to nle_ctx_t (per-env). */
-    char (*bufs)[BUFSZ] = (char (*)[BUFSZ]) current_nle_ctx->s_mbufs_p;
+    /* bufs: per-env nh_g->l_do_name_c_nextmbuf_bufs */
+    /* bufidx: per-env nh_g->l_do_name_c_nextmbuf_bufidx */
 
-    current_nle_ctx->s_mbuf_idx = (current_nle_ctx->s_mbuf_idx + 1) % NUMMBUF;
-    return bufs[current_nle_ctx->s_mbuf_idx];
+    NH_G(l_do_name_c_nextmbuf_bufidx) = (NH_G(l_do_name_c_nextmbuf_bufidx) + 1) % NUMMBUF;
+    return NH_G(l_do_name_c_nextmbuf_bufs)[NH_G(l_do_name_c_nextmbuf_bufidx)];
 }
 
 /* function for getpos() to highlight desired map locations.
  * parameter value 0 = initialize, 1 = highlight, 2 = done
  */
-/* Per-env do_name.c state. getpos_hilitefunc / getpos_getvalid / screen_fmt. */
-struct nle_do_name_state {
-    void (*_getpos_hilitefunc)(int);
-    boolean (*_getpos_getvalid)(int, int);
-    char _screen_fmt[16];
-};
-static struct nle_do_name_state *
-nle_do_name(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_do_name_state *s = (struct nle_do_name_state *) current_nle_ctx->s_do_name_state;
-    if (!s) {
-        s = (struct nle_do_name_state *) nle_arena_calloc(1, sizeof(struct nle_do_name_state));
-        current_nle_ctx->s_do_name_state = s;
-    }
-    return s;
-}
-#define getpos_hilitefunc  (nle_do_name()->_getpos_hilitefunc)
-#define getpos_getvalid    (nle_do_name()->_getpos_getvalid)
+#define getpos_hilitefunc (nh_g->s_do_name_c_getpos_hilitefunc)
+void (*const nh_tmpl_s_do_name_c_getpos_hilitefunc)(int) =
+(void FDECL((*), (int))) 0;
+#define getpos_getvalid (nh_g->s_do_name_c_getpos_getvalid)
+boolean (*const nh_tmpl_s_do_name_c_getpos_getvalid)(int, int) =
+(boolean FDECL((*), (int, int))) 0;
 
 void
 getpos_sethilite(gp_hilitef, gp_getvalidf)
@@ -225,7 +200,7 @@ const char *goal;
             Sprintf(sbuf,
                     "  '%s' describe current spot,%s move to another spot;",
                     visctrl(Cmd.spkeys[NHKF_GETPOS_PICK]),
-                    flags.help ? " prompt if 'more info'," : "");
+                    NH_G(flags).help ? " prompt if 'more info'," : "");
             putstr(tmpwin, 0, sbuf);
             Sprintf(sbuf,
                     "  '%s' describe current spot, move to another spot;",
@@ -272,14 +247,13 @@ const void *b;
      && glyph_to_cmap(levl[(x)][(y)].glyph) == S_stone  \
      && !levl[(x)][(y)].seenv)
 
-/* gloc_filter_map moved into nle_ctx_t — macro above.
- * Default is NULL via calloc; matches original (struct opvar *) 0. */
+#define gloc_filter_map (nh_g->s_do_name_c_gloc_filter_map)
 
 #define GLOC_SAME_AREA(x,y)                                     \
     (isok((x), (y))                                             \
      && (selection_getpoint((x),(y), gloc_filter_map)))
 
-/* gloc_filter_floodfill_match_glyph moved into nle_ctx_t. */
+#define gloc_filter_floodfill_match_glyph (nh_g->s_do_name_c_gloc_filter_floodfill_match_glyph)
 
 int
 gloc_filter_classify_glyph(glyph)
@@ -488,36 +462,36 @@ dxdy_to_dist_descr(dx, dy, fulldir)
 int dx, dy;
 boolean fulldir;
 {
-    /* Dxdy_buf (was `buf`) migrated to nle_ctx_t */
+    /* buf: per-env nh_g->l_do_name_c_dxdy_to_dist_descr_buf */
     int dst;
 
     if (!dx && !dy) {
-        Sprintf(dxdy_buf, "here");
+        Sprintf(NH_G(l_do_name_c_dxdy_to_dist_descr_buf), "here");
     } else if ((dst = xytod(dx, dy)) != -1) {
         /* explicit direction; 'one step' is implicit */
-        Sprintf(dxdy_buf, "%s", directionname(dst));
+        Sprintf(NH_G(l_do_name_c_dxdy_to_dist_descr_buf), "%s", directionname(dst));
     } else {
         static const char *dirnames[4][2] = {
             { "n", "north" },
             { "s", "south" },
             { "w", "west" },
             { "e", "east" } };
-        dxdy_buf[0] = '\0';
-        /* 9999: protect dxdy_buf[] against overflow caused by invalid values */
+        NH_G(l_do_name_c_dxdy_to_dist_descr_buf)[0] = '\0';
+        /* 9999: protect buf[] against overflow caused by invalid values */
         if (dy) {
             if (abs(dy) > 9999)
                 dy = sgn(dy) * 9999;
-            Sprintf(eos(dxdy_buf), "%d%s%s", abs(dy), dirnames[(dy > 0)][fulldir],
+            Sprintf(eos(NH_G(l_do_name_c_dxdy_to_dist_descr_buf)), "%d%s%s", abs(dy), dirnames[(dy > 0)][fulldir],
                     dx ? "," : "");
         }
         if (dx) {
             if (abs(dx) > 9999)
                 dx = sgn(dx) * 9999;
-            Sprintf(eos(dxdy_buf), "%d%s", abs(dx),
+            Sprintf(eos(NH_G(l_do_name_c_dxdy_to_dist_descr_buf)), "%d%s", abs(dx),
                     dirnames[2 + (dx > 0)][fulldir]);
         }
     }
-    return dxdy_buf;
+    return NH_G(l_do_name_c_dxdy_to_dist_descr_buf);
 }
 
 /* coordinate formatting for 'whatis_coord' option */
@@ -526,7 +500,7 @@ coord_desc(x, y, outbuf, cmode)
 int x, y;
 char *outbuf, cmode;
 {
-    char *screen_fmt = nle_do_name()->_screen_fmt; /* per-env */
+    /* screen_fmt: per-env nh_g->l_do_name_c_coord_desc_screen_fmt */ /* [12] suffices: "[%02d,%02d]" */
     int dx, dy;
 
     outbuf[0] = '\0';
@@ -551,13 +525,13 @@ char *outbuf, cmode;
            /m, /M, /o, and /O output lines up cleanly; map sizes bigger
            than Nx999 or 999xM will still work, but not line up like normal
            when displayed in a column setting */
-        if (!*screen_fmt)
-            Sprintf(screen_fmt, "[%%%sd,%%%sd]",
+        if (!*NH_G(l_do_name_c_coord_desc_screen_fmt))
+            Sprintf(NH_G(l_do_name_c_coord_desc_screen_fmt), "[%%%sd,%%%sd]",
                     (ROWNO - 1 + 2 < 100) ? "02" :  "03",
                     (COLNO - 1 < 100) ? "02" : "03");
         /* map line 0 is screen row 2;
            map column 0 isn't used, map column 1 is screen column 1 */
-        Sprintf(outbuf, screen_fmt, y + 2, x);
+        Sprintf(outbuf, NH_G(l_do_name_c_coord_desc_screen_fmt), y + 2, x);
         break;
     }
     return outbuf;
@@ -704,7 +678,7 @@ const char *goal;
 
     if (!goal)
         goal = "desired location";
-    if (flags.verbose) {
+    if (NH_G(flags).verbose) {
         pline("(For instructions type a '%s')",
               visctrl(Cmd.spkeys[NHKF_GETPOS_HELP]));
         msg_given = TRUE;
@@ -830,7 +804,7 @@ const char *goal;
         } else if (c == Cmd.spkeys[NHKF_GETPOS_AUTODESC]) {
             iflags.autodescribe = !iflags.autodescribe;
             pline("Automatic description %sis %s.",
-                  flags.verbose ? "of features under cursor " : "",
+                  NH_G(flags).verbose ? "of features under cursor " : "",
                   iflags.autodescribe ? "on" : "off");
             if (!iflags.autodescribe)
                 show_goal_msg = TRUE;
@@ -937,7 +911,7 @@ const char *goal;
                                     goto foundc;
                                 /* next, try glyph that's remembered here
                                    (might be trap or object) */
-                                if (level.lflags.hero_memory
+                                if (NH_G(level).flags.hero_memory
                                     /* !terrainmode: don't move to remembered
                                        trap or object if not currently shown */
                                     && !iflags.terrainmode) {
@@ -1224,8 +1198,7 @@ do_mname()
         (void) christen_monst(mtmp, buf);
 }
 
-/* via_naming moved into nle_ctx_t — macro above.
- * Default 0 via calloc. */
+#define via_naming (nh_g->s_do_name_c_via_naming)
 
 /*
  * This routine used to change the address of 'obj' so be unsafe if not
@@ -1356,7 +1329,7 @@ const char *name;
     return obj;
 }
 
-static const char callable[] = {
+static NEARDATA const char callable[] = {
     SCROLL_CLASS, POTION_CLASS, WAND_CLASS,  RING_CLASS, AMULET_CLASS,
     GEM_CLASS,    SPBOOK_CLASS, ARMOR_CLASS, TOOL_CLASS, 0
 };
@@ -1365,9 +1338,9 @@ boolean
 objtyp_is_callable(i)
 int i;
 {
-    return (boolean) (objects[i].oc_uname
-                      || (OBJ_DESCR(objects[i])
-                          && index(callable, objects[i].oc_class)));
+    return (boolean) (NH_G(objects)[i].oc_uname
+                      || (OBJ_DESCR(NH_G(objects)[i])
+                          && index(callable, NH_G(objects)[i].oc_class)));
 }
 
 /* C and #name commands - player can name monster or object or type of obj */
@@ -1380,7 +1353,7 @@ docallcmd()
     menu_item *pick_list = 0;
     char ch, allowall[2];
     /* if player wants a,b,c instead of i,o when looting, do that here too */
-    boolean abc = flags.lootabc;
+    boolean abc = NH_G(flags).lootabc;
 
     win = create_nhwindow(NHW_MENU);
     start_menu(win);
@@ -1487,7 +1460,7 @@ struct obj *obj;
     else if (otemp.otyp == FIGURINE)
         otemp.corpsenm = NON_PM; /* suppress mon type */
     else if (otemp.otyp == HEAVY_IRON_BALL)
-        otemp.owt = objects[HEAVY_IRON_BALL].oc_weight; /* not "very heavy" */
+        otemp.owt = NH_G(objects)[HEAVY_IRON_BALL].oc_weight; /* not "very heavy" */
     else if (otemp.oclass == FOOD_CLASS && otemp.globby)
         otemp.owt = 120; /* 6*20, neither a small glob nor a large one */
 
@@ -1508,12 +1481,12 @@ struct obj *obj;
     if (obj->oclass == POTION_CLASS && obj->fromsink)
         /* kludge, meaning it's sink water */
         Sprintf(qbuf, "Call a stream of %s fluid:",
-                OBJ_DESCR(objects[obj->otyp]));
+                OBJ_DESCR(NH_G(objects)[obj->otyp]));
     else
         (void) safe_qbuf(qbuf, "Call ", ":", obj,
                          docall_xname, simpleonames, "thing");
     /* pointer to old name */
-    str1 = &(objects[obj->otyp].oc_uname);
+    str1 = &(NH_G(objects)[obj->otyp].oc_uname);
     buf[0] = '\0';
 #ifdef EDIT_GETLIN
     /* if there's an existing name, make it be the default answer */
@@ -1588,7 +1561,7 @@ namefloorobj()
         char tmpbuf[BUFSZ];
 
         /* straight role name */
-        unames[0] = ((Upolyd ? u.mfemale : flags.female) && urole.name.f)
+        unames[0] = ((Upolyd ? u.mfemale : NH_G(flags).female) && urole.name.f)
                      ? urole.name.f
                      : urole.name.m;
         /* random rank title for hero's role
@@ -1596,7 +1569,7 @@ namefloorobj()
            note: the 30 is hardcoded in xlev_to_rank, so should be
            hardcoded here too */
         unames[1] = rank_of(rn2_on_display_rng(30) + 1,
-                            Role_switch, flags.female);
+                            Role_switch, NH_G(flags).female);
         /* random fake monster */
         unames[2] = bogusmon(tmpbuf, (char *) 0);
         /* increased chance for fake monster */
@@ -1688,7 +1661,7 @@ boolean called;
     boolean name_at_start, has_adjectives;
     char *bp;
 
-    if (current_nle_ctx->program_state.gameover)
+    if (NH_G(program_state).gameover)
         suppress |= SUPPRESS_HALLUCINATION;
     if (article == ARTICLE_YOUR && !mtmp->mtame)
         article = ARTICLE_THE;
@@ -1696,7 +1669,7 @@ boolean called;
     do_hallu = Hallucination && !(suppress & SUPPRESS_HALLUCINATION);
     do_invis = mtmp->minvis && !(suppress & SUPPRESS_INVISIBLE);
     do_it = !canspotmon(mtmp) && article != ARTICLE_YOUR
-            && !current_nle_ctx->program_state.gameover && mtmp != u.usteed
+            && !NH_G(program_state).gameover && mtmp != u.usteed
             && !(u.uswallow && mtmp == u.ustuck) && !(suppress & SUPPRESS_IT);
     do_saddle = !(suppress & SUPPRESS_SADDLE);
     do_name = !(suppress & SUPPRESS_NAME) || type_is_pname(mdat);
@@ -2032,7 +2005,7 @@ boolean ckloc;
                 fmt_ptr((genericptr_t) mon->data),
                 fmt_ptr((genericptr_t) &mons[NUMMONS]));
     } else if (ckloc && ptr == &mons[PM_LONG_WORM]
-               && level.monsters[mon->mx][mon->my] != mon) {
+               && NH_G(level).monsters[mon->mx][mon->my] != mon) {
         Sprintf(outbuf, "%s <%d,%d>",
                 mons[PM_LONG_WORM_TAIL].mname, mon->mx, mon->my);
     } else {
@@ -2072,7 +2045,7 @@ char *
 rndmonnam(code)
 char *code;
 {
-    /* Rndmonnam_buf (was `buf`) migrated to nle_ctx_t */
+    /* buf: per-env nh_g->l_do_name_c_rndmonnam_buf */
     char *mname;
     int name;
 #define BOGUSMONSIZE 100 /* arbitrary */
@@ -2086,9 +2059,9 @@ char *code;
              && (type_is_pname(&mons[name]) || (mons[name].geno & G_NOGEN)));
 
     if (name >= SPECIAL_PM) {
-        mname = bogusmon(rndmonnam_buf, code);
+        mname = bogusmon(NH_G(l_do_name_c_rndmonnam_buf), code);
     } else {
-        mname = strcpy(rndmonnam_buf, mons[name].mname);
+        mname = strcpy(NH_G(l_do_name_c_rndmonnam_buf), mons[name].mname);
     }
     return mname;
 #undef BOGUSMONSIZE
@@ -2123,7 +2096,7 @@ roguename()
                   : "Glenn Wichman";
 }
 
-static const char *const hcolors[] = {
+static NEARDATA const char *const hcolors[] = {
     "ultraviolet", "infrared", "bluish-orange", "reddish-green", "dark white",
     "light black", "sky blue-pink", "salty", "sweet", "sour", "bitter",
     "striped", "spiral", "swirly", "plaid", "checkered", "argyle", "paisley",
@@ -2153,7 +2126,7 @@ rndcolor()
                                            : c_obj_colors[k];
 }
 
-static const char *const hliquids[] = {
+static NEARDATA const char *const hliquids[] = {
     "yoghurt", "oobleck", "clotted blood", "diluted water", "purified water",
     "instant coffee", "tea", "herbal infusion", "liquid rainbow",
     "creamy foam", "mulled wine", "bouillon", "nectar", "grog", "flubber",

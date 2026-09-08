@@ -26,7 +26,7 @@ typedef struct s_level { /* special dungeon level element */
     char proto[15]; /* name of prototype file (eg. "tower") */
     char boneid;    /* character to id level in bones files */
     uchar rndlevs;  /* no. of randomly available similar levels */
-    d_flags dflags; /* type flags (XXX AW-full: was 'flags') */
+    d_flags flags;  /* type flags */
 } s_level;
 
 typedef struct stairway { /* basic stairway identifier */
@@ -57,7 +57,7 @@ typedef struct dungeon {   /* basic dungeon identifier */
     char dname[24];        /* name of the dungeon (eg. "Hell") */
     char proto[15];        /* name of prototype file (eg. "tower") */
     char boneid;           /* character to id dungeon in bones files */
-    d_flags dflags;        /* dungeon flags (XXX AW-full: was 'flags') */
+    d_flags flags;         /* dungeon flags */
     xchar entry_lev;       /* entry level */
     xchar num_dunlevs;     /* number of levels in this dungeon */
     xchar dunlev_ureached; /* how deep you have been in this dungeon */
@@ -156,7 +156,7 @@ typedef struct branch {
 /* level information (saved via ledger number) */
 
 struct linfo {
-    unsigned char linfo_flags; /* XXX AW-full: was 'flags' */
+    unsigned char flags;
 #define VISITED 0x01      /* hero has visited this level */
 #define FORGOTTEN 0x02    /* hero will forget this level when reached */
 #define LFILE_EXISTS 0x04 /* a level file exists for this level */
@@ -242,7 +242,7 @@ typedef struct mapseen {
            questing is for quest home (level 1) */
         Bitfield(quest_summons, 1); /* heard summons from leader */
         Bitfield(questing, 1); /* quest leader has unlocked quest stairs */
-    } mflags; /* XXX AW-full: was 'flags' */
+    } flags;
     /* custom naming */
     char *custom;
     unsigned custom_lth;

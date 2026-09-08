@@ -18,17 +18,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for Unaware macro */
-
-/* Per-env return buffer */
-#define wholebuf (current_nle_ctx->s_dbridge_wholebuf)
-
-/* Misc-2: occupants[ENTITIES] migrated to
- * nle_ctx_t.s_occupants. struct entity is forward-declared in nle.h; full
- * definition is local to this file (below), so we use lazy heap alloc.
- * The helper is declared (not defined) here; definition follows struct entity. */
-static struct entity *_au8_get_occupants(void);
-#define occupants (_au8_get_occupants())
 
 STATIC_DCL void FDECL(get_wall_for_db, (int *, int *));
 STATIC_DCL struct entity *FDECL(e_at, (int, int));
@@ -293,23 +282,11 @@ boolean flag;
     return  TRUE;
 }
 
-struct entity {
-    struct monst *emon;     /* youmonst for the player */
-    struct permonst *edata; /* must be non-zero for record to be valid */
-    int ex, ey;
-};
+/* struct entity moved to nh_globals.h */
 
 #define ENTITIES 2
 
-/* Misc-2: occupants[ENTITIES] now per-env on heap. */
-static struct entity *
-_au8_get_occupants(void)
-{
-    if (!current_nle_ctx->s_occupants)
-        current_nle_ctx->s_occupants =
-            (struct entity *) calloc(ENTITIES, sizeof(struct entity));
-    return current_nle_ctx->s_occupants;
-}
+#define occupants (nh_g->s_dbridge_c_occupants)
 
 STATIC_OVL
 struct entity *
@@ -398,17 +375,17 @@ E_phrase(etmp, verb)
 struct entity *etmp;
 const char *verb;
 {
-    /* Wholebuf migrated to nle_ctx_t */
+    /* wholebuf: per-env nh_g->l_dbridge_c_E_phrase_wholebuf */
 
-    Strcpy(wholebuf, is_u(etmp) ? "You" : Monnam(etmp->emon));
+    Strcpy(NH_G(l_dbridge_c_E_phrase_wholebuf), is_u(etmp) ? "You" : Monnam(etmp->emon));
     if (!verb || !*verb)
-        return wholebuf;
-    Strcat(wholebuf, " ");
+        return NH_G(l_dbridge_c_E_phrase_wholebuf);
+    Strcat(NH_G(l_dbridge_c_E_phrase_wholebuf), " ");
     if (is_u(etmp))
-        Strcat(wholebuf, verb);
+        Strcat(NH_G(l_dbridge_c_E_phrase_wholebuf), verb);
     else
-        Strcat(wholebuf, vtense((char *) 0, verb));
-    return wholebuf;
+        Strcat(NH_G(l_dbridge_c_E_phrase_wholebuf), vtense((char *) 0, verb));
+    return NH_G(l_dbridge_c_E_phrase_wholebuf);
 }
 
 /*
@@ -445,18 +422,18 @@ int xkill_flags, how;
 {
     if (is_u(etmp)) {
         if (how == DROWNING) {
-            killer.name[0] = 0; /* drown() sets its own killer */
+            NH_G(killer).name[0] = 0; /* drown() sets its own killer */
             (void) drown();
         } else if (how == BURNING) {
-            killer.name[0] = 0; /* lava_effects() sets own killer */
+            NH_G(killer).name[0] = 0; /* lava_effects() sets own killer */
             (void) lava_effects();
         } else {
             coord xy;
 
             /* use more specific killer if specified */
-            if (!killer.name[0]) {
-                killer.format = KILLED_BY_AN;
-                Strcpy(killer.name, "falling drawbridge");
+            if (!NH_G(killer).name[0]) {
+                NH_G(killer).format = KILLED_BY_AN;
+                Strcpy(NH_G(killer).name, "falling drawbridge");
             }
             done(how);
             /* So, you didn't die */
@@ -476,7 +453,7 @@ int xkill_flags, how;
     } else {
         int entitycnt;
 
-        killer.name[0] = 0;
+        NH_G(killer).name[0] = 0;
 /* fake "digested to death" damage-type suppresses corpse */
 #define mk_message(dest) (((dest & XKILL_NOMSG) != 0) ? (char *) 0 : "")
 #define mk_corpse(dest) (((dest & XKILL_NOCORPSE) != 0) ? AD_DGST : AD_PHYS)
@@ -618,8 +595,8 @@ struct entity *etmp;
     } else {
         if (crm->typ == DRAWBRIDGE_DOWN) {
             if (is_u(etmp)) {
-                killer.format = NO_KILLER_PREFIX;
-                Strcpy(killer.name,
+                NH_G(killer).format = NO_KILLER_PREFIX;
+                Strcpy(NH_G(killer).name,
                        "crushed to death underneath a drawbridge");
             }
             pline("%s crushed underneath the drawbridge.",
@@ -736,8 +713,8 @@ struct entity *etmp;
                       E_phrase(etmp, "disappear"));
         }
         if (!e_survives_at(etmp, etmp->ex, etmp->ey)) {
-            killer.format = KILLED_BY_AN;
-            Strcpy(killer.name, "closing drawbridge");
+            NH_G(killer).format = KILLED_BY_AN;
+            Strcpy(NH_G(killer).name, "closing drawbridge");
             e_died(etmp, XKILL_NOMSG, CRUSHING);
             return;
         }
@@ -767,8 +744,8 @@ struct entity *etmp;
                     pline("%s into the %s.", E_phrase(etmp, "fall"),
                           lava ? hliquid("lava") : "moat");
             }
-        killer.format = NO_KILLER_PREFIX;
-        Strcpy(killer.name, "fell from a drawbridge");
+        NH_G(killer).format = NO_KILLER_PREFIX;
+        Strcpy(NH_G(killer).name, "fell from a drawbridge");
         e_died(etmp, /* CRUSHING is arbitrary */
                XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                is_pool(etmp->ex, etmp->ey) ? DROWNING
@@ -779,7 +756,7 @@ struct entity *etmp;
 }
 
 /* clear stale reason for death before returning */
-#define nokiller() (killer.name[0] = '\0', killer.format = 0)
+#define nokiller() (NH_G(killer).name[0] = '\0', NH_G(killer).format = 0)
 
 /*
  * Close the drawbridge located at x,y
@@ -976,8 +953,8 @@ int x, y;
             if (e_inview)
                 pline("%s blown apart by flying debris.",
                       E_phrase(etmp2, "are"));
-            killer.format = KILLED_BY_AN;
-            Strcpy(killer.name, "exploding drawbridge");
+            NH_G(killer).format = KILLED_BY_AN;
+            Strcpy(NH_G(killer).name, "exploding drawbridge");
             e_died(etmp2,
                    XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                    CRUSHING); /*no corpse*/
@@ -1008,8 +985,8 @@ int x, y;
                     debugpline1("%s from shrapnel", E_phrase(etmp1, "die"));
                 }
             }
-            killer.format = KILLED_BY_AN;
-            Strcpy(killer.name, "collapsing drawbridge");
+            NH_G(killer).format = KILLED_BY_AN;
+            Strcpy(NH_G(killer).name, "collapsing drawbridge");
             e_died(etmp1,
                    XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                    CRUSHING); /*no corpse*/

@@ -712,7 +712,7 @@ sys_random_seed(VOID_ARGS)
                                  (ULONG) sizeof ourseed, 0);
         if (status == STATUS_SUCCESS) {
             BCryptCloseAlgorithmProvider(hRa,0);
-            current_nle_ctx->has_strong_rngseed = TRUE; /* was decl.c */
+            has_strong_rngseed = TRUE;
             Plan_B = FALSE;
         }
     }

@@ -2,11 +2,9 @@ cmake_minimum_required(VERSION 3.15)
 file(STRINGS "version.txt" NLE_VERSION)
 project(nle VERSION ${NLE_VERSION})
 
-# Default to RelWithDebInfo: at -O0 (Debug) the per-env macro accesses
-# (#define name (current_nle_ctx->s_name)) re-load __thread current_nle_ctx
-# on every reference inside inner loops, which costs ~20-25% SPS at N=1024.
-# -O2 hoists the TLS load. Explicit CMAKE_BUILD_TYPE on the command line
-# still wins.
+# Default to RelWithDebInfo: at -O0 every access to a per-env global reloads
+# the thread-local context pointer; -O2 hoists it. An explicit
+# CMAKE_BUILD_TYPE on the command line still wins.
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Default build type" FORCE)
 endif()
@@ -72,6 +70,10 @@ add_compile_definitions(
   NLE_USE_TILES)
 
 option(USE_SEEDING "Use seeding support in NLE" ON)
+# The engine library (target nethack) needs no Python; the pybind11 module
+# and the ttyrec converter do. Consumers that only want libnethack.so can
+# configure with -DNLE_BUILD_PYTHON=OFF and skip the Python toolchain.
+option(NLE_BUILD_PYTHON "Build the Python extension modules" ON)
 
 if(USE_SEEDING)
   add_compile_definitions(NLE_ALLOW_SEEDING)
@@ -131,42 +133,18 @@ target_link_directories(nethack PUBLIC /usr/local/lib)
 # Careful with -DMONITOR_HEAP: Ironically, it fails to fclose FILE* heaplog.
 # target_compile_definitions(nethack PUBLIC "$<$<CONFIG:DEBUG>:MONITOR_HEAP>")
 
-# NLE fast-reset: arena-based allocator. Replace NetHack's free() with a
-# wrapper that no-ops arena pointers, so snapshot/restore of the arena
-# captures all NetHack heap state. Also link with -Bsymbolic-functions so
-# libnethack's intra-DSO calls bind to our wrapper, not libc free.
+# NLE fast-reset: arena-based allocator. NetHack's free() becomes a no-op for
+# arena pointers (include/global.h), so a snapshot/restore of the arena
+# captures all of the game's heap state.
 target_compile_definitions(nethack PRIVATE NLE_USE_ARENA_FREE=1)
-# Cluster AO: lock[], SAVEF[], bones[], fqn_prefix[] are per-env fields in
-# nle_ctx_t (see include/nle.h). Decl.h redirects the legacy identifiers
-# to current_nle_ctx->s_FOO when this define is set. Util binaries do
-# NOT define this, so their local `char lock[N]` / `char SAVEF[N]` keep
-# working unchanged.
-target_compile_definitions(nethack PRIVATE NLE_PER_ENV_FILES=1)
-# Cluster AW-full: `flags` global (struct flag) is now per-env via macro
-# indirection through current_nle_ctx->flags_ptr (see include/flag.h). This
-# only takes effect when NLE_PER_ENV_FLAGS is defined; util binaries that
-# don't include nle.h continue to declare their own local `flags`.
-target_compile_definitions(nethack PRIVATE NLE_PER_ENV_FLAGS=1)
-# -Bsymbolic-functions: bind libnethack's intra-DSO function calls (notably
-# free) to our own definitions, so NetHack's free() calls resolve to
-# nle_arena_free instead of libc free even when the loader is also linked.
-# -z muldefs: tolerate the tentative-vs-strong duplicate of current_nle_ctx
-# that gcc 10+ otherwise rejects under -fno-common (this is preexisting in
-# the codebase; previous builds dodged it differently).
 target_link_options(nethack PRIVATE
-    "LINKER:-z,muldefs"
-    # -Bsymbolic-functions binds libnethack's intra-DSO function calls to its
-    # own copies (operator new/delete overrides in nle_arena_cpp.cc).
+    # bind libnethack's intra-DSO calls (notably free and the C++ operator
+    # new/delete overrides in nle_arena_cpp.cc) to its own definitions
     "LINKER:-Bsymbolic-functions"
-    # GCC won't hide operator new/delete via visibility attributes
-    # (compiler implicit external linkage overrides #pragma visibility).
-    # Use a version script to mark them `local` so the dynamic loader can't
-    # interpose them on torch / pybind11 / Python allocations. Without this
-    # fix Python's free() at finalize-time aborts with
-    # "free(): invalid pointer" because some libc allocations were routed
-    # through libnethack's bump arena.  Cluster AS.
+    # hide the operator new/delete overrides from the rest of the process
+    # (torch / pybind11 / Python allocations must not land in the arena)
     "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/nethack.ver"
-)
+    )
 
 find_package(Threads REQUIRED)
 target_link_libraries(nethack PUBLIC m fcontext bz2 tmt Threads::Threads)
@@ -181,9 +159,9 @@ add_executable(rlmain "sys/unix/rlmain.cc")
 set_target_properties(rlmain PROPERTIES CXX_STANDARD 11)
 target_link_libraries(rlmain PUBLIC nethackdl)
 target_include_directories(rlmain PUBLIC ${NLE_INC_GEN})
-target_compile_definitions(rlmain PRIVATE NLE_OBJECTS_GLOBAL)
 add_dependencies(rlmain util) # For pm.h.
 
+if(NLE_BUILD_PYTHON)
 # pybind11 core python library.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11)
 pybind11_add_module(
@@ -196,9 +174,9 @@ pybind11_add_module(
   $<TARGET_OBJECTS:tile>)
 target_link_libraries(_pynethack PUBLIC nethackdl)
 set_target_properties(_pynethack PROPERTIES CXX_STANDARD 14)
-target_include_directories(_pynethack PUBLIC ${NLE_INC_GEN}
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/deboost.context/include)
+target_include_directories(_pynethack PUBLIC ${NLE_INC_GEN})
 add_dependencies(_pynethack util) # For pm.h.
+endif()
 
 # ttyrec converter library
 add_library(
@@ -218,8 +196,10 @@ target_link_libraries(ttyrec_reader PUBLIC converter)
 target_include_directories(
   ttyrec_reader PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/converter)
 
+if(NLE_BUILD_PYTHON)
 pybind11_add_module(_pyconverter third_party/converter/pyconverter.cc)
 target_link_libraries(_pyconverter PUBLIC converter)
 set_target_properties(_pyconverter PROPERTIES CXX_STANDARD 14)
 target_include_directories(
   _pyconverter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/converter)
+endif()

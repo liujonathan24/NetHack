@@ -6,7 +6,6 @@
 /* shknam.c -- initialize a shop */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 STATIC_DCL boolean FDECL(stock_room_goodpos, (struct mkroom *, int, int, int, int));
 STATIC_DCL boolean FDECL(veggy_item, (struct obj * obj, int));
@@ -385,12 +384,12 @@ int otyp; /* used iff obj is null */
         corpsenm = obj->corpsenm;
     } else {
         /* just a type; caller will have to handle tins and corpses */
-        oclass = objects[otyp].oc_class;
+        oclass = NH_G(objects)[otyp].oc_class;
         corpsenm = PM_LICHEN; /* veggy standin */
     }
 
     if (oclass == FOOD_CLASS) {
-        if (objects[otyp].oc_material == VEGGY || otyp == EGG)
+        if (NH_G(objects)[otyp].oc_material == VEGGY || otyp == EGG)
             return TRUE;
         if (otyp == TIN && corpsenm == NON_PM) /* implies obj is non-null */
             return (boolean) (obj->spe == 1); /* 0 = empty, 1 = spinach */
@@ -411,12 +410,12 @@ shkveg()
     j = maxprob = 0;
     ok[0] = 0; /* lint suppression */
     for (i = bases[(int) oclass]; i < NUM_OBJECTS; ++i) {
-        if (objects[i].oc_class != oclass)
+        if (NH_G(objects)[i].oc_class != oclass)
             break;
 
         if (veggy_item((struct obj *) 0, i)) {
             ok[j++] = i;
-            maxprob += objects[i].oc_prob;
+            maxprob += NH_G(objects)[i].oc_prob;
         }
     }
     if (maxprob < 1)
@@ -425,12 +424,12 @@ shkveg()
 
     j = 0;
     i = ok[0];
-    while ((prob -= objects[i].oc_prob) > 0) {
+    while ((prob -= NH_G(objects)[i].oc_prob) > 0) {
         j++;
         i = ok[j];
     }
 
-    if (objects[i].oc_class != oclass || !OBJ_NAME(objects[i]))
+    if (NH_G(objects)[i].oc_class != oclass || !OBJ_NAME(NH_G(objects)[i]))
         panic("shkveg probtype error, oclass=%d i=%d", (int) oclass, i);
     return i;
 }
@@ -500,13 +499,13 @@ const char *const *nlp;
     s_level *sptr;
 
     if (nlp == shkfoods && In_mines(&u.uz) && Role_if(PM_MONK)
-        && (sptr = Is_special(&u.uz)) != 0 && sptr->dflags.town) {
+        && (sptr = Is_special(&u.uz)) != 0 && sptr->flags.town) {
         /* special-case override for minetown food store for monks */
         nlp = shkhealthfoods;
     }
 
     if (nlp == shklight && In_mines(&u.uz) && (sptr = Is_special(&u.uz)) != 0
-        && sptr->dflags.town) {
+        && sptr->flags.town) {
         /* special-case minetown lighting shk */
         shname = "+Izchak";
         shk->female = FALSE;
@@ -775,7 +774,7 @@ register struct mkroom *sroom;
      * monsters will sit on top of objects and not the other way around.
      */
 
-    level.lflags.has_shop = TRUE;
+    NH_G(level).flags.has_shop = TRUE;
 }
 
 /* does shkp's shop stock this item type? */
@@ -852,7 +851,7 @@ struct monst *mtmp;
     } else {
         const char *shknm = ESHK(mtmp)->shknam;
 
-        if (Hallucination && !current_nle_ctx->program_state.gameover) {
+        if (Hallucination && !NH_G(program_state).gameover) {
             const char *const *nlp;
             int num;
 
@@ -882,14 +881,6 @@ boolean
 shkname_is_pname(mtmp)
 struct monst *mtmp;
 {
-    /* Defensive guard. dealloc_mextra() can leave mtmp->isshk
-     * set with mtmp->mextra == NULL; callers should has_eshk(mtmp) first
-     * but this is a leaf utility called from many paths and a NULL deref
-     * here is a process-killing segfault. Treat missing eshk as "no
-     * pname" (the function's return is only used to choose a Mr./Ms.
-     * honorific in death-message text, so the false branch is benign). */
-    if (!has_eshk(mtmp))
-        return FALSE;
     const char *shknm = ESHK(mtmp)->shknam;
 
     return (boolean) (*shknm == '-' || *shknm == '+' || *shknm == '=');

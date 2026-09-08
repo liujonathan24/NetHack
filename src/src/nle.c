@@ -1,3 +1,11 @@
+/* nle.c -- the NetHack Learning Environment layer: one context per
+ * environment, a coroutine that runs the game, observation plumbing, and the
+ * engine-control API (seeds, knobs, level/player blobs, state pokes,
+ * curriculum traversal).
+ *
+ * All of the game's own mutable state lives in the generated
+ * struct nh_globals (nh_globals.h) that every context owns; this file only
+ * anchors the thread-local pointers to the environment being stepped. */
 
 #include <assert.h>
 #include <string.h>
@@ -19,19 +27,9 @@
 #include "nle.h"
 #include "nle_sentinel.h"
 
-/* Single definition of current_nle_ctx; declared extern in nle.h.
- * Stage 10'+: TLS-marked so each OMP thread chases its own context.
- * With all per-env state routed through this pointer, threads are
- * naturally isolated — no shared mutable globals to race on. */
-/* exp_039: initial-exec TLS model removes the runtime __tls_get_addr call
- * (was ~3.3% of user CPU under N=128 puffer training, per perf-record).
- * libnethack.so is loaded via dlopen from puffer's training extension;
- * glibc still permits initial-exec when the DSO has reserved TLS slots
- * via DT_FLAGS_1 STATIC_TLS at link time. We rely on the existing
- * -Wl,-z,initial-exec link flag (added in vendor/nle/src/CMakeLists.txt).
- * If load fails with "cannot allocate memory in static TLS block", drop
- * the tls_model and rebuild — but on this cluster (Linux 5.14, glibc 2.34)
- * it works. */
+/* The one thread-local pointer to the environment being stepped (declared
+ * extern in nle.h). initial-exec TLS is a single fs-relative load; the
+ * loader reserves static TLS for a dlopen'd library that uses it. */
 __attribute__((tls_model("initial-exec")))
 __thread nle_ctx_t *current_nle_ctx;
 
@@ -50,6 +48,31 @@ __thread nle_ctx_t *current_nle_ctx;
 #endif
 
 extern int unixmain(int, char **);
+
+/* Make `nle` the current environment on this thread: both the NLE context
+ * pointer and the game's globals pointer. Every public entry point does
+ * this first, so any pool thread can step any env. */
+void
+nle_anchor(nle_ctx_t *nle)
+{
+    current_nle_ctx = nle;
+    nh_g = nle ? nle->g : (struct nh_globals *) 0;
+}
+
+/* A context and its game globals are one contiguous, 64-byte aligned block:
+ * [nle_ctx_t | struct nh_globals]. */
+#define NLE_CTX_ALIGN 64
+static size_t
+nle_ctx_hdr_size(void)
+{
+    return (sizeof(nle_ctx_t) + NLE_CTX_ALIGN - 1) & ~(size_t) (NLE_CTX_ALIGN - 1);
+}
+
+size_t
+nle_ctx_block_size(void)
+{
+    return nle_ctx_hdr_size() + nh_globals_size();
+}
 
 signed char
 vt_char_color_extract(TMTCHAR *c)
@@ -137,19 +160,68 @@ nle_vt_callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
     }
 }
 
-/* nle_state refactor: helpers for moving subsystems out of process-global
- * storage into nle_ctx_t. Stage 1 ports the RNG state (was static rnglist
- * in rnd.c). Call from non-NLE TUs via the prototypes declared in nle.h. */
-isaac64_ctx *
-nle_rng_state(int idx)
+/* ---- virtual terminal snapshot -------------------------------------------
+ * The TMT terminal emulator that produces the tty_* observations lives in
+ * libc memory, outside the context block and the arena, and only repaints
+ * cells the game redraws. A snapshot therefore carries the whole screen and
+ * the cursor, so a restore cannot leave menu/message residue from the
+ * abandoned continuation in tty_chars. */
+size_t
+nle_vt_snapshot_size(nle_ctx_t *nle)
 {
-    return &current_nle_ctx->rng_state[idx];
+    const TMTSCREEN *s = tmt_screen(nle->vterminal);
+    return s->nline * s->ncol * sizeof(TMTCHAR) + 2 * sizeof(int);
 }
 
-int *
-nle_rng_init_flag(int idx)
+void
+nle_vt_snapshot_save(nle_ctx_t *nle, void *dst)
 {
-    return &current_nle_ctx->rng_init[idx];
+    const TMTSCREEN *s = tmt_screen(nle->vterminal);
+    const TMTPOINT *cur = tmt_cursor(nle->vterminal);
+    char *p = (char *) dst;
+    int c[2];
+    size_t r;
+
+    for (r = 0; r < s->nline; r++) {
+        memcpy(p, s->lines[r]->chars, s->ncol * sizeof(TMTCHAR));
+        p += s->ncol * sizeof(TMTCHAR);
+    }
+    c[0] = (int) cur->r;
+    c[1] = (int) cur->c;
+    memcpy(p, c, sizeof c);
+}
+
+void
+nle_vt_snapshot_load(nle_ctx_t *nle, const void *src)
+{
+    TMT *vt = nle->vterminal;
+    const TMTSCREEN *s = tmt_screen(vt);
+    const char *p = (const char *) src;
+    char seq[32];
+    int c[2];
+    size_t r;
+
+    for (r = 0; r < s->nline; r++) {
+        /* the screen is ours to write: tmt only hands out a const view */
+        memcpy((void *) s->lines[r]->chars, p, s->ncol * sizeof(TMTCHAR));
+        s->lines[r]->dirty = true;
+        p += s->ncol * sizeof(TMTCHAR);
+    }
+    memcpy(c, p, sizeof c);
+    /* cursor + reset of the pending text attributes, through the emulator so
+     * its own state agrees (TMT_MSG_MOVED refreshes tty_cursor) */
+    snprintf(seq, sizeof seq, "\033[0m\033[%d;%dH", c[0] + 1, c[1] + 1);
+    tmt_write(vt, seq, strlen(seq));
+    /* Push the restored screen into the observation buffers now. The game's
+     * terminal output is incremental: a step that changes nothing on screen
+     * writes nothing, and the tty_* buffers would keep the abandoned
+     * continuation's text until something is redrawn. */
+    for (r = 0; r < s->nline; r++)
+        s->lines[r]->dirty = true;
+    if (nle->observation) {
+        nle_vt_callback(TMT_MSG_UPDATE, vt, s, nle);   /* copies + cleans */
+        nle_vt_callback(TMT_MSG_MOVED, vt, tmt_cursor(vt), nle);
+    }
 }
 
 /* ---- difficulty knob catalog (catalog defined in include/nle.h) ---------- */
@@ -185,29 +257,31 @@ nle_tune_set_defaults(nle_tune_t *t)
 nle_tune_t *
 nle_get_tune(nle_ctx_t *nle)
 {
-    return &nle->s_tune;
+    return &nle->knobs;
 }
 
 nle_ctx_t *
 init_nle(FILE *ttyrec, nle_obs *obs)
 {
-    nle_ctx_t *nle = calloc(1, sizeof(nle_ctx_t));
+    /* One block: the context, then the game's globals. */
+    size_t hdr = nle_ctx_hdr_size();
+    char *block = (char *) calloc(1, nle_ctx_block_size());
+    nle_ctx_t *nle = (nle_ctx_t *) block;
+    if (!nle) {
+        fprintf(stderr, "init_nle: cannot allocate the environment\n");
+        abort();
+    }
+    nle->g = (struct nh_globals *) (block + hdr);
 
-    /* Anchor current_nle_ctx to this env BEFORE any macro use. Many of
-     * the inits below (notably the tmt_open(LI, CO, ...) call and any
-     * use of *_init helpers that expand through the macros) deref
-     * current_nle_ctx; if that's still NULL (or stale from another env)
-     * we crash. The pointer must be set first so the macros resolve to
-     * THIS env's fields. */
-    current_nle_ctx = nle;
+    /* Anchor this env BEFORE anything expands an accessor macro. */
+    nle_anchor(nle);
+    /* Fresh game state: zero + the original static initializers. */
+    nh_globals_init(nle->g);
 
-    /* Difficulty knobs default to vanilla (all scales 1.0). calloc zeroed the
-     * ctx, so the knob block must be explicitly seeded before any read-site. */
-    nle_tune_set_defaults(&nle->s_tune);
+    /* Difficulty knobs default to vanilla (all scales 1.0). */
+    nle_tune_set_defaults(&nle->knobs);
 
-    /* s8_tcap_p needs to be allocated before LI/CO are read; pre-alloc
-     * and seed it so tmt_open below gets valid dimensions. */
-    nle->s8_tcap_p = nle_arena_calloc(1, sizeof(struct nle_tcap_t));
+    /* tmt_open below reads the terminal size through the game's LI/CO. */
     LI = NLE_TERM_LI;
     CO = NLE_TERM_CO;
 
@@ -230,230 +304,8 @@ init_nle(FILE *ttyrec, nle_obs *obs)
     nle->outbuf_write_ptr = nle->outbuf;
     nle->outbuf_write_end = nle->outbuf + sizeof(nle->outbuf);
 
-    /* RNG state cleared by calloc; init_isaac64 will populate it via the
-     * set_random() / init_random() chain during NetHack's early setup. */
-
-    /* Function-local statics migrated to nle_ctx_t.
-     * rn2_on_display_rng (non-ISAAC64 path) seeded its `static unsigned
-     * seed = 1` at file scope; calloc gives 0 which would freeze the LCG,
-     * so restore the original init here. recursive_mine/up start FALSE,
-     * which calloc already gives us. */
-    nle->s_rn2disprng_seed = 1;
-
-    /* Stage 4 player state: allocate the struct you on the heap so the
-     * `u` macro in decl.h can resolve to (*current_nle_ctx->u_ptr). */
-    nle->u_ptr = (struct you *) nle_arena_calloc(1, sizeof(struct you));
-    if (!nle->u_ptr) {
-        fprintf(stderr, "init_nle: failed to allocate struct you\n");
-        abort();
-    }
-
-    /* Stage 5 flags / iflags / sysflags */
-    nle->flags_ptr = (struct flag *) nle_arena_calloc(1, sizeof(struct flag));
-    nle->iflags_ptr = (struct instance_flags *) nle_arena_calloc(1, sizeof(struct instance_flags));
-#ifdef SYSFLAGS
-    nle->sysflags_ptr = (struct sysflag *) nle_arena_calloc(1, sizeof(struct sysflag));
-#endif
-    if (!nle->flags_ptr || !nle->iflags_ptr) {
-        fprintf(stderr, "init_nle: failed to allocate flags/iflags\n");
-        abort();
-    }
-
-    /* Stage 9' batch A — scalar globals that previously had non-zero static
-     * initializers (decl.c). With calloc-zero'd nle_ctx_t, restore them. */
-    nle->nle_moves = 1L;
-    nle->nle_monstermoves = 1L;
-    /* Maze limits must be even (decl.c original: (COLNO-1)&~1, (ROWNO-1)&~1). */
-    nle->x_maze_max_v = (COLNO - 1) & ~1;
-    nle->y_maze_max_v = (ROWNO - 1) & ~1;
-
-    /* Stage 5 Option-A: worn[] in worn.c can no longer have
-     * `&uarm` etc. as compile-time initializers under __thread. Patch the
-     * table once at startup (idempotent across env inits, since uarm/etc.
-     * have stable per-thread addresses). Same for decl.c subrooms. */
-    extern void worn_init(void);
-    extern void subrooms_init(void);
-    worn_init();
-    subrooms_init();
-
-    /* Stage 6' — dungeon topology heap allocations. All zero-init via calloc;
-     * matches the original {0,...} static initializers in decl.c. */
-    nle->s6_topology_p = nle_arena_calloc(1, sizeof(struct dgn_topology));
-    nle->s6_dungeons_p = nle_arena_calloc(MAXDUNGEON, sizeof(dungeon));
-    nle->s6_upstair_p  = nle_arena_calloc(1, sizeof(stairway));
-    nle->s6_dnstair_p  = nle_arena_calloc(1, sizeof(stairway));
-    nle->s6_upladder_p = nle_arena_calloc(1, sizeof(stairway));
-    nle->s6_dnladder_p = nle_arena_calloc(1, sizeof(stairway));
-    nle->s6_sstairs_p  = nle_arena_calloc(1, sizeof(stairway));
-    nle->s6_updest_p   = nle_arena_calloc(1, sizeof(dest_area));
-    nle->s6_dndest_p   = nle_arena_calloc(1, sizeof(dest_area));
-    nle->s6_inv_pos_p  = nle_arena_calloc(1, sizeof(coord));
-    if (!nle->s6_topology_p || !nle->s6_dungeons_p
-        || !nle->s6_upstair_p || !nle->s6_dnstair_p
-        || !nle->s6_upladder_p || !nle->s6_dnladder_p
-        || !nle->s6_sstairs_p || !nle->s6_updest_p
-        || !nle->s6_dndest_p || !nle->s6_inv_pos_p) {
-        fprintf(stderr, "init_nle: failed to allocate stage 6 state\n");
-        abort();
-    }
-    /* ubirthday/wailmsg/domove_* — zero is the original init value. */
-
-    /* Stage 9' batch C — heap-allocate the per-env struct values that used
-     * to live as file-scope globals in decl.c. calloc'd zero matches the
-     * `= DUMMY` ({0}) initializer at the old definition sites. Spell book
-     * is an array of (MAXSPELL+1) entries. m_shot needs a non-zero
-     * STRANGE_OBJECT for its `.o` field (matches decl.c old initializer). */
-    nle->s9c_m_shot_p       = nle_arena_calloc(1, sizeof(struct multishot));
-    nle->s9c_urealtime_p    = nle_arena_calloc(1, sizeof(struct u_realtime));
-    nle->s9c_quest_status_p = nle_arena_calloc(1, sizeof(struct q_score));
-    nle->s9c_spl_book_p     = nle_arena_calloc(MAXSPELL + 1, sizeof(struct spell));
-    nle->s9c_youmonst_p     = nle_arena_calloc(1, sizeof(struct monst));
-    nle->s9c_mvitals_p      = nle_arena_calloc(NUMMONS, sizeof(struct nle_mvitals_t));
-    nle->s9c_killer_p       = nle_arena_calloc(1, sizeof(struct kinfo));
-    /* s8_tcap_p already calloc'd at top of init_nle (LI/CO needed early). */
-    nle->s5_cmd_p           = nle_arena_calloc(1, sizeof(struct cmd));
-    nle->s_disco_p          = nle_arena_calloc(NUM_OBJECTS, sizeof(short));
-    /* obufs is NUMOBUF * BUFSZ bytes, defined in objnam.c. */
-    nle->s_obufs_p          = nle_arena_calloc(12 * 256, sizeof(char));
-    /* tty_status is 2 * MAXBLSTATS * sizeof(struct tty_status_fields).
-     * sizeof is opaque here — over-allocate (4096 is plenty for ~1840 B). */
-    nle->s_tty_status_p     = nle_arena_calloc(4096, 1);
-    nle->s_context_p        = nle_arena_calloc(1, sizeof(struct context_info));
-    {
-        extern struct nle_rndmonst_state *rndmonst_state_alloc(void);
-        nle->s_rndmonst_state_p = rndmonst_state_alloc();
-        extern void nle_artilist_init(struct artifact **);
-        nle_artilist_init(&nle->s_artilist_p);
-        /* Per-env quest msg index. */
-        extern void nle_qtlist_alloc(struct qtlists **);
-        nle_qtlist_alloc(&nle->s_qt_list_p);
-    }
-    /* NUM_OBJECTS + 1: stock NetHack's objects[]/obj_descr[] include a
-     * trailing "Array Terminator" entry (oc_class == ILLOBJ_CLASS == 0) past
-     * the NUM_OBJECTS real entries. obj_shuffle_range() scans class ranges
-     * with `for (i = lo; objects[i].oc_class == ocls; i++)` and relies on that
-     * terminator to stop; without it the scan reads — and shuffle() then
-     * writes — past the end of this heap block, corrupting the libc heap
-     * (manifesting later as non-deterministic glibc double-free / SIGSEGV).
-     * The baseline arrays below have NUM_OBJECTS + 1 elements, so copying the
-     * terminator too is in-bounds. */
-    nle->s9o_objects_p   = nle_arena_calloc(NUM_OBJECTS + 1, sizeof(struct objclass));
-    nle->s9o_obj_descr_p = nle_arena_calloc(NUM_OBJECTS + 1, sizeof(struct objdescr));
-    /* do_name.c name-buffer pool: NUMMBUF=5 * BUFSZ=256 = 1280 bytes. */
-    nle->s_mbufs_p       = nle_arena_calloc(5 * 256, sizeof(char));
-    /* decl.c smeq[MAXNROFROOMS+1] — calloc'd zero matches original {0,...}. */
-    nle->s_smeq_p        = nle_arena_calloc(MAXNROFROOMS + 1, sizeof(int));
-    nle->s_bases_p       = nle_arena_calloc(MAXOCLASSES, sizeof(int));
-    /* CLR_MAX is 16 in the standard build. */
-    nle->s_hilites_p     = nle_arena_calloc(16, sizeof(char *));
-    /* Per-env work buffers from various src files. sizes are opaque
-     * here (the struct types are defined in display.h / botl.h /
-     * vision.h, which we deliberately don't pull into nle.h to keep
-     * the util-build include cascade small). Bound generously by
-     * counting bytes. ROWNO=21, COLNO=80, MAXBLSTATS=23. */
-    nle->s_gbuf_p           = nle_arena_calloc(ROWNO * COLNO, 64);   /* gbuf_entry */
-    nle->s_blstats_p        = nle_arena_calloc(2 * 23, 256);          /* struct istat_s */
-    nle->s_status_hilites_p = nle_arena_calloc(23, 256);              /* struct hilite_s */
-    nle->s_could_see_p      = nle_arena_calloc(2 * ROWNO * COLNO, 1);
-    nle->s_viz_clear_p      = nle_arena_calloc(ROWNO * COLNO, 1);
-    nle->s_left_ptrs_p      = nle_arena_calloc(ROWNO * COLNO, 1);
-    nle->s_right_ptrs_p     = nle_arena_calloc(ROWNO * COLNO, 1);
-    nle->s_SpLev_Map_p      = nle_arena_calloc(COLNO * ROWNO, 1);
-    /* fqn_filename_buffer = char[FQN_NUMBUF=4][FQN_MAX_FILENAME=512] = 2048 B */
-    nle->s_fqn_fname_p      = nle_arena_calloc(4 * 512, 1);
-    /* worm tables (worm.c). MAX_NUM_WORMS=32. */
-    nle->s_wheads_p         = nle_arena_calloc(32, sizeof(void *));
-    nle->s_wtails_p         = nle_arena_calloc(32, sizeof(void *));
-    nle->s_wgrowtime_p      = nle_arena_calloc(32, sizeof(long));
-    /* boolopt baseline is 2088 B; compopt is 1920 B. Generous alloc bounds. */
-    nle->s_boolopt_p        = nle_arena_calloc(1, 4096);
-    nle->s_compopt_p        = nle_arena_calloc(1, 4096);
-    /* urole / urace (struct Role / struct Race in you.h). Sizes opaque. */
-    nle->s_urole_p          = nle_arena_calloc(1, 512);
-    nle->s_urace_p          = nle_arena_calloc(1, 512);
-    if (nle->s9o_objects_p && nle->s9o_obj_descr_p) {
-        memcpy(nle->s9o_objects_p, objects_baseline,
-               (NUM_OBJECTS + 1) * sizeof(struct objclass));
-        memcpy(nle->s9o_obj_descr_p, obj_descr_baseline,
-               (NUM_OBJECTS + 1) * sizeof(struct objdescr));
-    }
-    nle->s7_level_p         = nle_arena_calloc(1, sizeof(dlevel_t));
-    nle->s7_rooms_p         = nle_arena_calloc((MAXNROFROOMS + 1) * 2, sizeof(struct mkroom));
-    nle->s7_doors_p         = nle_arena_calloc(DOORMAX, sizeof(coord));
-    nle->s7_level_info_p    = nle_arena_calloc(MAXLINFO, sizeof(struct linfo));
-    nle->s7_lastseentyp_p   = nle_arena_calloc(COLNO * ROWNO, sizeof(schar));
-    /* bhitpos per-env. */
-    nle->bhitpos_p          = nle_arena_calloc(1, sizeof(coord));
-    /* Utrack[UTSZ=50] per-env (track.c). */
-    nle->s_utrack           = nle_arena_calloc(50, sizeof(coord));
-    /* subrooms points into the rooms array (slot MAXNROFROOMS+1). */
-    nle->s7_subrooms        = nle->s7_rooms_p + (MAXNROFROOMS + 1);
-    /* upstairs_room/dnstairs_room/sstairs_room/ftrap left NULL — original
-     * decl.c init was NULL too. */
-    if (!nle->s9c_m_shot_p || !nle->s9c_urealtime_p
-        || !nle->s9c_quest_status_p || !nle->s9c_spl_book_p
-        || !nle->s9c_youmonst_p || !nle->s9c_mvitals_p
-        || !nle->s9c_killer_p || !nle->s8_tcap_p || !nle->s5_cmd_p
-        || !nle->s_disco_p || !nle->s_obufs_p || !nle->s_tty_status_p
-        || !nle->s_context_p || !nle->s_rndmonst_state_p
-        || !nle->s_artilist_p || !nle->s9o_objects_p
-        || !nle->s9o_obj_descr_p || !nle->s_mbufs_p || !nle->s_smeq_p
-        || !nle->s_bases_p || !nle->s_hilites_p
-        || !nle->s7_level_p || !nle->s7_rooms_p
-        || !nle->s7_doors_p || !nle->s7_level_info_p
-        || !nle->s7_lastseentyp_p || !nle->bhitpos_p
-        || !nle->s_utrack) {
-        fprintf(stderr, "init_nle: failed to allocate stage 9' batch C state\n");
-        abort();
-    }
-    nle->s9c_m_shot_p->o = STRANGE_OBJECT;
-    /* body-slot pointers (s9_uwep, s9_uarm, etc.) zero-init'd by calloc;
-     * that matches the original decl.c NULL initializer. */
-
-    /* Per-env `struct musable` (muse.c). Allocate via a small
-     * helper so the struct definition stays local to muse.c — nle.c
-     * doesn't need to see it. Bytes are zeroed (matches original
-     * file-scope `static struct musable m;` zero-init). trapx/trapy live
-     * inline as ints on nle_ctx_t (already zero-init by calloc). */
-    {
-        extern void nle_muse_alloc(void **);
-        nle_muse_alloc(&nle->s_muse_m_p);
-        if (!nle->s_muse_m_p) {
-            fprintf(stderr, "init_nle: failed to allocate s_muse_m_p\n");
-            abort();
-        }
-    }
-
-    /* Non-zero initializers for migrated invent/
-     * pickup file-statics. Only cached_pickinv_win needs init (was
-     * `static winid cached_pickinv_win = WIN_ERR;` and WIN_ERR == -1,
-     * not 0). The others (sortlootmode=0, this_type=0, invbuf=NULL,
-     * invbufsiz=0, only={0,0}, current_container=NULL,
-     * abort_looting=FALSE, val_for_n_or_more=0, valid_menu_classes=0)
-     * all match calloc-zero. */
-    nle->s_cached_pickinv_win = WIN_ERR;
-
-    /* Per-env init of save/restore dispatch tables (saveprocs,
-     * restoreprocs) and sfsaveinfo/sfrestinfo flag words. These were
-     * process-global file-scope statics in save.c / restore.c / decl.c and
-     * raced under N>=1024 OMP vecenv stepping, where one env's set_*_pref
-     * could swap another env's mid-save/restore function pointers and
-     * produce wrong-codec short reads (the "Error reading level file"
-     * panic). Helpers live in save.c / restore.c so they can see the
-     * STATIC_OVL/STATIC_DCL codec functions. */
-    {
-        extern void NDECL(nle_restoreprocs_init);
-        extern void NDECL(nle_saveprocs_init);
-        nle_restoreprocs_init();
-        nle_saveprocs_init();
-    }
-
     return nle;
 }
-
-/* `settings` moved into nle_ctx_t (refactor stage 2). Below uses
- * `current_nle_ctx->settings` since mainloop and friends always run
- * with current_nle_ctx anchored to the active env. */
 
 /* TODO: Consider copying the relevant parts of main() in unixmain.c. */
 void
@@ -488,7 +340,7 @@ mainloop(fcontext_transfer_t ctx_transfer)
 
     /* Read-only data directory. When supplied, the immutable game data lives
      * here (shared across envs, read-only) and only the writable game-state
-     * files stay under hackdir — so a fresh env needs only a tiny writable dir
+     * files stay under hackdir -- so a fresh env needs only a tiny writable dir
      * rather than a full copy of the dat tree. Empty => fall back to hackdir,
      * which reproduces the original single-directory behavior exactly. */
     char *datadir = s->hackdir;
@@ -563,10 +415,8 @@ int
 nle_fflush(FILE *stream)
 {
     /* Only act on fflush(stdout). For any other stream, pass straight
-     * through to libc's fflush via the real symbol. The wintty.h macro
-     * `#define fflush nle_fflush` is still in scope inside this TU, so a
-     * naked `fflush(stream)` would recurse — call the libc symbol
-     * directly. */
+     * through to libc's fflush (wintty.h may have `#define fflush nle_fflush`
+     * in scope in this TU, hence the #undef). */
     if (stream != stdout) {
 #undef fflush
         return fflush(stream);
@@ -603,14 +453,12 @@ int
 nle_putchar(int c)
 {
     nle_ctx_t *nle = current_nle_ctx;
-    /* exp_039: when no tty observation is bound, the bytes nle_putchar
-     * writes to outbuf are dropped by nle_fflush (line ~509 gates
-     * tmt_write on obs->tty_chars/tty_colors/tty_cursor). Short-circuit
-     * the whole write path in that case. The RL agent doesn't bind
-     * tty_* fields in our config — see nle_obs init in ocean/nethack
-     * binding.c. Per perf: ~1.4% user CPU savings at N=1024. */
+    /* When neither a tty observation nor a ttyrec consumes the terminal
+     * stream, the bytes would be dropped by nle_fflush anyway: skip the
+     * whole write path (a measurable share of the per-step cost). */
     nle_obs *obs = nle->observation;
-    if (!obs || (!obs->tty_chars && !obs->tty_colors && !obs->tty_cursor))
+    if (!nle->ttyrec
+        && (!obs || (!obs->tty_chars && !obs->tty_colors && !obs->tty_cursor)))
         return c;
     if (nle->outbuf_write_ptr >= nle->outbuf_write_end) {
         nle_fflush(stdout);
@@ -623,18 +471,19 @@ nle_putchar(int c)
  * Used in place of xputs from termcap.c. Not using
  * the tputs padding logic from tclib.c.
  */
-void
+int
 nle_xputs(const char *str)
 {
     int c;
     const char *p = str;
 
     if (!p || !*p)
-        return;
+        return 0;
 
     while ((c = *p++) != '\0') {
         nle_putchar(c);
     }
+    return 0;
 }
 
 /*
@@ -706,15 +555,10 @@ nle_spawn_monsters()
     return current_nle_ctx->settings.spawn_monsters;
 }
 
-/* `nle_seeds_init` moved into nle_ctx_t (refactor stage 2). Below uses
- * `current_nle_ctx->seeds_init`. */
-
 /* See rng.c. */
 extern int FDECL(whichrng, (int FDECL((*fn), (int) )));
 
-/* See hacklib.c. NB: set_random is defined `void` there; declaring it `int`
- * here is a return-type signature mismatch that traps under WebAssembly's
- * strict indirect-call type checking (harmless on native). */
+/* See hacklib.c. */
 extern void FDECL(set_random, (unsigned long, int FDECL((*fn), (int) )));
 /* An appropriate version of this must always be provided in
    port-specific code somewhere. It returns a number suitable
@@ -756,20 +600,12 @@ init_random(int FDECL((*fn), (int) ))
     nle_seeds_init_t *si = current_nle_ctx->seeds_init;
     if (si) {
         set_random(si->seeds[whichrng(fn)], fn);
-        current_nle_ctx->has_strong_rngseed = si->reseed;
+        has_strong_rngseed = si->reseed;
         return;
     }
 #endif
     set_random(sys_random_seed(), fn);
 }
-
-static void nle_swap_in(nle_ctx_t *nle);
-static void nle_swap_out(nle_ctx_t *nle);
-
-/* Forward declarations for the baseline-capture path in nle_start. */
-struct nle_dungeon_save;
-extern struct nle_dungeon_save *nle_baseline;
-static void nle_dungeon_save_to(struct nle_dungeon_save *s);
 
 nle_ctx_t *
 nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
@@ -780,11 +616,11 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     nle->seeds_init = seed_init;
 
     /* Apply difficulty-knob overrides supplied at start, BEFORE the mainloop
-     * below generates the first level (mklev). init_nle already seeded s_tune
-     * to vanilla defaults; tune_n == 0 leaves them untouched. */
+     * below generates the first level (mklev). tune_n == 0 leaves the
+     * vanilla defaults untouched. */
     {
         int k;
-        double *tunep = (double *) &nle->s_tune;
+        double *tunep = (double *) &nle->knobs;
         int ncat = nle_tune_count();
         for (k = 0; k < settings_p->tune_n && k < NLE_TUNE_MAX; k++) {
             int idx = settings_p->tune_idx[k];
@@ -797,20 +633,16 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     nle->generatorcontext =
         make_fcontext(nle->stack.sptr, nle->stack.ssize, mainloop);
 
-    current_nle_ctx = nle;
-    /* CO/LI macros expand through current_nle_ctx->s8_tcap_p; must
-     * come AFTER current_nle_ctx is set. (Used to be before init_nle
-     * back when CO/LI were plain globals.) */
+    nle_anchor(nle);
+    /* Set CO and LI to control ttyrec output size. */
     CO = NLE_TERM_CO;
     LI = NLE_TERM_LI;
-    nle_swap_in(nle);
     fcontext_transfer_t t = jump_fcontext(nle->generatorcontext, NULL);
     nle->generatorcontext = t.ctx;
     nle->done = (t.data == NULL);
     obs->done = nle->done;
     nle->seeds_init =
         NULL; /* Don't set to *these* seeds on subsequent reseeds, if any. */
-    nle_swap_out(nle);
 
     if (nle->ttyrec) {
         if (obs->blstats) {
@@ -825,124 +657,9 @@ nle_start(nle_obs *obs, FILE *ttyrec, nle_seeds_init_t *seed_init,
     nle_sentinel_global_init();
     /* seed_init->seeds[0] is the primary dungeon seed for this env */
     nle->sentinel = nle_sentinel_register(
-        seed_init ? (unsigned long)seed_init->seeds[0] : 0UL);
+        seed_init ? (unsigned long) seed_init->seeds[0] : 0UL);
 
     return nle;
-}
-
-/* Stage 6 dungeon topology save bundle. Holds copies of all the
- * dungeon-graph globals from decl.c so each env has its own. Allocated
- * lazily in nle_swap_in on first call (after init_dungeon has populated
- * the globals). */
-struct nle_dungeon_save {
-    /* stage 6' — dungeon graph migrated direct to nle_ctx_t. */
-    /* stage 7 completed — `level` now lives in nle_ctx_t (s7_level_p).
-     * struct dig_info.level was renamed to .dlvl to free the token. */
-    /* stage 8 — display / message state migrated direct to nle_ctx_t
-     * (vision_full_recalc, viz_array, WIN_*, toplines, tc_gbl_data). */
-    /* stage 9' batch D — body-slot pointers migrated direct to nle_ctx_t
-     * (s9_uwep, s9_uarm, etc.).  worn[] uses offsetof resolution; no
-     * per-thread address pinning.  Swap blob now empty of all stage-9 items. */
-    /* mvitals migrated direct to nle_ctx_t (stage 9' batch C). */
-    /* youmonst, urealtime, spl_book, m_shot, quest_status migrated direct
-     * to nle_ctx_t (stage 9' batch C). */
-    /* migrated direct to nle_ctx_t (stage 9' batches A/B):
-     *   invent, uskin, current_wand, thrownobj, kickedobj
-     *   migrating_objs, billobjs, mydogs, migrating_mons, apelist
-     *   ubirthday, moves, monstermoves, wailmsg
-     *   domove_attempting, domove_succeeded */
-    /* stage 10' — TTY window state migrated direct to nle_ctx_t. */
-};
-
-static void
-nle_dungeon_save_to(struct nle_dungeon_save *s)
-{
-    /* stage 6' — dungeon topology migrated direct to nle_ctx_t. */
-    /* stage 7' completed — all stage-7 items including `level` itself
-     * migrated direct to nle_ctx_t (s7_*). Save/load no longer needed. */
-    /* stage 8' completed: tc_gbl_data + vision_full_recalc + viz_array
-     * + WIN_* + toplines all migrated direct to nle_ctx_t. */
-    /* stage 9' batch D — body-slot pointers now live in nle_ctx_t (s9_u*).
-     * No save needed: they are already per-env by definition. */
-    /* invent, uskin, current_wand, thrownobj, kickedobj, migrating_objs,
-     * billobjs, mydogs, migrating_mons, apelist migrated direct.
-     * ubirthday, moves, monstermoves, wailmsg, domove_* migrated direct. */
-    /* stage 10' — tty window state migrated direct to nle_ctx_t. */
-}
-
-static void
-nle_dungeon_load_from(const struct nle_dungeon_save *s)
-{
-    /* stage 6'/7'/8'/9' all completed — nothing left to save/load. */
-    /* stage 9' batch D — body-slot pointers now in nle_ctx_t (s9_u*).
-     * No load needed: macros resolve directly via current_nle_ctx. */
-    (void) s; /* suppress unused-parameter warning */
-    /* stage 10' — tty window state migrated direct to nle_ctx_t. */
-}
-
-/* The `flags` swap is retired.
- *
- * flags / iflags / sysflags: all three now macro-redirect to
- * (*current_nle_ctx->X_ptr) in include/flag.h. Per-env storage is in
- * flags_ptr / iflags_ptr / sysflags_ptr on nle_ctx_t. Each access in
- * generated code routes directly to the env's storage — no memcpy
- * context switch needed. (The earlier swap copied the global into the
- * env's storage on eviction and back on resume; with the macro pattern
- * `&flags` would be `current_nle_ctx->flags_ptr` itself, so the memcpy
- * would corrupt rather than help. Removing is mandatory, not optional.)
- *
- * nroom / nsubroom were the last NEARDATA __thread globals
- * still being swap-copied per step. With the BK migration to per-env
- * macros over current_nle_ctx->s_nroom/s_nsubroom (renamed for macro
- * safety), the swap is now empty modulo dungeon_save baseline capture
- * (retained for cross-env defaults like BASE_WINDOW==0 invariant in
- * NetHackRL ctor). */
-
-static void
-nle_swap_in(nle_ctx_t *nle)
-{
-    /* First-ever swap_in across the whole process: snapshot the pristine
-     * post-static-init state of all globals we context-switch. Used as
-     * the baseline for any env's first swap_in. */
-    if (!nle_baseline) {
-        nle_baseline = (struct nle_dungeon_save *)
-                       calloc(1, sizeof(struct nle_dungeon_save));
-        if (nle_baseline)
-            nle_dungeon_save_to(nle_baseline);
-    }
-    /* First swap_in for this env: copy from process-wide baseline.
-     * Without this, env B inherits env A's wins[], BASE_WINDOW, etc.,
-     * breaking NetHackRL ctor's BASE_WINDOW==0 invariant. */
-    if (!nle->dungeon_save) {
-        nle->dungeon_save = calloc(1, sizeof(struct nle_dungeon_save));
-        if (nle_baseline && nle->dungeon_save)
-            *(struct nle_dungeon_save *) nle->dungeon_save = *nle_baseline;
-    }
-    /* Nroom/nsubroom no longer require a per-step swap;
-     * they're now per-env macros over the same ctx field that this swap
-     * used to copy in/out of. Drops two cache-line bounces per step. */
-    if (nle->dungeon_save)
-        nle_dungeon_load_from((struct nle_dungeon_save *) nle->dungeon_save);
-}
-
-struct nle_dungeon_save *nle_baseline = NULL;
-
-static void
-nle_swap_out(nle_ctx_t *nle)
-{
-    /* Nroom/nsubroom writeback removed; both are now per-env
-     * macros (per-env migration). The flags-memcpy that lived here is
-     * also long gone — flags is per-env via macro.
-     *
-     * dungeon_save is captured here on first call (nle_start path) so
-     * the env owns a saved level structure before any swap_in eviction. */
-    if (!nle)
-        return;
-    if (!nle->dungeon_save) {
-        nle->dungeon_save = calloc(1, sizeof(struct nle_dungeon_save));
-        if (nle->dungeon_save)
-            nle_dungeon_save_to((struct nle_dungeon_save *) nle->dungeon_save);
-    }
 }
 
 static long
@@ -951,15 +668,13 @@ nle_arena_off(char *base, void *p)
     return p ? (long) ((char *) p - base) : -1L;
 }
 
-/* Arena memory map. Dumps every named per-env buffer (by arena offset), the
- * live monster (fmon) and object (fobj) chains, and the monster grid with
- * fmon-membership — so an arbitrary arena pointer can be classified (which
- * buffer/monster/object it falls in) and stale grid pointers (in the grid but
- * not in fmon) are flagged. Writes to `path`, or stderr if NULL. */
+/* Memory map of one environment: the regions a snapshot must cover, the live
+ * monster (fmon) and object (fobj) chains, and the monster grid with
+ * fmon-membership (stale grid pointers are flagged). Writes to `path`, or
+ * stderr if NULL. */
 void
 nle_dbg_memmap(nle_ctx_t *nle, const char *path)
 {
-    extern const struct permonst mons[];
     FILE *f = path ? fopen(path, "w") : stderr;
     struct monst *m;
     struct obj *o;
@@ -972,65 +687,34 @@ nle_dbg_memmap(nle_ctx_t *nle, const char *path)
             fclose(f);
         return;
     }
-    current_nle_ctx = nle;
-    base = nle->s_arena_base;
+    nle_anchor(nle);
+    base = nle->arena_base;
 
     fprintf(f, "# nle whole-game memory map\n");
-    fprintf(f, "obs_dlvl=%d moves=%ld\n\n",
-            nle->s7_level_p ? (int) depth(&u.uz) : -1, (long) moves);
+    fprintf(f, "obs_dlvl=%d moves=%ld\n\n", (int) depth(&u.uz), (long) moves);
 
-    /* Every region that holds per-env game state. The arena holds the bulk
-     * (all dynamic NetHack allocations); the others live outside it and are
-     * captured separately by the snapshot (ctx struct + coroutine stack + rl
-     * display mirror). This is the complete footprint a snapshot must cover. */
     {
         extern size_t nle_rl_mirror_size(void);
         char *stk_hi = (char *) nle->stack.sptr;
         char *stk_lo = stk_hi - nle->stack.ssize;
         fprintf(f, "## whole-game regions (addr  size  what)\n");
-        fprintf(f, "%18p  %10zu  nle_ctx_t struct (fixed per-env state)\n",
-                (void *) nle, sizeof(*nle));
+        fprintf(f, "%18p  %10zu  nle_ctx_t + struct nh_globals (one block)\n",
+                (void *) nle, nle_ctx_block_size());
+        fprintf(f, "%18p  %10zu    of which struct nh_globals\n",
+                (void *) nle->g, nh_globals_size());
         fprintf(f, "%18p  %10zu  arena (used; cap=%zu) -- all dynamic state\n",
-                (void *) base, nle->s_arena_used, nle->s_arena_cap);
+                (void *) base, nle->arena_used, nle->arena_cap);
         fprintf(f, "%18p  %10zu  coroutine stack (fcontext)\n",
                 (void *) stk_lo, nle->stack.ssize);
         fprintf(f, "%18p  %10zu  rl display mirror (libc, outside arena)\n",
-                nle->s_netHackRL_instance, nle_rl_mirror_size());
+                nle->rl_instance, nle_rl_mirror_size());
         fprintf(f, "\n");
-    }
-
-    fprintf(f, "## arena named buffers + chains (offsets relative to arena_base"
-               "=%p)\n\n", (void *) base);
-
-    {
-        struct { const char *name; void *p; } b[] = {
-            { "gbuf", nle->s_gbuf_p }, { "context", nle->s_context_p },
-            { "obufs", nle->s_obufs_p }, { "mbufs", nle->s_mbufs_p },
-            { "disco", nle->s_disco_p }, { "blstats", nle->s_blstats_p },
-            { "level(struct)", nle->s7_level_p }, { "rooms", nle->s7_rooms_p },
-            { "doors", nle->s7_doors_p }, { "level_info", nle->s7_level_info_p },
-            { "lastseentyp", nle->s7_lastseentyp_p },
-            { "youmonst", nle->s9c_youmonst_p }, { "mvitals", nle->s9c_mvitals_p },
-            { "killer", nle->s9c_killer_p }, { "spl_book", nle->s9c_spl_book_p },
-            { "quest_status", nle->s9c_quest_status_p },
-            { "objects", nle->s9o_objects_p }, { "obj_descr", nle->s9o_obj_descr_p },
-            { "rndmonst", nle->s_rndmonst_state_p }, { "artilist", nle->s_artilist_p },
-            { "muse_m", nle->s_muse_m_p }, { "could_see", nle->s_could_see_p },
-            { "viz_clear", nle->s_viz_clear_p }, { "left_ptrs", nle->s_left_ptrs_p },
-            { "right_ptrs", nle->s_right_ptrs_p }, { "wheads", nle->s_wheads_p },
-            { "wtails", nle->s_wtails_p }, { "wgrowtime", nle->s_wgrowtime_p },
-            { "tty_status", nle->s_tty_status_p }, { "tcap", nle->s8_tcap_p },
-            { "topology", nle->s6_topology_p }, { "dungeons", nle->s6_dungeons_p },
-        };
-        fprintf(f, "## named buffers (arena offset, name) -- sort -n to see layout\n");
-        for (n = 0; n < (int) (sizeof(b) / sizeof(b[0])); n++)
-            fprintf(f, "%10ld  %s\n", nle_arena_off(base, b[n].p), b[n].name);
     }
     fflush(f);
 
 #define INAR(p) ((char *) (p) >= base \
-                 && (char *) (p) < base + nle->s_arena_used)
-    fprintf(f, "\n## monsters fmon (offset id mnum hp species)\n");
+                 && (char *) (p) < base + nle->arena_used)
+    fprintf(f, "## monsters fmon (arena offset id mnum hp species)\n");
     for (m = fmon, n = 0; m && INAR(m) && n < 100000; m = m->nmon, n++) {
         int valid = (m->data >= &mons[0] && m->data < &mons[NUMMONS]);
         fprintf(f, "%10ld  id=%u mnum=%d hp=%d %s\n", nle_arena_off(base, m),
@@ -1050,7 +734,7 @@ nle_dbg_memmap(nle_ctx_t *nle, const char *path)
     fprintf(f, "\n## grid monster ptrs (x y offset in_fmon valid_data)\n");
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++) {
-            struct monst *gm = level.monsters[x][y], *fm;
+            struct monst *gm = NH_G(level).monsters[x][y], *fm;
             int in = 0, fn = 0;
             if (!gm)
                 continue;
@@ -1073,23 +757,14 @@ nle_ctx_t *
 nle_step(nle_ctx_t *nle, nle_obs *obs)
 {
     nle_sentinel_beat(nle->sentinel, obs->action,
-                      obs->blstats ? (int)obs->blstats[NLE_BL_DEPTH] : 0);
-    /* exp_039: prefetch the env context aggressively. Under puffer's
-     * round-robin OMP step pattern, each c_step touches a different env's
-     * 72 KB nle_ctx_t cold from L2/L3 — that single-pattern alone is
-     * empirically 10x slower than tight per-env step loops (multi_threaded
-     * env-loop = 1.5M SPS vs round-robin = 155K SPS).
-     * Hint the L1 prefetcher to start loading the struct head and a few
-     * commonly-touched fields BEFORE the actual reads begin. Locality=3
-     * (high temporal locality) to keep them around. Adjacent cache lines
-     * (the first 4 lines of nle_ctx_t hold u_ptr, flags_ptr, iflags_ptr,
-     * s7_level_p, nle_moves, nle_monstermoves — all hot every step). */
+                      obs->blstats ? (int) obs->blstats[NLE_BL_DEPTH] : 0);
+    /* Under round-robin stepping every call touches a different env's
+     * block cold: hint the prefetcher at the head of the context. */
     __builtin_prefetch((const char *) nle +   0, 0, 3);
     __builtin_prefetch((const char *) nle +  64, 0, 3);
     __builtin_prefetch((const char *) nle + 128, 0, 3);
     __builtin_prefetch((const char *) nle + 192, 0, 3);
-    current_nle_ctx = nle;
-    nle_swap_in(nle);
+    nle_anchor(nle);
     nle->observation = obs;
     if (nle->ttyrec) {
         write_ttyrec_header(1, 1);
@@ -1099,7 +774,6 @@ nle_step(nle_ctx_t *nle, nle_obs *obs)
     nle->generatorcontext = t.ctx;
     nle->done = (t.data == NULL);
     obs->done = nle->done;
-    nle_swap_out(nle);
 
     if (nle->ttyrec) {
         /* NLE ttyrec version 3 stores the action and in-game score in
@@ -1108,13 +782,9 @@ nle_step(nle_ctx_t *nle, nle_obs *obs)
          *  - 1: the keypress/action (1 byte)
          *  - 2: the in-game score (4 bytes)
          *
-         * We could either the note the in-game score every time we flush the
-         * terminal instructions to screen, (eg writing [ 0 2 0 2 <step> 1 0 2
-         * <step> 1 ]) or we can note it _just_ before resuming the game,
-         * assuming no chicanery has happened to the score after it is written
-         * to the array `blstats`, (eg writing [ 0 2 <step> 1 0 2 <step> 1 0 2
-         * <step> ]). We chose the latter for compression & simplicity
-         * reasons.
+         * We note the in-game score just before resuming the game, assuming
+         * no chicanery has happened to the score after it is written to the
+         * array `blstats`.
          *
          * Note: blstats[9] == botl_score which is used for score/reward fns.
          * see winrl.cc
@@ -1128,29 +798,16 @@ nle_step(nle_ctx_t *nle, nle_obs *obs)
     return nle;
 }
 
-static void
-free_nle_fields(nle_ctx_t *nle)
-{
-    /* All per-env heap buffers hanging off nle_ctx_t are now allocated via
-     * nle_arena_calloc() / alloc() (the per-env arena), so that nle_fr_snapshot
-     * captures their contents wholesale. Arena memory is reclaimed when the
-     * arena is munmap'd in nle_end — calling libc free() on these (arena)
-     * pointers would corrupt the heap. So there is nothing to free here; the
-     * function is retained as the documented teardown hook. (This mirrors the
-     * long-standing handling of s_artilist_p / s_qt_list_p, which were already
-     * arena-allocated and intentionally never libc-freed.) */
-    (void) nle;
-}
-
 void
 nle_end(nle_ctx_t *nle)
 {
     nle_sentinel_unregister(nle->sentinel);
     nle->sentinel = NULL;
-    current_nle_ctx = nle;
-    nle_swap_in(nle);
+    nle_anchor(nle);
     if (!nle->done) {
-        if (!current_nle_ctx->program_state.panicking) {
+        /* Reset without closing nethack. Need free memory, etc.
+         * this is what nh_terminate in end.c does. I hope it's enough. */
+        if (!NH_G(program_state).panicking) {
             freedynamicdata();
             dlb_cleanup();
         }
@@ -1170,25 +827,23 @@ nle_end(nle_ctx_t *nle)
 #ifdef __EMSCRIPTEN__
     /* The fiber backend heap-allocates a context (fib_t + asyncify stack) per
      * make_fcontext, so it has to be released alongside the stack. The asm
-     * backends own no such memory and expose no destroy_fcontext, hence the
-     * guard. Without this the browser build leaks a coroutine per game and,
-     * on its fixed heap, aborts with OOM after ~20 starts. */
+     * backends own no such memory and expose no destroy_fcontext. */
     destroy_fcontext(nle->generatorcontext);
     nle->generatorcontext = NULL;
 #endif
     destroy_fcontext_stack(&nle->stack);
-    if (nle->s_arena_base) {
+    if (nle->arena_base) {
         extern void nle_arena_registry_release(char *);
-        nle_arena_registry_release(nle->s_arena_base);
-        munmap(nle->s_arena_base, nle->s_arena_cap);
-        nle->s_arena_base = NULL;
-        nle->s_arena_used = 0;
-        nle->s_arena_cap  = 0;
+        nle_arena_registry_release(nle->arena_base);
+        munmap(nle->arena_base, nle->arena_cap);
+        nle->arena_base = NULL;
+        nle->arena_used = 0;
+        nle->arena_cap  = 0;
     }
     extern void nle_winrl_destroy_for_ctx(nle_ctx_t *);
     nle_winrl_destroy_for_ctx(nle);
-    free_nle_fields(nle);
-    free(nle);
+    nle_anchor((nle_ctx_t *) 0);
+    free(nle); /* the whole [ctx | globals] block */
 }
 
 #ifdef NLE_ALLOW_SEEDING
@@ -1196,24 +851,24 @@ void
 nle_set_seed(nle_ctx_t *nle, unsigned long core, unsigned long disp,
              boolean reseed)
 {
+    nle_anchor(nle);
     /* Keep up to date with rnglist[] in rnd.c. */
     set_random(core, rn2);
     set_random(disp, rn2_on_display_rng);
 
     /* Determines logic in reseed_random() in hacklib.c. */
-    current_nle_ctx->has_strong_rngseed = reseed;
+    has_strong_rngseed = reseed;
 };
-
-/* nle_seeds[] moved into nle_ctx_t (refactor stage 2). Below uses
- * current_nle_ctx->seeds. */
 
 void
 nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
              boolean *reseed)
 {
-    *core = current_nle_ctx->seeds[0];
-    *disp = current_nle_ctx->seeds[1];
-    *reseed = current_nle_ctx->has_strong_rngseed;
+    nle_anchor(nle);
+    /* nle_seeds[] (hacklib.c) records the last seed set for each RNG. */
+    *core = nle_seeds[0];
+    *disp = nle_seeds[1];
+    *reseed = has_strong_rngseed;
 }
 #endif
 
@@ -1235,7 +890,7 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     void *blob;
     FILE *fp;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (out_len)
         *out_len = 0;
 
@@ -1282,11 +937,13 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     return blob;
 }
 
-/* Release a blob returned by nle_save_level. */
+/* Release a blob returned by nle_save_level & co (libc memory, so bypass
+ * the arena-aware `free` macro). */
 void
 nle_free_blob(void *blob)
 {
-    free(blob);
+    extern void __libc_free(void *);
+    __libc_free(blob);
 }
 
 /* Load a level blob (from nle_save_level) as the CURRENT level of this
@@ -1303,7 +960,7 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
     char errbuf[BUFSZ];
     const char *fq;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
     ledger = ledger_no(&u.uz);
@@ -1320,7 +977,7 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
             return 2;
         }
         close(wfd);
-        level_info[ledger].linfo_flags |= LFILE_EXISTS;
+        level_info[ledger].flags |= LFILE_EXISTS;
     }
 
     fd = open_levelfile(ledger, errbuf);
@@ -1366,10 +1023,6 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
                 }
     }
 
-    /* The rl mirror is not reset here (no callable C reset exists from this
-     * translation unit); the next nle_step()'s full docrt() repaints every
-     * tile and so clears any prior-level glyph residue. */
-
     /* docrt()/flush_screen()/pline() route through the rl window port, which
      * YIELDS the game coroutine (jump_fcontext). They MUST NOT be called from
      * this entry point (main context) or we jump to a dead fcontext and
@@ -1392,7 +1045,7 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
 int
 nle_set_state(nle_ctx_t *nle, const char *field, long value)
 {
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (!field)
         return 1;
 
@@ -1429,10 +1082,6 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
         if (value < 0L)
             value = 0L;
         if (!gold && value > 0L) {
-            /* mkgold(0,...) at hero pos makes a random pile; make it at an
-             * offmap-ish spot then re-quan, then move into inventory. We
-             * instead build the coin object directly via mkgold on the hero
-             * tile and pull it in. */
             gold = mkgold(value, u.ux, u.uy);
             if (gold) {
                 obj_extract_self(gold); /* remove from floor pile */
@@ -1450,15 +1099,12 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
             }
         }
     } else if (!strcmp(field, "luck")) {
-        /* Directly set the hero's intrinsic luck (u.uluck).  Effective luck is
+        /* Directly set the hero's intrinsic luck (u.uluck). Effective luck is
          * Luck == u.uluck + u.moreluck, where moreluck is the luckstone bonus
-         * (+LUCKADD when carrying a blessed/uncursed luck stone).  Normal
+         * (+LUCKADD when carrying a blessed/uncursed luck stone). Normal
          * intrinsic luck is bounded LUCKMIN..LUCKMAX (-10..10); the maximum
          * *effective* luck achievable in vanilla play is LUCKMAX + LUCKADD
-         * (10 + 3 == 13).  For the "better items / luck" ablation we let the
-         * modify poke reproduce that full effective range without requiring a
-         * luck stone in inventory, so we clamp the injected intrinsic value to
-         * [-13, 13].  Luck feeds to-hit, prayer outcome, theft, and drop rolls. */
+         * (10 + 3 == 13), so the injected value is clamped to [-13, 13]. */
         int lk = (int) value;
 
         if (lk < -13)
@@ -1469,12 +1115,9 @@ nle_set_state(nle_ctx_t *nle, const char *field, long value)
     } else if (!strcmp(field, "str") || !strcmp(field, "dex")
                || !strcmp(field, "con") || !strcmp(field, "int")
                || !strcmp(field, "wis") || !strcmp(field, "cha")) {
-        /* Set a single attribute (base + max).  The caller passes NetHack's
+        /* Set a single attribute (base + max). The caller passes NetHack's
          * encoded value: 3..18 normal, 19..118 == 18/01..18/00 strength
-         * percentile, 119..125 == 19..25 (exceptional, magic only).  The
-         * displayed attribute is acurr (== ABASE) plus item/temp bonuses,
-         * which are zero for an injected hero, so this is what shows up.
-         * Used by the curriculum stat-upgrade on the deep jump. */
+         * percentile, 119..125 == 19..25 (exceptional, magic only). */
         int idx = (!strcmp(field, "str")) ? A_STR
                 : (!strcmp(field, "int")) ? A_INT
                 : (!strcmp(field, "wis")) ? A_WIS
@@ -1508,7 +1151,7 @@ nle_goto_depth(nle_ctx_t *nle, int n)
 {
     d_level dest;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
 
     if (n < 1 || n > (int) dunlevs_in_dungeon(&u.uz))
         return 1;
@@ -1532,7 +1175,7 @@ nle_goto_depth(nle_ctx_t *nle, int n)
 int
 nle_seat_on_stair(nle_ctx_t *nle, int down)
 {
-    current_nle_ctx = nle;
+    nle_anchor(nle);
 
     if (down && xdnstair > 0) {
         u_on_newpos(xdnstair, ydnstair);
@@ -1556,7 +1199,7 @@ nle_level_up(nle_ctx_t *nle, int n)
     int i;
     boolean saved_window_inited;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
 
     /* pluslvl() emits messages (You_feel/pline "Welcome to experience
      * level N"). Emitting through the window port from this bare entry
@@ -1572,10 +1215,8 @@ nle_level_up(nle_ctx_t *nle, int n)
 
     iflags.window_inited = saved_window_inited;
 
-    /* Keep experience points consistent with the new level: bump uexp up to
-     * the threshold for this level if it is currently too low, so the level
-     * does not immediately get clobbered by newexplevel(). Mirrors the
-     * xp_level setter in nle_set_state. */
+    /* Keep experience points consistent with the new level (mirrors the
+     * xp_level setter in nle_set_state). */
     if (u.uexp < newuexp(u.ulevel - 1))
         u.uexp = newuexp(u.ulevel - 1);
 
@@ -1587,30 +1228,30 @@ nle_level_up(nle_ctx_t *nle, int n)
  * Curriculum traversal: cross-branch goto + dungeon-table query.
  * nle_goto_depth can only move WITHIN the current branch (it pins
  * dest.dnum = u.uz.dnum) and is clamped to that branch's length, so it
- * cannot reach Gehennom (levels ~26-50) or the Elemental Planes.  These
+ * cannot reach Gehennom (levels ~26-50) or the Elemental Planes. These
  * entry points expose the dungeon layout and an arbitrary (dnum, dlevel)
  * jump so a curriculum can stitch e.g. DoD 1-3 to Gehennom 48-50.
  * =================================================================== */
+
+extern int NDECL(nle_n_dgns); /* dungeon.c */
 
 /* Number of dungeon branches currently defined (DoD, Gehennom, Mines, ...). */
 int
 nle_num_dungeons(nle_ctx_t *nle)
 {
-    current_nle_ctx = nle;
-    return nle->s_n_dgns;
+    nle_anchor(nle);
+    return nle_n_dgns();
 }
 
 /* Report the layout of dungeon branch `idx`: its name, logical depth_start
- * (the absolute depth of its first level) and number of levels.  Lets the
- * caller map an absolute "Dlvl N" to a concrete (dnum, dlevel) and locate
- * branches (Gehennom, "The Elemental Planes") by name.  Any of the out
- * pointers may be NULL.  Returns 0 on success, 1 if idx is out of range. */
+ * (the absolute depth of its first level) and number of levels. Any of the
+ * out pointers may be NULL. Returns 0 on success, 1 if idx is out of range. */
 int
 nle_dungeon_info(nle_ctx_t *nle, int idx, char *name_out, int name_cap,
                  int *depth_start_out, int *num_dunlevs_out)
 {
-    current_nle_ctx = nle;
-    if (idx < 0 || idx >= nle->s_n_dgns)
+    nle_anchor(nle);
+    if (idx < 0 || idx >= nle_n_dgns())
         return 1;
     if (name_out && name_cap > 0) {
         (void) strncpy(name_out, dungeons[idx].dname, (size_t) (name_cap - 1));
@@ -1625,17 +1266,14 @@ nle_dungeon_info(nle_ctx_t *nle, int idx, char *name_out, int name_cap,
 
 /* Schedule a DEFERRED move of the hero to an ARBITRARY (dnum, dlevel),
  * including a dungeon branch other than the hero's current one (e.g.
- * Gehennom or the Elemental Planes).  Like nle_goto_depth this is two-phase:
- * the actual goto_level() runs via deferred_goto() on the next nle_step(),
- * which handles cross-branch movement and generates the destination level on
- * demand (mklev) if it has not been visited.  at_stairs/falling/portal are
- * all FALSE so the hero lands on a random valid spot (the destination's
- * branch stairs may not be registered for a teleport-style jump).
+ * Gehennom or the Elemental Planes). Two-phase like nle_goto_depth: the
+ * actual goto_level() runs via deferred_goto() on the next nle_step(), which
+ * handles cross-branch movement and generates the destination level on
+ * demand (mklev) if it has not been visited.
  *
  * Entering the endgame (the Elemental Planes) requires the Amulet of Yendor
  * (goto_level returns early without it); we grant it here so the curriculum
- * can reach the planes.  The non-wizard gate in goto_level then routes the
- * hero to the Plane of Earth, which is the natural plane entry point.
+ * can reach the planes.
  *
  * Returns 0 on success, nonzero for an out-of-range (dnum, dlevel). */
 int
@@ -1643,9 +1281,9 @@ nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
 {
     d_level dest;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
 
-    if (dnum < 0 || dnum >= nle->s_n_dgns)
+    if (dnum < 0 || dnum >= nle_n_dgns())
         return 1;
     if (dlevel < 1 || dlevel > (int) dungeons[dnum].num_dunlevs)
         return 1;
@@ -1665,25 +1303,18 @@ nle_goto_abs(nle_ctx_t *nle, int dnum, int dlevel)
 }
 
 /* Report whether the hero is standing on a staircase: +1 on the down stair,
- * -1 on the up stair, 0 otherwise. Lets a curriculum decide, BEFORE issuing a
- * descend/ascend, whether the hero has genuinely navigated onto the stairs (so
- * the cross-branch jump only fires on a real stair use, never a teleport). */
+ * -1 on the up stair, 0 otherwise. The BRANCH staircase (sstairs) -- e.g. the
+ * Gnomish Mines entrance -- reports with a DISTINCT magnitude (2 = branch
+ * down, -2 = branch up) so callers can tell it apart from the level's own
+ * main stair. */
 int
 nle_hero_on_stair(nle_ctx_t *nle)
 {
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (xdnstair > 0 && u.ux == xdnstair && u.uy == ydnstair)
         return 1;
     if (xupstair > 0 && u.ux == xupstair && u.uy == yupstair)
         return -1;
-    /* Also report the BRANCH staircase (sstairs) — e.g. the Gnomish Mines
-     * entrance on Dungeons-of-Doom levels — but with a DISTINCT magnitude (2 =
-     * branch down, -2 = branch up) so callers can tell it apart from the level's
-     * own main stair (1/-1). The curriculum needs this: any downstair out of
-     * DoD3 should jump to Gehennom, but on DoD1/2 only the *branch* '>' must be
-     * redirected (the main '>' should descend normally). Callers that only test
-     * ==1/==-1 are unaffected (they treat the branch as "not on stair", as
-     * before). */
     if (sstairs.sx > 0 && u.ux == sstairs.sx && u.uy == sstairs.sy)
         return sstairs.up ? -2 : 2;
     return 0;
@@ -1691,33 +1322,21 @@ nle_hero_on_stair(nle_ctx_t *nle)
 
 /* Grant the pre-primed invocation kit straight into the hero's pack so the
  * curriculum agent can actually perform the invocation ritual (the only way
- * down from the Invocation level to Moloch's Sanctum — that level has no
- * down-staircase by design). Modeled on the "gold" branch of nle_set_state:
- * build objects with mksobj, then addinv() (which also sets u.uhave.menorah/
- * bell/book via addinv_core1, so the ritual's carry-checks pass).
+ * down from the Invocation level to Moloch's Sanctum -- that level has no
+ * down-staircase by design). Build objects with mksobj, then addinv() (which
+ * also sets u.uhave.menorah/bell/book via addinv_core1, so the ritual's
+ * carry-checks pass).
  *
  * The kit is pre-primed so the agent does NOT have to hunt candles or light
  * anything: the Candelabrum arrives with all 7 candles (spe=7) and lit, the
- * Bell is charged, and all three are uncursed. Note deadbook()'s gate reads
- * only the plain obj fields spe/lamplit (not attached candle objects), and
- * those persist across the synthetic DoD3->Gehennom goto_abs jump regardless
- * of whether the burn timer/light-source survive it; age=5000 keeps the burn
- * timer from expiring during navigation. The Bell is intentionally NOT
- * pre-rung — the honest flow has the agent ring it live (use_bell sets
- * obj->age=moves, satisfying the "rung within 5 turns" check). */
+ * Bell is charged, and all three are uncursed and pre-identified. The Bell is
+ * intentionally NOT pre-rung -- the honest flow has the agent ring it live. */
 int
 nle_grant_invocation_kit(nle_ctx_t *nle)
 {
     struct obj *cand, *bell, *book;
 
-    current_nle_ctx = nle;
-
-    /* The three artifacts are granted pre-IDENTIFIED (makeknown on the type +
-     * per-object known/dknown/bknown) so they render by their real names
-     * ("the Candelabrum of Invocation", "the Bell of Opening", "the Book of the
-     * Dead") rather than random unidentified appearances ("silver bell",
-     * "papyrus spellbook"). The agent references them by name (apply('bell'),
-     * read('Book of the Dead')), and the ritual-ready obs hint keys off them. */
+    nle_anchor(nle);
 
     /* Candelabrum of Invocation: 7 candles attached, uncursed, lit w/ deep fuel. */
     cand = mksobj(CANDELABRUM_OF_INVOCATION, TRUE, FALSE);
@@ -1764,13 +1383,11 @@ nle_grant_invocation_kit(nle_ctx_t *nle)
 
 /* Report the vibrating-square (invocation) position. Writes inv_pos into
  * *x,*y and returns 0 on the Invocation level; otherwise writes (0,0) and
- * returns nonzero (inv_pos is only meaningful on that level). Lets the
- * curriculum reveal the square so the agent can navigate onto it — the trap
- * itself is created hidden, but the tile is walkable maze floor. */
+ * returns nonzero (inv_pos is only meaningful on that level). */
 int
 nle_invocation_pos(nle_ctx_t *nle, int *x, int *y)
 {
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (x)
         *x = 0;
     if (y)
@@ -1784,18 +1401,11 @@ nle_invocation_pos(nle_ctx_t *nle, int *x, int *y)
     return 0;
 }
 
-/* Stage the hero at the vibrating (invocation) square. Mirrors
- * nle_seat_on_stair. With adjacent==0 the hero lands ON the square; with
- * adjacent!=0 the hero lands on an accessible, unoccupied tile orthogonally/
- * diagonally next to it (so the agent takes one honest step onto the square
- * before ringing the Bell / reading the Book). Returns 0 on the Invocation
- * level (hero relocated), nonzero otherwise.
- *
- * Why staging is needed: the deep Gehennom mazes generated on-demand by the
- * curriculum's goto_abs jump are monster/trap-choked and effectively
- * unnavigable to the single hidden square, so the curriculum stages the hero at
- * the ritual site — the RITUAL itself (step on, ring Bell, read Book) is still
- * performed by the agent. */
+/* Stage the hero at the vibrating (invocation) square. With adjacent==0 the
+ * hero lands ON the square; with adjacent!=0 the hero lands on an accessible,
+ * unoccupied tile next to it (so the agent takes one honest step onto the
+ * square before ringing the Bell / reading the Book). Returns 0 on the
+ * Invocation level (hero relocated), nonzero otherwise. */
 int
 nle_seat_on_invocation_square(nle_ctx_t *nle, int adjacent)
 {
@@ -1806,7 +1416,7 @@ nle_seat_on_invocation_square(nle_ctx_t *nle, int adjacent)
     };
     int i;
 
-    current_nle_ctx = nle;
+    nle_anchor(nle);
     if (!Invocation_lev(&u.uz) || inv_pos.x <= 0)
         return 1;
 
@@ -1829,7 +1439,7 @@ nle_seat_on_invocation_square(nle_ctx_t *nle, int adjacent)
             return 0;
         }
     }
-    /* No free neighbor (fully walled/occupied) — fall back to the square. */
+    /* No free neighbor (fully walled/occupied) -- fall back to the square. */
     u_on_newpos(inv_pos.x, inv_pos.y);
     context.botl = TRUE;
     return 0;
@@ -1853,7 +1463,8 @@ VA_DECL(const char *, s)
     nethack_exit(EXIT_FAILURE);
 }
 
-/* From unixtty.c */
+/* From unixtty.c. There is no real terminal: these stay zero for the whole
+ * process (tools/collect_globals/whitelist.txt). */
 char erase_char, intr_char, kill_char;
 
 void
@@ -1893,6 +1504,7 @@ introff()
 #include <sys/ioctl.h>
 #include <sys/vt.h>
 
+/* whether stdin is a Linux console: process-level terminal identity */
 int linux_flag_console = 0;
 
 void NDECL(linux_mapon);

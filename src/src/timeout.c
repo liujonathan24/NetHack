@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 #include "lev.h" /* for checking save modes */
 
 STATIC_DCL void NDECL(stoned_dialogue);
@@ -100,7 +99,7 @@ const struct propname {
 };
 
 /* He is being petrified - dialogue by inmet!tower */
-static const char *const stoned_texts[] = {
+static NEARDATA const char *const stoned_texts[] = {
     "You are slowing down.",            /* 5 */
     "Your limbs are stiffening.",       /* 4 */
     "Your limbs have turned to stone.", /* 3 */
@@ -124,7 +123,7 @@ stoned_dialogue()
     switch ((int) i) {
     case 5: /* slowing down */
         HFast = 0L;
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 4: /* limbs stiffening */
@@ -132,13 +131,13 @@ stoned_dialogue()
            don't stop attempt to eat tin--might be lizard or acidic */
         if (!Popeye(STONED))
             stop_occupation();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 3: /* limbs turned to stone */
         stop_occupation();
         nomul(-3); /* can't move anymore */
-        current_nle_ctx->multi_reason = "getting current_nle_ctx->stoned";
+        multi_reason = "getting stoned";
         nomovemsg = You_can_move_again; /* not unconscious */
         /* "your limbs have turned to stone" so terminate wounded legs */
         if (Wounded_legs && !u.usteed)
@@ -160,7 +159,7 @@ stoned_dialogue()
 }
 
 /* hero is getting sicker and sicker prior to vomiting */
-static const char *const vomiting_texts[] = {
+static NEARDATA const char *const vomiting_texts[] = {
     "are feeling mildly nauseated.", /* 14 */
     "feel slightly confused.",       /* 11 */
     "can't seem to think straight.", /* 8 */
@@ -190,7 +189,7 @@ vomiting_dialogue()
     /*FALLTHRU*/
     case 9:
         make_confused((HConfusion & TIMEOUT) + (long) d(2, 4), FALSE);
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 8:
@@ -233,7 +232,7 @@ vomiting_dialogue()
     exercise(A_CON, FALSE);
 }
 
-static const char *const choke_texts[] = {
+static NEARDATA const char *const choke_texts[] = {
     "You find it hard to breathe.",
     "You're gasping for air.",
     "You can no longer breathe.",
@@ -241,7 +240,7 @@ static const char *const choke_texts[] = {
     "You suffocate."
 };
 
-static const char *const choke_texts2[] = {
+static NEARDATA const char *const choke_texts2[] = {
     "Your %s is becoming constricted.",
     "Your blood is having trouble reaching your brain.",
     "The pressure on your %s increases.",
@@ -269,7 +268,7 @@ choke_dialogue()
     exercise(A_STR, FALSE);
 }
 
-static const char *const levi_texts[] = {
+static NEARDATA const char *const levi_texts[] = {
     "You float slightly lower.",
     "You wobble unsteadily %s the %s."
 };
@@ -301,7 +300,7 @@ levitation_dialogue()
     }
 }
 
-static const char *const slime_texts[] = {
+static NEARDATA const char *const slime_texts[] = {
     "You are turning a little %s.",   /* 5 */
     "Your limbs are getting oozy.",   /* 4 */
     "Your skin begins to peel away.", /* 3 */
@@ -344,7 +343,7 @@ slime_dialogue()
         HFast = 0L; /* lose intrinsic speed */
         if (!Popeye(SLIMED))
             stop_occupation();
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
         break;
     case 2L: /* skin begins to peel */
@@ -382,11 +381,11 @@ struct kinfo *kptr;
     }
     /* more sure killer reason is set up */
     if (kptr && kptr->name[0]) {
-        killer.format = kptr->format;
-        Strcpy(killer.name, kptr->name);
+        NH_G(killer).format = kptr->format;
+        Strcpy(NH_G(killer).name, kptr->name);
     } else {
-        killer.format = NO_KILLER_PREFIX;
-        Strcpy(killer.name, "turned into green slime");
+        NH_G(killer).format = NO_KILLER_PREFIX;
+        Strcpy(NH_G(killer).name, "turned into green slime");
     }
     dealloc_killer(kptr);
 
@@ -404,20 +403,20 @@ struct kinfo *kptr;
      */
     if (emits_light(youmonst.data))
         del_light_source(LS_MONSTER, monst_to_any(&youmonst));
-    save_mvflags = mvitals[PM_GREEN_SLIME].mvflags;
-    mvitals[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
+    save_mvflags = NH_G(mvitals)[PM_GREEN_SLIME].mvflags;
+    NH_G(mvitals)[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
     /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
     (void) polymon(PM_GREEN_SLIME);
-    mvitals[PM_GREEN_SLIME].mvflags = save_mvflags;
+    NH_G(mvitals)[PM_GREEN_SLIME].mvflags = save_mvflags;
     done_timeout(TURNED_SLIME, SLIMED);
 
     /* life-saved; even so, hero still has turned into green slime;
        player may have genocided green slimes after being infected */
-    if ((mvitals[PM_GREEN_SLIME].mvflags & G_GENOD) != 0) {
+    if ((NH_G(mvitals)[PM_GREEN_SLIME].mvflags & G_GENOD) != 0) {
         char slimebuf[BUFSZ];
 
-        killer.format = KILLED_BY;
-        Strcpy(killer.name, "slimicide");
+        NH_G(killer).format = KILLED_BY;
+        Strcpy(NH_G(killer).name, "slimicide");
         /* vary the message depending upon whether life-save was due to
            amulet or due to declining to die in explore or wizard mode */
         Strcpy(slimebuf, "green slime has been genocided...");
@@ -442,7 +441,7 @@ struct kinfo *kptr;
    Message given is "you feel much slimmer" as a joke hint that you can
    move between things which are closely packed--like the substance of
    solid rock! */
-static const char *const phaze_texts[] = {
+static NEARDATA const char *const phaze_texts[] = {
     "You start to feel bloated.",
     "You are feeling rather flabby.",
 };
@@ -484,9 +483,9 @@ nh_timeout()
     boolean was_flying;
     int sleeptime;
     int m_idx;
-    int baseluck = (flags.moonphase == FULL_MOON) ? 1 : 0;
+    int baseluck = (NH_G(flags).moonphase == FULL_MOON) ? 1 : 0;
 
-    if (flags.friday13)
+    if (NH_G(flags).friday13)
         baseluck -= 1;
 
     if (u.uluck != baseluck
@@ -553,11 +552,11 @@ nh_timeout()
             switch (upp - u.uprops) {
             case STONED:
                 if (kptr && kptr->name[0]) {
-                    killer.format = kptr->format;
-                    Strcpy(killer.name, kptr->name);
+                    NH_G(killer).format = kptr->format;
+                    Strcpy(NH_G(killer).name, kptr->name);
                 } else {
-                    killer.format = NO_KILLER_PREFIX;
-                    Strcpy(killer.name, "killed by petrification");
+                    NH_G(killer).format = NO_KILLER_PREFIX;
+                    Strcpy(NH_G(killer).name, "killed by petrification");
                 }
                 dealloc_killer(kptr);
                 /* (unlike sliming, you aren't changing form here) */
@@ -572,20 +571,20 @@ nh_timeout()
             case SICK:
                 You("die from your illness.");
                 if (kptr && kptr->name[0]) {
-                    killer.format = kptr->format;
-                    Strcpy(killer.name, kptr->name);
+                    NH_G(killer).format = kptr->format;
+                    Strcpy(NH_G(killer).name, kptr->name);
                 } else {
-                    killer.format = KILLED_BY_AN;
-                    killer.name[0] = 0; /* take the default */
+                    NH_G(killer).format = KILLED_BY_AN;
+                    NH_G(killer).name[0] = 0; /* take the default */
                 }
                 dealloc_killer(kptr);
 
-                if ((m_idx = name_to_mon(killer.name)) >= LOW_PM) {
+                if ((m_idx = name_to_mon(NH_G(killer).name)) >= LOW_PM) {
                     if (type_is_pname(&mons[m_idx])) {
-                        killer.format = KILLED_BY;
+                        NH_G(killer).format = KILLED_BY;
                     } else if (mons[m_idx].geno & G_UNIQ) {
-                        Strcpy(killer.name, the(killer.name));
-                        killer.format = KILLED_BY;
+                        Strcpy(NH_G(killer).name, the(NH_G(killer).name));
+                        NH_G(killer).format = KILLED_BY;
                     }
                 }
                 done_timeout(POISONING, SICK);
@@ -689,8 +688,8 @@ nh_timeout()
                 }
                 break;
             case STRANGLED:
-                killer.format = KILLED_BY;
-                Strcpy(killer.name,
+                NH_G(killer).format = KILLED_BY;
+                Strcpy(NH_G(killer).name,
                        (u.uburied) ? "suffocation" : "strangulation");
                 done_timeout(DIED, STRANGLED);
                 /* must be declining to die in explore|wizard mode;
@@ -706,7 +705,7 @@ nh_timeout()
                 if (u.umoved && !Levitation) {
                     slip_or_trip();
                     nomul(-2);
-                    current_nle_ctx->multi_reason = "fumbling";
+                    multi_reason = "fumbling";
                     nomovemsg = "";
                     /* The more you are carrying the more likely you
                      * are to make noise when you fumble.  Adjustments
@@ -742,9 +741,9 @@ boolean wakeup_msg;
 {
     stop_occupation();
     nomul(how_long);
-    current_nle_ctx->multi_reason = "sleeping";
+    multi_reason = "sleeping";
     /* generally don't notice sounds while sleeping */
-    if (wakeup_msg && current_nle_ctx->multi == how_long) {
+    if (wakeup_msg && multi == how_long) {
         /* caller can follow with a direct call to Hear_again() if
            there's a need to override this when wakeup_msg is true */
         incr_itimeout(&HDeaf, how_long);
@@ -820,7 +819,7 @@ long timeout;
     mon = mon2 = (struct monst *) 0;
     mnum = big_to_little(egg->corpsenm);
     /* The identity of one's father is learned, not innate */
-    yours = (egg->spe || (!flags.female && carried(egg) && !rn2(2)));
+    yours = (egg->spe || (!NH_G(flags).female && carried(egg) && !rn2(2)));
     silent = (timeout != monstermoves); /* hatched while away */
 
     /* only can hatch when in INVENT, FLOOR, MINVENT */
@@ -828,7 +827,7 @@ long timeout;
         hatchcount = rnd((int) egg->quan);
         cansee_hatchspot = cansee(x, y) && !silent;
         if (!(mons[mnum].geno & G_UNIQ)
-            && !(mvitals[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
+            && !(NH_G(mvitals)[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
             for (i = hatchcount; i > 0; i--) {
                 if (!enexto(&cc, x, y, &mons[mnum])
                     || !(mon = makemon(&mons[mnum], cc.x, cc.y, NO_MINVENT)))
@@ -843,7 +842,7 @@ long timeout;
                             mon->mtame = 20;
                     }
                 }
-                if (mvitals[mnum].mvflags & G_EXTINCT)
+                if (NH_G(mvitals)[mnum].mvflags & G_EXTINCT)
                     break;  /* just made last one */
                 mon2 = mon; /* in case makemon() fails on 2nd egg */
             }
@@ -903,7 +902,7 @@ long timeout;
             if (yours) {
                 pline("%s cries sound like \"%s%s\"",
                       siblings ? "Their" : "Its",
-                      flags.female ? "mommy" : "daddy", egg->spe ? "." : "?");
+                      NH_G(flags).female ? "mommy" : "daddy", egg->spe ? "." : "?");
             } else if (mon->data->mlet == S_DRAGON && !Deaf) {
                 verbalize("Gleep!"); /* Mything eggs :-) */
             }
@@ -970,7 +969,7 @@ int mnum;
 {
     /* baby monsters hatch from grown-up eggs */
     mnum = little_to_big(mnum);
-    mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+    NH_G(mvitals)[mnum].mvflags |= MV_KNOWS_EGG;
     /* we might have just learned about other eggs being carried */
     update_inventory();
 }
@@ -1034,9 +1033,9 @@ slip_or_trip()
         }
         if (!uarmf && otmp->otyp == CORPSE
             && touch_petrifies(&mons[otmp->corpsenm]) && !Stone_resistance) {
-            Sprintf(killer.name, "tripping over %s corpse",
+            Sprintf(NH_G(killer).name, "tripping over %s corpse",
                     an(mons[otmp->corpsenm].mname));
-            instapetrify(killer.name);
+            instapetrify(NH_G(killer).name);
         }
     } else if (rn2(3) && is_ice(u.ux, u.uy)) {
         pline("%s %s%s on the ice.",
@@ -1617,7 +1616,7 @@ do_storms()
         if (!u.uinvulnerable) {
             stop_occupation();
             nomul(-3);
-            current_nle_ctx->multi_reason = "hiding from thunderstorm";
+            multi_reason = "hiding from thunderstorm";
             nomovemsg = 0;
         }
     } else
@@ -1693,12 +1692,11 @@ STATIC_DCL boolean FDECL(mon_is_local, (struct monst *));
 STATIC_DCL boolean FDECL(timer_is_local, (timer_element *));
 STATIC_DCL int FDECL(maybe_write_timer, (int, int, BOOLEAN_P));
 
-/* timer_base + timer_id moved to nle_ctx_t (per-env, not
- * per-thread). __thread was wrong for vecenv: env A's pending timers
- * leak into env B's run_timers and panic on "object lost" because the
- * object belongs to env A's level which is currently swapped out. */
-#define timer_base (*(timer_element **)&current_nle_ctx->s_timer_base)
-#define timer_id   (current_nle_ctx->s_timer_id)
+/* ordered timer list */
+#define timer_base (nh_g->s_timeout_c_timer_base) /* "active" */
+#define timer_id (nh_g->s_timeout_c_timer_id)
+const unsigned long nh_tmpl_s_timeout_c_timer_id =
+1;
 
 /* If defined, then include names when printing out the timer queue */
 #define VERBOSE_TIMER
@@ -2364,7 +2362,7 @@ int fd, mode, range;
 void
 restore_timers(fd, range, ghostly, adjust)
 int fd, range;
-boolean ghostly; /* current_nle_ctx->restoring from a ghost level */
+boolean ghostly; /* restoring from a ghost level */
 long adjust;     /* how much to adjust timeout */
 {
     int count;

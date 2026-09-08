@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 /*** Table of all roles ***/
 /* According to AD&D, HD for some classes (ex. Wizard) should be smaller
@@ -589,11 +588,9 @@ const struct Role roles[] = {
 /* The player's role, created at runtime from initial
  * choices.  This may be munged in role_init().
  */
-/* urole — per-env role description, set per-game from roles[]
- * baseline. Migrated to nle_ctx_t. The baseline form (`Undefined`)
- * isn't needed at runtime since role_init() overwrites; just allocate
- * zero-init storage in init_nle. */
-static const struct Role urole_baseline = {
+/* urole: per-env, see nh_globals.h */
+const struct Role nh_tmpl_urole =
+{
     { "Undefined", 0 },
     { { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 },
       { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 } },
@@ -733,7 +730,9 @@ const struct Race races[] = {
 /* The player's race, created at runtime from initial
  * choices.  This may be munged in role_init().
  */
-static const struct Race urace_baseline = {
+/* urace: per-env, see nh_globals.h */
+const struct Race nh_tmpl_urace =
+{
     "something",
     "undefined",
     "something",
@@ -771,10 +770,11 @@ const struct Align aligns[] = {
 };
 
 /* Filters */
-static struct {
+struct nh_anon_s_role_c_rfilter {
     boolean roles[SIZE(roles)];
     short mask;
-} rfilter;
+};
+#define rfilter (*(struct nh_anon_s_role_c_rfilter *) nh_g->s_role_c_rfilter)
 
 STATIC_DCL int NDECL(randrole_filtered);
 STATIC_DCL char *FDECL(promptsep, (char *, int));
@@ -782,7 +782,9 @@ STATIC_DCL int FDECL(role_gendercount, (int));
 STATIC_DCL int FDECL(race_alignmentcount, (int));
 
 /* used by str2XXX() */
-static char NEARDATA randomstr[] = "random";
+#define randomstr (nh_g->s_role_c_randomstr)
+const char nh_tmpl_s_role_c_randomstr[] =
+"random";
 
 boolean
 validrole(rolenum)
@@ -1339,39 +1341,39 @@ rigid_role_checks()
      * single possible selection, otherwise it returns ROLE_NONE.
      *
      */
-    if (flags.initrole == ROLE_RANDOM) {
+    if (NH_G(flags).initrole == ROLE_RANDOM) {
         /* If the role was explicitly specified as ROLE_RANDOM
          * via -uXXXX-@ or OPTIONS=role:random then choose the role
          * in here to narrow down later choices.
          */
-        flags.initrole = pick_role(flags.initrace, flags.initgend,
-                                   flags.initalign, PICK_RANDOM);
-        if (flags.initrole < 0)
-            flags.initrole = randrole_filtered();
+        NH_G(flags).initrole = pick_role(NH_G(flags).initrace, NH_G(flags).initgend,
+                                   NH_G(flags).initalign, PICK_RANDOM);
+        if (NH_G(flags).initrole < 0)
+            NH_G(flags).initrole = randrole_filtered();
     }
-    if (flags.initrace == ROLE_RANDOM
-        && (tmp = pick_race(flags.initrole, flags.initgend,
-                            flags.initalign, PICK_RANDOM)) != ROLE_NONE)
-        flags.initrace = tmp;
-    if (flags.initalign == ROLE_RANDOM
-        && (tmp = pick_align(flags.initrole, flags.initrace,
-                             flags.initgend, PICK_RANDOM)) != ROLE_NONE)
-        flags.initalign = tmp;
-    if (flags.initgend == ROLE_RANDOM
-        && (tmp = pick_gend(flags.initrole, flags.initrace,
-                            flags.initalign, PICK_RANDOM)) != ROLE_NONE)
-        flags.initgend = tmp;
+    if (NH_G(flags).initrace == ROLE_RANDOM
+        && (tmp = pick_race(NH_G(flags).initrole, NH_G(flags).initgend,
+                            NH_G(flags).initalign, PICK_RANDOM)) != ROLE_NONE)
+        NH_G(flags).initrace = tmp;
+    if (NH_G(flags).initalign == ROLE_RANDOM
+        && (tmp = pick_align(NH_G(flags).initrole, NH_G(flags).initrace,
+                             NH_G(flags).initgend, PICK_RANDOM)) != ROLE_NONE)
+        NH_G(flags).initalign = tmp;
+    if (NH_G(flags).initgend == ROLE_RANDOM
+        && (tmp = pick_gend(NH_G(flags).initrole, NH_G(flags).initrace,
+                            NH_G(flags).initalign, PICK_RANDOM)) != ROLE_NONE)
+        NH_G(flags).initgend = tmp;
 
-    if (flags.initrole != ROLE_NONE) {
-        if (flags.initrace == ROLE_NONE)
-            flags.initrace = pick_race(flags.initrole, flags.initgend,
-                                       flags.initalign, PICK_RIGID);
-        if (flags.initalign == ROLE_NONE)
-            flags.initalign = pick_align(flags.initrole, flags.initrace,
-                                         flags.initgend, PICK_RIGID);
-        if (flags.initgend == ROLE_NONE)
-            flags.initgend = pick_gend(flags.initrole, flags.initrace,
-                                       flags.initalign, PICK_RIGID);
+    if (NH_G(flags).initrole != ROLE_NONE) {
+        if (NH_G(flags).initrace == ROLE_NONE)
+            NH_G(flags).initrace = pick_race(NH_G(flags).initrole, NH_G(flags).initgend,
+                                       NH_G(flags).initalign, PICK_RIGID);
+        if (NH_G(flags).initalign == ROLE_NONE)
+            NH_G(flags).initalign = pick_align(NH_G(flags).initrole, NH_G(flags).initrace,
+                                         NH_G(flags).initgend, PICK_RIGID);
+        if (NH_G(flags).initgend == ROLE_NONE)
+            NH_G(flags).initgend = pick_gend(NH_G(flags).initrole, NH_G(flags).initrace,
+                                       NH_G(flags).initalign, PICK_RIGID);
     }
 }
 
@@ -1424,9 +1426,8 @@ clearrolefilter()
 #define BP_ROLE 3
 #define NUM_BP 4
 
-/* pa, post_attribs — migrated to nle_ctx_t */
-#define pa             (current_nle_ctx->s_role_pa)
-#define post_attribs   (current_nle_ctx->s_role_post_attribs)
+#define pa (nh_g->s_role_c_pa)
+#define post_attribs (nh_g->s_role_c_post_attribs)
 
 STATIC_OVL char *
 promptsep(buf, num_post_attribs)
@@ -1479,6 +1480,8 @@ int racenum;
     return aligncount;
 }
 
+const char nh_tmpl_l_role_c_root_plselection_prompt_err_ret[] = " character's";
+
 char *
 root_plselection_prompt(suppliedbuf, buflen, rolenum, racenum, gendnum,
                         alignnum)
@@ -1487,11 +1490,11 @@ int buflen, rolenum, racenum, gendnum, alignnum;
 {
     int k, gendercount = 0, aligncount = 0;
     char buf[BUFSZ];
-    static char err_ret[] = " character's";
+    /* err_ret: per-env nh_g->l_role_c_root_plselection_prompt_err_ret */
     boolean donefirst = FALSE;
 
     if (!suppliedbuf || buflen < 1)
-        return err_ret;
+        return NH_G(l_role_c_root_plselection_prompt_err_ret);
 
     /* initialize these static variables each time this is called */
     post_attribs = 0;
@@ -1627,7 +1630,7 @@ int buflen, rolenum, racenum, gendnum, alignnum;
         Strcpy(suppliedbuf, buf);
         return suppliedbuf;
     } else
-        return err_ret;
+        return NH_G(l_role_c_root_plselection_prompt_err_ret);
 }
 
 char *
@@ -1674,13 +1677,13 @@ int buflen, rolenum, racenum, gendnum, alignnum;
     if (!num_post_attribs) {
         /* some constraints might have been mutually exclusive, in which case
            some prompting that would have been omitted is needed after all */
-        if (flags.initrole == ROLE_NONE && !pa[BP_ROLE])
+        if (NH_G(flags).initrole == ROLE_NONE && !pa[BP_ROLE])
             pa[BP_ROLE] = ++post_attribs;
-        if (flags.initrace == ROLE_NONE && !pa[BP_RACE])
+        if (NH_G(flags).initrace == ROLE_NONE && !pa[BP_RACE])
             pa[BP_RACE] = ++post_attribs;
-        if (flags.initalign == ROLE_NONE && !pa[BP_ALIGN])
+        if (NH_G(flags).initalign == ROLE_NONE && !pa[BP_ALIGN])
             pa[BP_ALIGN] = ++post_attribs;
-        if (flags.initgend == ROLE_NONE && !pa[BP_GEND])
+        if (NH_G(flags).initgend == ROLE_NONE && !pa[BP_GEND])
             pa[BP_GEND] = ++post_attribs;
         num_post_attribs = post_attribs;
     }
@@ -1719,13 +1722,13 @@ plnamesuffix()
     int i;
 
     /* some generic user names will be ignored in favor of prompting */
-    if (sysopt.genericusers) {
-        if (*sysopt.genericusers == '*') {
+    if (NH_G(sysopt).genericusers) {
+        if (*NH_G(sysopt).genericusers == '*') {
             *plname = '\0';
         } else {
             i = (int) strlen(plname);
-            if ((sptr = strstri(sysopt.genericusers, plname)) != 0
-                && (sptr == sysopt.genericusers || sptr[-1] == ' ')
+            if ((sptr = strstri(NH_G(sysopt).genericusers, plname)) != 0
+                && (sptr == NH_G(sysopt).genericusers || sptr[-1] == ' ')
                 && (sptr[i] == ' ' || sptr[i] == '\0'))
                 *plname = '\0'; /* call askname() */
         }
@@ -1746,13 +1749,13 @@ plnamesuffix()
 
             /* Try to match it to something */
             if ((i = str2role(sptr)) != ROLE_NONE)
-                flags.initrole = i;
+                NH_G(flags).initrole = i;
             else if ((i = str2race(sptr)) != ROLE_NONE)
-                flags.initrace = i;
+                NH_G(flags).initrace = i;
             else if ((i = str2gend(sptr)) != ROLE_NONE)
-                flags.initgend = i;
+                NH_G(flags).initgend = i;
             else if ((i = str2align(sptr)) != ROLE_NONE)
-                flags.initalign = i;
+                NH_G(flags).initalign = i;
         }
     } while (!*plname && !iflags.defer_plname);
 
@@ -1776,10 +1779,10 @@ winid where;
     char buf[BUFSZ];
     int r, c, g, a, allowmask;
 
-    r = flags.initrole;
-    c = flags.initrace;
-    g = flags.initgend;
-    a = flags.initalign;
+    r = NH_G(flags).initrole;
+    c = NH_G(flags).initrace;
+    g = NH_G(flags).initgend;
+    a = NH_G(flags).initalign;
     if (r >= 0) {
         allowmask = roles[r].allow;
         if ((allowmask & ROLE_RACEMASK) == MH_HUMAN)
@@ -1859,7 +1862,7 @@ int which;
 winid where;
 boolean preselect;
 {
-    static const char RS_menu_let[] = {
+    static NEARDATA const char RS_menu_let[] = {
         '=',  /* name */
         '?',  /* role */
         '/',  /* race */
@@ -1871,8 +1874,8 @@ boolean preselect;
     const char *what = 0, *constrainer = 0, *forcedvalue = 0;
     int f = 0, r, c, g, a, i, allowmask;
 
-    r = flags.initrole;
-    c = flags.initrace;
+    r = NH_G(flags).initrole;
+    c = NH_G(flags).initrace;
     switch (which) {
     case RS_NAME:
         what = "name";
@@ -1890,7 +1893,7 @@ boolean preselect;
         break;
     case RS_RACE:
         what = "race";
-        f = flags.initrace;
+        f = NH_G(flags).initrace;
         c = ROLE_NONE; /* override player's setting */
         if (r >= 0) {
             allowmask = roles[r].allow & ROLE_RACEMASK;
@@ -1910,7 +1913,7 @@ boolean preselect;
         break;
     case RS_GENDER:
         what = "gender";
-        f = flags.initgend;
+        f = NH_G(flags).initgend;
         g = ROLE_NONE;
         if (r >= 0) {
             allowmask = roles[r].allow & ROLE_GENDMASK;
@@ -1932,7 +1935,7 @@ boolean preselect;
         break;
     case RS_ALGNMNT:
         what = "alignment";
-        f = flags.initalign;
+        f = NH_G(flags).initalign;
         a = ROLE_NONE;
         if (r >= 0) {
             allowmask = roles[r].allow & ROLE_ALIGNMASK;
@@ -2026,78 +2029,88 @@ role_init()
     plnamesuffix();
 
     /* Check for a valid role.  Try flags.initrole first. */
-    if (!validrole(flags.initrole)) {
+    if (!validrole(NH_G(flags).initrole)) {
         /* Try the player letter second */
-        if ((flags.initrole = str2role(pl_character)) < 0)
+        if ((NH_G(flags).initrole = str2role(pl_character)) < 0)
             /* None specified; pick a random role */
-            flags.initrole = randrole_filtered();
+            NH_G(flags).initrole = randrole_filtered();
     }
 
     /* We now have a valid role index.  Copy the role name back. */
     /* This should become OBSOLETE */
-    Strcpy(pl_character, roles[flags.initrole].name.m);
+    Strcpy(pl_character, roles[NH_G(flags).initrole].name.m);
     pl_character[PL_CSIZ - 1] = '\0';
 
     /* Check for a valid race */
-    if (!validrace(flags.initrole, flags.initrace))
-        flags.initrace = randrace(flags.initrole);
+    if (!validrace(NH_G(flags).initrole, NH_G(flags).initrace))
+        NH_G(flags).initrace = randrace(NH_G(flags).initrole);
 
     /* Check for a valid gender.  If new game, check both initgend
      * and female.  On restore, assume flags.female is correct. */
-    if (flags.pantheon == -1) { /* new game */
-        if (!validgend(flags.initrole, flags.initrace, flags.female))
-            flags.female = !flags.female;
+    if (NH_G(flags).pantheon == -1) { /* new game */
+        if (!validgend(NH_G(flags).initrole, NH_G(flags).initrace, NH_G(flags).female))
+            NH_G(flags).female = !NH_G(flags).female;
     }
-    if (!validgend(flags.initrole, flags.initrace, flags.initgend))
+    if (!validgend(NH_G(flags).initrole, NH_G(flags).initrace, NH_G(flags).initgend))
         /* Note that there is no way to check for an unspecified gender. */
-        flags.initgend = flags.female;
+        NH_G(flags).initgend = NH_G(flags).female;
 
     /* Check for a valid alignment */
-    if (!validalign(flags.initrole, flags.initrace, flags.initalign))
+    if (!validalign(NH_G(flags).initrole, NH_G(flags).initrace, NH_G(flags).initalign))
         /* Pick a random alignment */
-        flags.initalign = randalign(flags.initrole, flags.initrace);
-    alignmnt = aligns[flags.initalign].value;
+        NH_G(flags).initalign = randalign(NH_G(flags).initrole, NH_G(flags).initrace);
+    alignmnt = aligns[NH_G(flags).initalign].value;
 
     /* Initialize urole and urace */
-    urole = roles[flags.initrole];
-    urace = races[flags.initrace];
+    urole = roles[NH_G(flags).initrole];
+    urace = races[NH_G(flags).initrace];
 
-    /* mons[] is intended to be const after process init. The original
-     * role_init mutated mons[] per-game to set quest-leader flags. Inspection
-     * of monst.c shows the source data ALREADY has MS_LEADER / M2_PEACEFUL /
-     * M3_CLOSE on every role's leader, MS_NEMESIS / M2_HOSTILE / M2_NASTY /
-     * M2_STALK / M3_WANTSARTI / M3_WAITFORU on every role's nemesis, and
-     * M2_PEACEFUL on every role's guardian. Only `maligntyp = alignmnt * 3`
-     * was a real change, and even that matches the source value for the
-     * Monk-Neutral case (PufferLib's default).
-     *
-     * Keeping const mons[] is required to make it shared-safe across all
-     * envs in a single libnethack instance (the vecenv target). The fixups
-     * are removed; gender lookups now read const fields directly. */
+    /* Fix up the quest leader */
     if (urole.ldrnum != NON_PM) {
         pm = &mons[urole.ldrnum];
+        pm->msound = MS_LEADER;
+        pm->mflags2 |= (M2_PEACEFUL);
+        pm->mflags3 |= M3_CLOSE;
+        pm->maligntyp = alignmnt * 3;
+        /* if gender is random, we choose it now instead of waiting
+           until the leader monster is created */
         quest_status.ldrgend =
             is_neuter(pm) ? 2 : is_female(pm) ? 1 : is_male(pm)
                                                         ? 0
                                                         : (rn2(100) < 50);
     }
 
+    /* Fix up the quest guardians */
+    if (urole.guardnum != NON_PM) {
+        pm = &mons[urole.guardnum];
+        pm->mflags2 |= (M2_PEACEFUL);
+        pm->maligntyp = alignmnt * 3;
+    }
+
+    /* Fix up the quest nemesis */
     if (urole.neminum != NON_PM) {
         pm = &mons[urole.neminum];
+        pm->msound = MS_NEMESIS;
+        pm->mflags2 &= ~(M2_PEACEFUL);
+        pm->mflags2 |= (M2_NASTY | M2_STALK | M2_HOSTILE);
+        pm->mflags3 &= ~(M3_CLOSE);
+        pm->mflags3 |= M3_WANTSARTI | M3_WAITFORU;
+        /* if gender is random, we choose it now instead of waiting
+           until the nemesis monster is created */
         quest_status.nemgend = is_neuter(pm) ? 2 : is_female(pm) ? 1
                                    : is_male(pm) ? 0 : (rn2(100) < 50);
     }
 
     /* Fix up the god names */
-    if (flags.pantheon == -1) {             /* new game */
-        flags.pantheon = flags.initrole;    /* use own gods */
-        while (!roles[flags.pantheon].lgod) /* unless they're missing */
-            flags.pantheon = randrole(FALSE);
+    if (NH_G(flags).pantheon == -1) {             /* new game */
+        NH_G(flags).pantheon = NH_G(flags).initrole;    /* use own gods */
+        while (!roles[NH_G(flags).pantheon].lgod) /* unless they're missing */
+            NH_G(flags).pantheon = randrole(FALSE);
     }
     if (!urole.lgod) {
-        urole.lgod = roles[flags.pantheon].lgod;
-        urole.ngod = roles[flags.pantheon].ngod;
-        urole.cgod = roles[flags.pantheon].cgod;
+        urole.lgod = roles[NH_G(flags).pantheon].lgod;
+        urole.ngod = roles[NH_G(flags).pantheon].ngod;
+        urole.cgod = roles[NH_G(flags).pantheon].cgod;
     }
     /* 0 or 1; no gods are neuter, nor is gender randomized */
     quest_status.godgend = !strcmpi(align_gtitle(alignmnt), "goddess");

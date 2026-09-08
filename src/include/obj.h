@@ -154,78 +154,78 @@ struct obj {
  */
 #define is_blade(otmp)                           \
     (otmp->oclass == WEAPON_CLASS                \
-     && objects[otmp->otyp].oc_skill >= P_DAGGER \
-     && objects[otmp->otyp].oc_skill <= P_SABER)
+     && NH_G(objects)[otmp->otyp].oc_skill >= P_DAGGER \
+     && NH_G(objects)[otmp->otyp].oc_skill <= P_SABER)
 #define is_axe(otmp)                                              \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
-     && objects[otmp->otyp].oc_skill == P_AXE)
+     && NH_G(objects)[otmp->otyp].oc_skill == P_AXE)
 #define is_pick(otmp)                                             \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
-     && objects[otmp->otyp].oc_skill == P_PICK_AXE)
+     && NH_G(objects)[otmp->otyp].oc_skill == P_PICK_AXE)
 #define is_sword(otmp)                                \
     (otmp->oclass == WEAPON_CLASS                     \
-     && objects[otmp->otyp].oc_skill >= P_SHORT_SWORD \
-     && objects[otmp->otyp].oc_skill <= P_SABER)
+     && NH_G(objects)[otmp->otyp].oc_skill >= P_SHORT_SWORD \
+     && NH_G(objects)[otmp->otyp].oc_skill <= P_SABER)
 #define is_pole(otmp)                                             \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
-     && (objects[otmp->otyp].oc_skill == P_POLEARMS               \
-         || objects[otmp->otyp].oc_skill == P_LANCE))
+     && (NH_G(objects)[otmp->otyp].oc_skill == P_POLEARMS               \
+         || NH_G(objects)[otmp->otyp].oc_skill == P_LANCE))
 #define is_spear(otmp) \
-    (otmp->oclass == WEAPON_CLASS && objects[otmp->otyp].oc_skill == P_SPEAR)
+    (otmp->oclass == WEAPON_CLASS && NH_G(objects)[otmp->otyp].oc_skill == P_SPEAR)
 #define is_launcher(otmp)                                                  \
-    (otmp->oclass == WEAPON_CLASS && objects[otmp->otyp].oc_skill >= P_BOW \
-     && objects[otmp->otyp].oc_skill <= P_CROSSBOW)
+    (otmp->oclass == WEAPON_CLASS && NH_G(objects)[otmp->otyp].oc_skill >= P_BOW \
+     && NH_G(objects)[otmp->otyp].oc_skill <= P_CROSSBOW)
 #define is_ammo(otmp)                                            \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == GEM_CLASS) \
-     && objects[otmp->otyp].oc_skill >= -P_CROSSBOW              \
-     && objects[otmp->otyp].oc_skill <= -P_BOW)
+     && NH_G(objects)[otmp->otyp].oc_skill >= -P_CROSSBOW              \
+     && NH_G(objects)[otmp->otyp].oc_skill <= -P_BOW)
 #define matching_launcher(a, l) \
-    ((l) && objects[(a)->otyp].oc_skill == -objects[(l)->otyp].oc_skill)
+    ((l) && NH_G(objects)[(a)->otyp].oc_skill == -NH_G(objects)[(l)->otyp].oc_skill)
 #define ammo_and_launcher(a, l) (is_ammo(a) && matching_launcher(a, l))
 #define is_missile(otmp)                                          \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
-     && objects[otmp->otyp].oc_skill >= -P_BOOMERANG              \
-     && objects[otmp->otyp].oc_skill <= -P_DART)
+     && NH_G(objects)[otmp->otyp].oc_skill >= -P_BOOMERANG              \
+     && NH_G(objects)[otmp->otyp].oc_skill <= -P_DART)
 #define is_weptool(o) \
-    ((o)->oclass == TOOL_CLASS && objects[(o)->otyp].oc_skill != P_NONE)
+    ((o)->oclass == TOOL_CLASS && NH_G(objects)[(o)->otyp].oc_skill != P_NONE)
         /* towel is not a weptool:  spe isn't an enchantment, cursed towel
            doesn't weld to hand, and twoweapon won't work with one */
 #define is_wet_towel(o) ((o)->otyp == TOWEL && (o)->spe > 0)
 #define bimanual(otmp)                                            \
     ((otmp->oclass == WEAPON_CLASS || otmp->oclass == TOOL_CLASS) \
-     && objects[otmp->otyp].oc_bimanual)
+     && NH_G(objects)[otmp->otyp].oc_bimanual)
 #define is_multigen(otmp)                           \
     (otmp->oclass == WEAPON_CLASS                   \
-     && objects[otmp->otyp].oc_skill >= -P_SHURIKEN \
-     && objects[otmp->otyp].oc_skill <= -P_BOW)
+     && NH_G(objects)[otmp->otyp].oc_skill >= -P_SHURIKEN \
+     && NH_G(objects)[otmp->otyp].oc_skill <= -P_BOW)
 #define is_poisonable(otmp)                         \
     (otmp->oclass == WEAPON_CLASS                   \
-     && objects[otmp->otyp].oc_skill >= -P_SHURIKEN \
-     && objects[otmp->otyp].oc_skill <= -P_BOW)
-#define uslinging() (uwep && objects[uwep->otyp].oc_skill == P_SLING)
+     && NH_G(objects)[otmp->otyp].oc_skill >= -P_SHURIKEN \
+     && NH_G(objects)[otmp->otyp].oc_skill <= -P_BOW)
+#define uslinging() (uwep && NH_G(objects)[uwep->otyp].oc_skill == P_SLING)
 /* 'is_quest_artifact()' only applies to the current role's artifact */
 #define any_quest_artifact(o) ((o)->oartifact >= ART_ORB_OF_DETECTION)
 
 /* Armor */
 #define is_shield(otmp)          \
     (otmp->oclass == ARMOR_CLASS \
-     && objects[otmp->otyp].oc_armcat == ARM_SHIELD)
+     && NH_G(objects)[otmp->otyp].oc_armcat == ARM_SHIELD)
 #define is_helmet(otmp) \
-    (otmp->oclass == ARMOR_CLASS && objects[otmp->otyp].oc_armcat == ARM_HELM)
+    (otmp->oclass == ARMOR_CLASS && NH_G(objects)[otmp->otyp].oc_armcat == ARM_HELM)
 #define is_boots(otmp)           \
     (otmp->oclass == ARMOR_CLASS \
-     && objects[otmp->otyp].oc_armcat == ARM_BOOTS)
+     && NH_G(objects)[otmp->otyp].oc_armcat == ARM_BOOTS)
 #define is_gloves(otmp)          \
     (otmp->oclass == ARMOR_CLASS \
-     && objects[otmp->otyp].oc_armcat == ARM_GLOVES)
+     && NH_G(objects)[otmp->otyp].oc_armcat == ARM_GLOVES)
 #define is_cloak(otmp)           \
     (otmp->oclass == ARMOR_CLASS \
-     && objects[otmp->otyp].oc_armcat == ARM_CLOAK)
+     && NH_G(objects)[otmp->otyp].oc_armcat == ARM_CLOAK)
 #define is_shirt(otmp)           \
     (otmp->oclass == ARMOR_CLASS \
-     && objects[otmp->otyp].oc_armcat == ARM_SHIRT)
+     && NH_G(objects)[otmp->otyp].oc_armcat == ARM_SHIRT)
 #define is_suit(otmp) \
-    (otmp->oclass == ARMOR_CLASS && objects[otmp->otyp].oc_armcat == ARM_SUIT)
+    (otmp->oclass == ARMOR_CLASS && NH_G(objects)[otmp->otyp].oc_armcat == ARM_SUIT)
 #define is_elven_armor(otmp)                                              \
     ((otmp)->otyp == ELVEN_LEATHER_HELM                                   \
      || (otmp)->otyp == ELVEN_MITHRIL_COAT || (otmp)->otyp == ELVEN_CLOAK \
@@ -334,7 +334,7 @@ struct obj {
 
 /* misc helpers, simple enough to be macros */
 #define is_flimsy(otmp)                           \
-    (objects[(otmp)->otyp].oc_material <= LEATHER \
+    (NH_G(objects)[(otmp)->otyp].oc_material <= LEATHER \
      || (otmp)->otyp == RUBBER_HOSE)
 #define is_plural(o) \
     ((o)->quan != 1L                                                    \

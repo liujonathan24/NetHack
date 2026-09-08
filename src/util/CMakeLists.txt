@@ -8,6 +8,7 @@ set(DGN_COMP_SRC dgn_main.c panic.c ${NLE_SRC}/alloc.c
 
 set(LEV_COMP_SRC
     lev_main.c
+    ${NLE_SRC}/nh_globals.c
     panic.c
     ${NLE_SRC}/decl.c
     ${NLE_SRC}/monst.c
@@ -25,23 +26,23 @@ set(DLB_SRC dlb_main.c ${NLE_SRC}/dlb.c panic.c ${NLE_SRC}/alloc.c)
 file(MAKE_DIRECTORY ${NLE_INC_GEN} ${NLE_SRC_GEN})
 
 add_executable(makedefs ${MAKEDEFS_SRC})
-target_include_directories(makedefs PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
+# runs before the generated headers exist: plain globals (tools/collect_globals)
+target_compile_definitions(makedefs PRIVATE NH_GLOBALS_NONE)
+target_include_directories(makedefs PRIVATE ${NLE_INC} ${NLE_INC_GEN}
                                             ${NLE_UTIL_GEN})
-# Build-tool view of objects[]/obj_descr[] — extern writable arrays
-# rather than nle_ctx_t-redirected macros (no runtime ctx here).
-target_compile_definitions(makedefs PRIVATE NLE_OBJECTS_GLOBAL)
 add_executable(dgn_comp ${DGN_COMP_SRC})
-target_include_directories(dgn_comp PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
+target_include_directories(dgn_comp PRIVATE ${NLE_INC} ${NLE_INC_GEN}
                                             ${NLE_UTIL_GEN})
 add_executable(lev_comp ${LEV_COMP_SRC})
-target_include_directories(lev_comp PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
+# single-context program: nh_globals.c provides one context from a constructor
+target_compile_definitions(lev_comp PRIVATE NH_GLOBALS_STANDALONE)
+target_include_directories(lev_comp PRIVATE ${NLE_INC} ${NLE_INC_GEN}
                                             ${NLE_UTIL_GEN})
-target_compile_definitions(lev_comp PRIVATE NLE_OBJECTS_GLOBAL)
 add_executable(dlb ${DLB_SRC})
-target_include_directories(dlb PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
+target_include_directories(dlb PRIVATE ${NLE_INC} ${NLE_INC_GEN}
                                        ${NLE_UTIL_GEN})
 add_executable(recover recover.c)
-target_include_directories(recover PRIVATE ${NLE_INC} ${NLE_INC_GEN} ${nle_SOURCE_DIR}/third_party/deboost.context/include
+target_include_directories(recover PRIVATE ${NLE_INC} ${NLE_INC_GEN}
                                            ${NLE_UTIL_GEN})
 
 add_custom_command(
@@ -91,13 +92,12 @@ add_custom_command(
 add_custom_target(util DEPENDS ${MAKEDEFS_HEADERS} recover)
 
 add_executable(tilemap ${NLE_WIN}/share/tilemap.c)
+target_compile_definitions(tilemap PRIVATE NH_GLOBALS_NONE)
 target_include_directories(tilemap PUBLIC ${NLE_INC} ${NLE_INC_GEN})
-target_compile_definitions(tilemap PRIVATE NLE_OBJECTS_GLOBAL)
 add_dependencies(tilemap util)
 
 add_library(tile OBJECT ${NLE_SRC_GEN}/tile.c)
 target_include_directories(tile PUBLIC ${NLE_INC} ${NLE_INC_GEN})
-target_compile_definitions(tile PRIVATE NLE_OBJECTS_GLOBAL)
 
 # NOTE: util is dependent on these two
 add_dependencies(lev_comp util)

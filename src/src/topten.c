@@ -4,23 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "dlb.h"
-
-/* Per-env replacements for two topten.c file-statics.
- * `toptenwin` collides with `iflags.toptenwin` (flag.h boolean field), so
- * the macro is named `nle_toptenwin` and the call sites in this TU were
- * rewritten manually. `final_fpos` is under #ifdef UPDATE_RECORD_IN_PLACE
- * (VMS-only) — dead on UNIX, migrated for completeness. */
-#define nle_toptenwin   (current_nle_ctx->s_toptenwin)
-#define final_fpos      (current_nle_ctx->s_final_fpos)
-
-/* Function-local static tt_buf in get_rnd_toptenentry()
- * promoted to a per-env lazily-alloc'd struct (struct toptenentry is
- * ~hundreds of bytes; embedding inline would bloat nle_ctx_t). The macro
- * expands to the dereferenced lvalue so existing `tt = &tt_buf;` works.
- * Call site allocs the struct on first call (see get_rnd_toptenentry). */
-#define tt_buf          (*(current_nle_ctx->s_get_rnd_toptenentry_tt_buf))
 #ifdef SHORT_FILENAMES
 #include "patchlev.h"
 #else
@@ -39,11 +23,11 @@
  * way to truncate it).  The trailing junk is harmless and the code
  * which reads the scores will ignore it.
  */
-/* final_fpos moved into nle_ctx_t — macro above.
- * Storage is unconditional on nle_ctx_t but only referenced under
- * #ifdef UPDATE_RECORD_IN_PLACE (not defined on UNIX builds). */
+#ifdef UPDATE_RECORD_IN_PLACE
+static long final_fpos;
+#endif
 
-#define done_stopprint current_nle_ctx->program_state.stopprint
+#define done_stopprint NH_G(program_state).stopprint
 
 #define newttentry() (struct toptenentry *) alloc(sizeof (struct toptenentry))
 #define dealloc_ttentry(ttent) free((genericptr_t) (ttent))
@@ -57,25 +41,7 @@
 #define NLE_XLOG_INCLUDE_FILE
 extern char * FDECL(nle_ttyrecname, ());
 
-struct toptenentry {
-    struct toptenentry *tt_next;
-#ifdef UPDATE_RECORD_IN_PLACE
-    long fpos;
-#endif
-    long points;
-    int deathdnum, deathlev;
-    int maxlvl, hp, maxhp, deaths;
-    int ver_major, ver_minor, patchlevel;
-    long deathdate, birthdate;
-    int uid;
-    char plrole[ROLESZ + 1];
-    char plrace[ROLESZ + 1];
-    char plgend[ROLESZ + 1];
-    char plalign[ROLESZ + 1];
-    char name[NAMSZ + 1];
-    char death[DTHSZ + 1];
-};
-#define tt_head (*(struct toptenentry **)&current_nle_ctx->s_tt_head)
+/* tt_head: per-env, see nh_globals.h */
 /* size big enough to read in all the string fields at once; includes
    room for separating space or trailing newline plus string terminator */
 #define SCANBUFSZ (4 * (ROLESZ + 1) + (NAMSZ + 1) + (DTHSZ + 1) + 1)
@@ -102,12 +68,9 @@ STATIC_DCL void FDECL(nsb_mung_line, (char *));
 STATIC_DCL void FDECL(nsb_unmung_line, (char *));
 #endif
 
-/* toptenwin moved into nle_ctx_t.s_toptenwin.
- * Cannot use a `toptenwin` macro here because `iflags.toptenwin` is a
- * separate boolean field in struct instance_flags and would be clobbered
- * by token replacement. All `toptenwin` references in this TU rewritten
- * to `nle_toptenwin`. The WIN_ERR default is set in init_nle (nle.c)
- * since calloc would leave it 0, not -1. */
+/* toptenwin: per-env nh_g->s_topten_c_toptenwin */
+const winid nh_tmpl_s_topten_c_toptenwin =
+WIN_ERR;
 
 /* "killed by",&c ["an"] 'killer.name' */
 void
@@ -117,7 +80,7 @@ unsigned siz;
 int how;
 boolean incl_helpless;
 {
-    static const char *const killed_by_prefix[] = {
+    static NEARDATA const char *const killed_by_prefix[] = {
         /* DIED, CHOKING, POISONING, STARVING, */
         "killed by ", "choked on ", "poisoned by ", "died of ",
         /* DROWNING, BURNING, DISSOLVED, CRUSHING, */
@@ -128,12 +91,12 @@ boolean incl_helpless;
         "", "", "", "", ""
     };
     unsigned l;
-    char c, *kname = killer.name;
+    char c, *kname = NH_G(killer).name;
 
     buf[0] = '\0'; /* lint suppression */
-    switch (killer.format) {
+    switch (NH_G(killer).format) {
     default:
-        impossible("bad killer format? (%d)", killer.format);
+        impossible("bad killer format? (%d)", NH_G(killer).format);
         /*FALLTHRU*/
     case NO_KILLER_PREFIX:
         break;
@@ -171,11 +134,11 @@ boolean incl_helpless;
     }
     *buf = '\0';
 
-    if (incl_helpless && current_nle_ctx->multi) {
+    if (incl_helpless && multi) {
         /* X <= siz: 'sizeof "string"' includes 1 for '\0' terminator */
-        if (current_nle_ctx->multi_reason && strlen(current_nle_ctx->multi_reason) + sizeof ", while " <= siz)
-            Sprintf(buf, ", while %s", current_nle_ctx->multi_reason);
-        /* either current_nle_ctx->multi_reason wasn't specified or wouldn't fit */
+        if (multi_reason && strlen(multi_reason) + sizeof ", while " <= siz)
+            Sprintf(buf, ", while %s", multi_reason);
+        /* either multi_reason wasn't specified or wouldn't fit */
         else if (sizeof ", while helpless" <= siz)
             Strcpy(buf, ", while helpless");
         /* else extra death info won't fit, so leave it out */
@@ -186,20 +149,20 @@ STATIC_OVL void
 topten_print(x)
 const char *x;
 {
-    if (nle_toptenwin == WIN_ERR)
+    if (NH_G(s_topten_c_toptenwin) == WIN_ERR)
         raw_print(x);
     else
-        putstr(nle_toptenwin, ATR_NONE, x);
+        putstr(NH_G(s_topten_c_toptenwin), ATR_NONE, x);
 }
 
 STATIC_OVL void
 topten_print_bold(x)
 const char *x;
 {
-    if (nle_toptenwin == WIN_ERR)
+    if (NH_G(s_topten_c_toptenwin) == WIN_ERR)
         raw_print_bold(x);
     else
-        putstr(nle_toptenwin, ATR_BOLD, x);
+        putstr(NH_G(s_topten_c_toptenwin), ATR_BOLD, x);
 }
 
 int
@@ -389,16 +352,16 @@ int how;
     Fprintf(rfile, "%s%cname=%s%cdeath=%s",
             buf, /* (already includes separator) */
             XLOG_SEP, plname, XLOG_SEP, tmpbuf);
-    if (current_nle_ctx->multi)
+    if (multi)
         Fprintf(rfile, "%cwhile=%s", XLOG_SEP,
-                current_nle_ctx->multi_reason ? current_nle_ctx->multi_reason : "helpless");
+                multi_reason ? multi_reason : "helpless");
     Fprintf(rfile, "%cconduct=0x%lx%cturns=%ld%cachieve=0x%lx", XLOG_SEP,
             encodeconduct(), XLOG_SEP, moves, XLOG_SEP, encodeachieve());
     Fprintf(rfile, "%crealtime=%ld%cstarttime=%ld%cendtime=%ld", XLOG_SEP,
             (long) urealtime.realtime, XLOG_SEP,
             (long) ubirthday, XLOG_SEP, (long) urealtime.finish_time);
     Fprintf(rfile, "%cgender0=%s%calign0=%s", XLOG_SEP,
-            genders[flags.initgend].filecode, XLOG_SEP,
+            genders[NH_G(flags).initgend].filecode, XLOG_SEP,
             aligns[1 - u.ualignbase[A_ORIGINAL]].filecode);
     Fprintf(rfile, "%cflags=0x%lx", XLOG_SEP, encodexlogflags());
 #ifdef NLE_XLOG_INCLUDE_FILE
@@ -439,7 +402,7 @@ encodeconduct()
         e |= 1L << 3;
     if (!u.uconduct.weaphit)
         e |= 1L << 4;
-    if (!u.uconduct.killcount)
+    if (!u.uconduct.killer)
         e |= 1L << 5;
     if (!u.uconduct.literate)
         e |= 1L << 6;
@@ -517,7 +480,7 @@ time_t when;
 {
     int uid = getuid();
     int rank, rank0 = -1, rank1 = 0;
-    int occ_cnt = sysopt.persmax;
+    int occ_cnt = NH_G(sysopt).persmax;
     register struct toptenentry *t0, *tprev;
     struct toptenentry *t1;
     FILE *rfile;
@@ -542,22 +505,15 @@ time_t when;
      * topten uses alloc() several times, which will lead to
      * problems if the panic was the result of an alloc() failure.
      */
-    if (current_nle_ctx->program_state.panicking)
+    if (NH_G(program_state).panicking)
         return;
 
-    /* First-use idempotent init. Original was
-     * `static winid toptenwin = WIN_ERR;`. calloc gives 0 (== BASE_WINDOW)
-     * which would mis-route topten_print() output through putstr() instead
-     * of raw_print(). Set WIN_ERR at entry; the iflags.toptenwin branch
-     * below overrides via create_nhwindow. Idempotent: rerunning topten()
-     * after destroywin re-resets correctly. */
-    nle_toptenwin = WIN_ERR;
     if (iflags.toptenwin) {
-        nle_toptenwin = create_nhwindow(NHW_TEXT);
+        NH_G(s_topten_c_toptenwin) = create_nhwindow(NHW_TEXT);
     }
 
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-#define HUP if (!current_nle_ctx->program_state.done_hup)
+#define HUP if (!NH_G(program_state).done_hup)
 #else
 #define HUP
 #endif
@@ -587,7 +543,7 @@ time_t when;
     t0->uid = uid;
     copynchars(t0->plrole, urole.filecode, ROLESZ);
     copynchars(t0->plrace, urace.filecode, ROLESZ);
-    copynchars(t0->plgend, genders[flags.female].filecode, ROLESZ);
+    copynchars(t0->plgend, genders[NH_G(flags).female].filecode, ROLESZ);
     copynchars(t0->plalign, aligns[1 - u.ualign.type].filecode, ROLESZ);
     copynchars(t0->name, plname, NAMSZ);
     formatkiller(t0->death, sizeof t0->death, how, TRUE);
@@ -653,7 +609,7 @@ time_t when;
     HUP topten_print("");
 
     /* assure minimum number of points */
-    if (t0->points < sysopt.pointsmin)
+    if (t0->points < NH_G(sysopt).pointsmin)
         t0->points = 0;
 
     t1 = tt_head = newttentry();
@@ -661,7 +617,7 @@ time_t when;
     /* rank0: -1 undefined, 0 not_on_list, n n_th on list */
     for (rank = 1;;) {
         readentry(rfile, t1);
-        if (t1->points < sysopt.pointsmin)
+        if (t1->points < NH_G(sysopt).pointsmin)
             t1->points = 0;
         if (rank0 < 0 && t1->points < t0->points) {
             rank0 = rank++;
@@ -681,7 +637,7 @@ time_t when;
 
         if (t1->points == 0)
             break;
-        if ((sysopt.pers_is_uid ? t1->uid == t0->uid
+        if ((NH_G(sysopt).pers_is_uid ? t1->uid == t0->uid
                                 : strncmp(t1->name, t0->name, NAMSZ) == 0)
             && !strncmp(t1->plrole, t0->plrole, ROLESZ) && --occ_cnt <= 0) {
             if (rank0 < 0) {
@@ -702,12 +658,12 @@ time_t when;
                 continue;
             }
         }
-        if (rank <= sysopt.entrymax) {
+        if (rank <= NH_G(sysopt).entrymax) {
             t1->tt_next = newttentry();
             t1 = t1->tt_next;
             rank++;
         }
-        if (rank > sysopt.entrymax) {
+        if (rank > NH_G(sysopt).entrymax) {
             t1->points = 0;
             break;
         }
@@ -734,7 +690,7 @@ time_t when;
 
                     Sprintf(pbuf,
                             "You reached the %d%s place on the top %d list.",
-                            rank0, ordin(rank0), sysopt.entrymax);
+                            rank0, ordin(rank0), NH_G(sysopt).entrymax);
                     topten_print(pbuf);
                 }
                 topten_print("");
@@ -756,15 +712,15 @@ time_t when;
             writeentry(rfile, t1);
         if (done_stopprint)
             continue;
-        if (rank > flags.end_top && (rank < rank0 - flags.end_around
-                                     || rank > rank0 + flags.end_around)
-            && (!flags.end_own
-                || (sysopt.pers_is_uid
+        if (rank > NH_G(flags).end_top && (rank < rank0 - NH_G(flags).end_around
+                                     || rank > rank0 + NH_G(flags).end_around)
+            && (!NH_G(flags).end_own
+                || (NH_G(sysopt).pers_is_uid
                         ? t1->uid == t0->uid
                         : strncmp(t1->name, t0->name, NAMSZ) == 0)))
             continue;
-        if (rank == rank0 - flags.end_around
-            && rank0 > flags.end_top + flags.end_around + 1 && !flags.end_own)
+        if (rank == rank0 - NH_G(flags).end_around
+            && rank0 > NH_G(flags).end_top + NH_G(flags).end_around + 1 && !NH_G(flags).end_own)
             topten_print("");
         if (rank != rank0)
             outentry(rank, t1, FALSE);
@@ -805,13 +761,13 @@ time_t when;
 
 showwin:
     if (iflags.toptenwin && !done_stopprint)
-        display_nhwindow(nle_toptenwin, 1);
+        display_nhwindow(NH_G(s_topten_c_toptenwin), 1);
 destroywin:
     if (!t0_used)
         dealloc_ttentry(t0);
     if (iflags.toptenwin) {
-        destroy_nhwindow(nle_toptenwin);
-        nle_toptenwin = WIN_ERR;
+        destroy_nhwindow(NH_G(s_topten_c_toptenwin));
+        NH_G(s_topten_c_toptenwin) = WIN_ERR;
     }
 }
 
@@ -1009,7 +965,7 @@ int uid;
             || t1->patchlevel != PATCHLEVEL))
         return 0;
 
-    if (sysopt.pers_is_uid && !playerct && t1->uid == uid)
+    if (NH_G(sysopt).pers_is_uid && !playerct && t1->uid == uid)
         return 1;
 
     for (i = 0; i < playerct; i++) {
@@ -1095,7 +1051,7 @@ char **argv;
     }
 
     if (argc <= 1) {
-        if (sysopt.pers_is_uid) {
+        if (NH_G(sysopt).pers_is_uid) {
             uid = getuid();
             playerct = 0;
             players = (const char **) 0;
@@ -1220,13 +1176,7 @@ get_rnd_toptenentry()
     int rank, i;
     FILE *rfile;
     register struct toptenentry *tt;
-
-    /* Lazy-alloc per-env tt_buf storage (replaces file-local
-     * static). Once allocated, the buffer persists for the env's lifetime;
-     * cleared each call via readentry(). */
-    if (!current_nle_ctx->s_get_rnd_toptenentry_tt_buf)
-        current_nle_ctx->s_get_rnd_toptenentry_tt_buf =
-            (struct toptenentry *) alloc(sizeof(struct toptenentry));
+    /* tt_buf: per-env nh_g->l_topten_c_get_rnd_toptenentry_tt_buf */
 
     rfile = fopen_datafile(RECORD, "r", SCOREPREFIX);
     if (!rfile) {
@@ -1234,8 +1184,8 @@ get_rnd_toptenentry()
         return NULL;
     }
 
-    tt = &tt_buf;
-    rank = rnd(sysopt.tt_oname_maxrank);
+    tt = &NH_G(l_topten_c_get_rnd_toptenentry_tt_buf);
+    rank = rnd(NH_G(sysopt).tt_oname_maxrank);
 pickentry:
     for (i = rank; i; i--) {
         readentry(rfile, tt);

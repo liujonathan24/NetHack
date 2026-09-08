@@ -5,22 +5,12 @@
 /* track.c - version 1.0.2 */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 #define UTSZ 50
 
-/* Utrack[] migrated to nle_ctx_t (per-env ring of
- * the player's last UTSZ steps). Heap-allocated as a coord* in init_nle;
- * the macro restores the array-like syntax of all existing call-sites. */
-#define utrack (current_nle_ctx->s_utrack)
-
-/* Utcnt/utpnt migrated to nle_ctx_t. The utrack[] array is
- * already per-env, but the index counter and count were left as STATIC_VAR
- * NEARDATA (__thread). On an OMP coroutine-resume to a different worker
- * thread, env A's TLS values vanish; env A then writes past slot UTSZ-1
- * into the next ctx field. Per-env fields close that hazard. */
-#define utcnt (current_nle_ctx->s_utcnt)
-#define utpnt (current_nle_ctx->s_utpnt)
+#define utcnt (nh_g->s_track_c_utcnt)
+#define utpnt (nh_g->s_track_c_utpnt)
+#define utrack (nh_g->s_track_c_utrack)
 
 void
 initrack()

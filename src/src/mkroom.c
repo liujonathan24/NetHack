@@ -16,11 +16,6 @@
  */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
-
-/* Shrine_pos()'s `static coord buf;` migrated to two xchar
- * fields in nle_ctx_t (coord.h can't be included by nle.h). The function
- * reconstitutes a coord in a thread-local return slot for caller use. */
 
 STATIC_DCL boolean FDECL(isbig, (struct mkroom *));
 STATIC_DCL struct mkroom *FDECL(pick_room, (BOOLEAN_P));
@@ -163,7 +158,7 @@ gottype:
     for (sroom = &rooms[0];; sroom++) {
         if (sroom->hx < 0)
             return;
-        if (sroom - rooms >= current_nle_ctx->s_nroom) {
+        if (sroom - rooms >= NH_G(nroom)) {
             pline("rooms not closed by -1?");
             return;
         }
@@ -216,10 +211,10 @@ pick_room(strict)
 register boolean strict;
 {
     register struct mkroom *sroom;
-    register int i = current_nle_ctx->s_nroom;
+    register int i = NH_G(nroom);
 
-    for (sroom = &rooms[rn2(current_nle_ctx->s_nroom)]; i--; sroom++) {
-        if (sroom == &rooms[current_nle_ctx->s_nroom])
+    for (sroom = &rooms[rn2(NH_G(nroom))]; i--; sroom++) {
+        if (sroom == &rooms[NH_G(nroom)])
             sroom = &rooms[0];
         if (sroom->hx < 0)
             return (struct mkroom *) 0;
@@ -281,7 +276,7 @@ struct mkroom *sroom;
     sh = sroom->fdoor;
     switch (type) {
     case COURT:
-        if (level.lflags.is_maze_lev) {
+        if (NH_G(level).flags.is_maze_lev) {
             for (tx = sroom->lx; tx <= sroom->hx; tx++)
                 for (ty = sroom->ly; ty <= sroom->hy; ty++)
                     if (IS_THRONE(levl[tx][ty].typ))
@@ -420,23 +415,23 @@ struct mkroom *sroom;
         add_to_container(chest, gold);
         chest->owt = weight(chest);
         chest->spe = 2; /* so it can be found later */
-        level.lflags.has_court = 1;
+        NH_G(level).flags.has_court = 1;
         break;
     }
     case BARRACKS:
-        level.lflags.has_barracks = 1;
+        NH_G(level).flags.has_barracks = 1;
         break;
     case ZOO:
-        level.lflags.has_zoo = 1;
+        NH_G(level).flags.has_zoo = 1;
         break;
     case MORGUE:
-        level.lflags.has_morgue = 1;
+        NH_G(level).flags.has_morgue = 1;
         break;
     case SWAMP:
-        level.lflags.has_swamp = 1;
+        NH_G(level).flags.has_swamp = 1;
         break;
     case BEEHIVE:
-        level.lflags.has_beehive = 1;
+        NH_G(level).flags.has_beehive = 1;
         break;
     }
 }
@@ -461,7 +456,7 @@ int mm_flags;
                 || !revive(otmp, FALSE)))
             (void) makemon(mdat, cc.x, cc.y, mm_flags);
     }
-    level.lflags.graveyard = TRUE; /* reduced chance for undead corpse */
+    NH_G(level).flags.graveyard = TRUE; /* reduced chance for undead corpse */
 }
 
 STATIC_OVL struct permonst *
@@ -510,9 +505,9 @@ antholemon()
             break;
         }
         /* try again if chosen type has been genocided or used up */
-    } while (++trycnt < 3 && (mvitals[mtyp].mvflags & G_GONE));
+    } while (++trycnt < 3 && (NH_G(mvitals)[mtyp].mvflags & G_GONE));
 
-    return ((mvitals[mtyp].mvflags & G_GONE) ? (struct permonst *) 0
+    return ((NH_G(mvitals)[mtyp].mvflags & G_GONE) ? (struct permonst *) 0
                                              : &mons[mtyp]);
 }
 
@@ -523,7 +518,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
     register int sx, sy, i, eelct = 0;
 
     for (i = 0; i < 5; i++) { /* turn up to 5 rooms swampy */
-        sroom = &rooms[rn2(current_nle_ctx->s_nroom)];
+        sroom = &rooms[rn2(NH_G(nroom))];
         if (sroom->hx < 0 || sroom->rtype != OROOM || has_upstairs(sroom)
             || has_dnstairs(sroom))
             continue;
@@ -550,7 +545,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
                         (void) makemon(mkclass(S_FUNGUS, 0), sx, sy,
                                        NO_MM_FLAGS);
                 }
-        level.lflags.has_swamp = 1;
+        NH_G(level).flags.has_swamp = 1;
     }
 }
 
@@ -558,11 +553,7 @@ STATIC_OVL coord *
 shrine_pos(roomno)
 int roomno;
 {
-    /* The original `static coord buf;` is now two xchar fields
-     * in nle_ctx_t (coord.h can't be pulled into nle.h, hence the split).
-     * We expose them via a per-thread return slot — short-lived; the caller
-     * consumes the pointer in-place, never across a step boundary. */
-    static coord shrine_buf_ret;
+    /* buf: per-env nh_g->l_mkroom_c_shrine_pos_buf */
     int delta;
     struct mkroom *troom = &rooms[roomno - ROOMOFFSET];
 
@@ -570,16 +561,14 @@ int roomno;
        if either or both are even, center point is a hypothetical spot
        between map locations and placement will be adjacent to that */
     delta = troom->hx - troom->lx;
-    current_nle_ctx->s_mkroom_shrine_buf_x = troom->lx + delta / 2;
+    NH_G(l_mkroom_c_shrine_pos_buf).x = troom->lx + delta / 2;
     if ((delta % 2) && rn2(2))
-        current_nle_ctx->s_mkroom_shrine_buf_x++;
+        NH_G(l_mkroom_c_shrine_pos_buf).x++;
     delta = troom->hy - troom->ly;
-    current_nle_ctx->s_mkroom_shrine_buf_y = troom->ly + delta / 2;
+    NH_G(l_mkroom_c_shrine_pos_buf).y = troom->ly + delta / 2;
     if ((delta % 2) && rn2(2))
-        current_nle_ctx->s_mkroom_shrine_buf_y++;
-    shrine_buf_ret.x = current_nle_ctx->s_mkroom_shrine_buf_x;
-    shrine_buf_ret.y = current_nle_ctx->s_mkroom_shrine_buf_y;
-    return &shrine_buf_ret;
+        NH_G(l_mkroom_c_shrine_pos_buf).y++;
+    return &NH_G(l_mkroom_c_shrine_pos_buf);
 }
 
 STATIC_OVL void
@@ -604,7 +593,7 @@ mktemple()
     lev->altarmask = induced_align(80);
     priestini(&u.uz, sroom, shrine_spot->x, shrine_spot->y, FALSE);
     lev->altarmask |= AM_SHRINE;
-    level.lflags.has_temple = 1;
+    NH_G(level).flags.has_temple = 1;
 }
 
 boolean
@@ -799,7 +788,7 @@ squadmon()
     }
     mndx = squadprob[rn2(NSTYPES)].pm;
 gotone:
-    if (!(mvitals[mndx].mvflags & G_GONE))
+    if (!(NH_G(mvitals)[mndx].mvflags & G_GONE))
         return &mons[mndx];
     else
         return (struct permonst *) 0;
@@ -836,8 +825,8 @@ int fd;
     short i;
 
     /* First, write the number of rooms */
-    bwrite(fd, (genericptr_t) &current_nle_ctx->s_nroom, sizeof(current_nle_ctx->s_nroom));
-    for (i = 0; i < current_nle_ctx->s_nroom; i++)
+    bwrite(fd, (genericptr_t) &NH_G(nroom), sizeof(NH_G(nroom)));
+    for (i = 0; i < NH_G(nroom); i++)
         save_room(fd, &rooms[i]);
 }
 
@@ -850,14 +839,14 @@ struct mkroom *r;
 
     mread(fd, (genericptr_t) r, sizeof(struct mkroom));
     for (i = 0; i < r->nsubrooms; i++) {
-        r->sbrooms[i] = &subrooms[current_nle_ctx->s_nsubroom];
-        rest_room(fd, &subrooms[current_nle_ctx->s_nsubroom]);
-        subrooms[current_nle_ctx->s_nsubroom++].resident = (struct monst *) 0;
+        r->sbrooms[i] = &subrooms[nsubroom];
+        rest_room(fd, &subrooms[nsubroom]);
+        subrooms[nsubroom++].resident = (struct monst *) 0;
     }
 }
 
 /*
- * rest_rooms : That's for current_nle_ctx->restoring rooms. Read the rooms structure from
+ * rest_rooms : That's for restoring rooms. Read the rooms structure from
  * the disk.
  */
 void
@@ -866,14 +855,14 @@ int fd;
 {
     short i;
 
-    mread(fd, (genericptr_t) &current_nle_ctx->s_nroom, sizeof(current_nle_ctx->s_nroom));
-    current_nle_ctx->s_nsubroom = 0;
-    for (i = 0; i < current_nle_ctx->s_nroom; i++) {
+    mread(fd, (genericptr_t) &NH_G(nroom), sizeof(NH_G(nroom)));
+    nsubroom = 0;
+    for (i = 0; i < NH_G(nroom); i++) {
         rest_room(fd, &rooms[i]);
         rooms[i].resident = (struct monst *) 0;
     }
-    rooms[current_nle_ctx->s_nroom].hx = -1; /* restore ending flags */
-    subrooms[current_nle_ctx->s_nsubroom].hx = -1;
+    rooms[NH_G(nroom)].hx = -1; /* restore ending flags */
+    subrooms[nsubroom].hx = -1;
 }
 
 /* convert a display symbol for terrain into topology type;

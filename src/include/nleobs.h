@@ -84,11 +84,15 @@ typedef struct {
 #define NLE_TUNE_MAX 64
 
 typedef struct nle_settings {
+    /* Path to NetHack's writable game files (level files, saves, locks). */
     char hackdir[256];
     char scoreprefix[256];
     char options[512];
     char wizkit[256];
+    /* Bool indicating whether to spawn monsters randomly after every step
+     * with some probability (1 by def). */
     int spawn_monsters;
+    /* Filename for nle's ttyrec*.bz2. */
     char ttyrecname[256];
     /* Difficulty-knob overrides applied before the starting level is generated
      * (so reset/generation-time knobs take effect at game start). Zero-safe:
@@ -98,7 +102,7 @@ typedef struct nle_settings {
     int    tune_idx[NLE_TUNE_MAX];
     double tune_val[NLE_TUNE_MAX];
     /* Optional read-only data directory holding the shared, immutable game
-     * data (the DLB `nhdat`, data/oracles/rumors, config, …). When non-empty,
+     * data (the DLB `nhdat`, data/oracles/rumors, config, ...). When non-empty,
      * the read-only file prefixes (DATA/HACK/SYSCONF/CONFIG) resolve here while
      * the writable prefixes (LEVEL/SAVE/BONES/SCORE/LOCK/TROUBLE) stay under
      * `hackdir`. This lets many envs share one data dir read-only and keep only

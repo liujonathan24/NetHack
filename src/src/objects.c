@@ -61,10 +61,11 @@ struct monst { struct monst *dummy; };  /* lint: struct obj's union */
                cost,sdam,ldam,oc1,oc2,nut,color)  { obj }
 #define None (char *) 0 /* less visual distraction for 'no description' */
 
-#ifdef NLE_OBJECTS_GLOBAL
-struct objdescr obj_descr[] =
+#ifdef NH_GLOBALS_NONE
+NEARDATA struct objdescr obj_descr[] =
 #else
-const struct objdescr obj_descr_baseline[] =
+/* obj_descr: per-env, see nh_globals.h */
+const struct objdescr nh_tmpl_obj_descr[] =
 #endif
 #else
 /* second pass -- object definitions */
@@ -79,10 +80,11 @@ const struct objdescr obj_descr_baseline[] =
 #define HARDGEM(n) (0)
 #endif
 
-#ifdef NLE_OBJECTS_GLOBAL
-struct objclass objects[] =
+#ifdef NH_GLOBALS_NONE
+NEARDATA struct objclass objects[] =
 #else
-const struct objclass objects_baseline[] =
+/* objects: per-env nh_g->objects */
+const struct objclass nh_tmpl_objects[] =
 #endif
 #endif
 {

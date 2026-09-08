@@ -4,13 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
-
-/* Per-env return buffer */
-#define msgbuf (current_nle_ctx->s_uhitm_msgbuf)
-
-/* Function-local statics migrated to nle_ctx_t */
-#define clockwise     (current_nle_ctx->s_hitum_cleave_clockwise)
+#include "nle.h"
 
 STATIC_DCL boolean FDECL(known_hitum, (struct monst *, struct obj *, int *,
                                        int, int, struct attack *, int));
@@ -31,22 +25,10 @@ STATIC_DCL boolean FDECL(hmonas, (struct monst *));
 STATIC_DCL void FDECL(nohandglow, (struct monst *));
 STATIC_DCL boolean FDECL(shade_aware, (struct obj *));
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
 
-/* Used to flag attacks caused by Stormbringer's maliciousness.
- * per-env. */
-struct nle_uhitm_state { boolean _override_confirmation; };
-static struct nle_uhitm_state *nle_uhitm(void) {
-    if (!current_nle_ctx) return NULL;
-    struct nle_uhitm_state *s = (struct nle_uhitm_state *) current_nle_ctx->s_uhitm_state;
-    if (!s) {
-        s = (struct nle_uhitm_state *) nle_arena_calloc(1, sizeof(struct nle_uhitm_state));
-        current_nle_ctx->s_uhitm_state = s;
-    }
-    return s;
-}
-#define override_confirmation (nle_uhitm()->_override_confirmation)
+/* Used to flag attacks caused by Stormbringer's maliciousness. */
+#define override_confirmation (nh_g->s_uhitm_c_override_confirmation)
 
 #define PROJECTILE(obj) ((obj) && is_ammo(obj))
 
@@ -212,7 +194,7 @@ struct obj *wep; /* uwep for attack(), null for kick_monster() */
                       mtmp->mtame ? "tame" : "wild", l_monnam(mtmp));
             else if (Blind || (is_pool(mtmp->mx, mtmp->my) && !Underwater))
                 pline("Wait!  There's a hidden monster there!");
-            else if ((obj = level.objs[mtmp->mx][mtmp->my]) != 0)
+            else if ((obj = NH_G(level).objects[mtmp->mx][mtmp->my]) != 0)
                 pline("Wait!  There's %s hiding under %s!",
                       an(l_monnam(mtmp)), doname(obj));
             return TRUE;
@@ -228,7 +210,7 @@ struct obj *wep; /* uwep for attack(), null for kick_monster() */
         wakeup(mtmp, TRUE);
     }
 
-    if (flags.confirm && mtmp->mpeaceful
+    if (NH_G(flags).confirm && mtmp->mpeaceful
         && !Confusion && !Hallucination && !Stunned) {
         /* Intelligent chaotic weapons (Stormbringer) want blood */
         if (wep && wep->oartifact == ART_STORMBRINGER) {
@@ -430,9 +412,9 @@ register struct monst *mtmp;
     if (u.twoweap && !can_twoweapon())
         untwoweapon();
 
-    if (current_nle_ctx->unweapon) {
-        current_nle_ctx->unweapon = FALSE;
-        if (flags.verbose) {
+    if (unweapon) {
+        unweapon = FALSE;
+        if (NH_G(flags).verbose) {
             if (uwep)
                 You("begin bashing monsters with %s.", yname(uwep));
             else if (!cantwield(youmonst.data))
@@ -493,7 +475,7 @@ int dieroll;
     if (override_confirmation) {
         /* this may need to be generalized if weapons other than
            Stormbringer acquire similar anti-social behavior... */
-        if (flags.verbose)
+        if (NH_G(flags).verbose)
             Your("bloodthirsty blade attacks!");
     }
 
@@ -547,7 +529,7 @@ struct attack *uattk; /* ... but we don't enforce that here; Null works ok */
        are non-consecutive, hero will sometimes start a series of attacks
        with a backswing--that doesn't impact actual play, just spoils the
        simulation attempt a bit */
-    /* Clockwise migrated to nle_ctx_t */
+    /* clockwise: per-env nh_g->l_uhitm_c_hitum_cleave_clockwise */
     unsigned i;
     coord save_bhitpos;
     int count, umort, x = u.ux, y = u.uy;
@@ -564,7 +546,7 @@ struct attack *uattk; /* ... but we don't enforce that here; Null works ok */
     /* adjust direction by two so that loop's increment (for clockwise)
        or decrement (for counter-clockwise) will point at the spot next
        to primary target */
-    i = (i + (clockwise ? 6 : 2)) % 8;
+    i = (i + (NH_G(l_uhitm_c_hitum_cleave_clockwise) ? 6 : 2)) % 8;
     umort = u.umortality; /* used to detect life-saving */
     save_bhitpos = bhitpos;
 
@@ -581,7 +563,7 @@ struct attack *uattk; /* ... but we don't enforce that here; Null works ok */
         int tx, ty, tmp, dieroll, mhit, attknum, armorpenalty;
 
         /* ++i, wrap 8 to i=0 /or/ --i, wrap -1 to i=7 */
-        i = (i + (clockwise ? 1 : 7)) % 8;
+        i = (i + (NH_G(l_uhitm_c_hitum_cleave_clockwise) ? 1 : 7)) % 8;
 
         tx = x + xdir[i], ty = y + ydir[i]; /* current target location */
         if (!isok(tx, ty))
@@ -608,7 +590,7 @@ struct attack *uattk; /* ... but we don't enforce that here; Null works ok */
             break;
     }
     /* set up for next time */
-    clockwise = !clockwise; /* alternate */
+    NH_G(l_uhitm_c_hitum_cleave_clockwise) = !NH_G(l_uhitm_c_hitum_cleave_clockwise); /* alternate */
     bhitpos = save_bhitpos; /* in case somebody relies on bhitpos
                              * designating the primary target */
 
@@ -759,7 +741,7 @@ int dieroll;
                     tmp = 0;
                 else
                     tmp = rnd(2);
-                if (objects[obj->otyp].oc_material == SILVER
+                if (NH_G(objects)[obj->otyp].oc_material == SILVER
                     && mon_hates_silver(mon)) {
                     silvermsg = TRUE;
                     silverobj = TRUE;
@@ -774,7 +756,7 @@ int dieroll;
                           mon_nam(mon), more_than_1 ? "one of " : "",
                           yname(obj));
                     if (!more_than_1)
-                        uwepgone(); /* set current_nle_ctx->unweapon */
+                        uwepgone(); /* set unweapon */
                     useup(obj);
                     if (!more_than_1)
                         obj = (struct obj *) 0;
@@ -792,7 +774,7 @@ int dieroll;
                     || (hand_to_hand && obj->oartifact == ART_CLEAVER)) {
                     ; /* no special bonuses */
                 } else if (mon->mflee && Role_if(PM_ROGUE) && !Upolyd
-                           /* current_nle_ctx->multi-shot throwing is too powerful here */
+                           /* multi-shot throwing is too powerful here */
                            && hand_to_hand) {
                     You("strike %s from behind!", mon_nam(mon));
                     tmp += rnd(u.ulevel);
@@ -840,7 +822,7 @@ int dieroll;
                         return TRUE;
                     hittxt = TRUE;
                 }
-                if (objects[obj->otyp].oc_material == SILVER
+                if (NH_G(objects)[obj->otyp].oc_material == SILVER
                     && mon_hates_silver(mon)) {
                     silvermsg = TRUE;
                     silverobj = TRUE;
@@ -955,7 +937,7 @@ int dieroll;
                     /* egg is always either used up or transformed, so next
                        hand-to-hand attack should yield a "bashing" mesg */
                     if (obj == uwep)
-                        current_nle_ctx->unweapon = TRUE;
+                        unweapon = TRUE;
                     if (obj->spe && obj->corpsenm >= LOW_PM) {
                         if (obj->quan < 5L)
                             change_luck((schar) - (obj->quan));
@@ -1098,7 +1080,7 @@ int dieroll;
                      * Things like silver wands can arrive here so
                      * so we need another silver check.
                      */
-                    if (objects[obj->otyp].oc_material == SILVER
+                    if (NH_G(objects)[obj->otyp].oc_material == SILVER
                         && mon_hates_silver(mon)) {
                         tmp += rnd(20);
                         silvermsg = TRUE;
@@ -1177,7 +1159,7 @@ int dieroll;
             /* (must be either primary or secondary weapon to get here) */
             u.twoweap = FALSE; /* untwoweapon() is too verbose here */
             if (obj == uwep)
-                uwepgone(); /* set current_nle_ctx->unweapon */
+                uwepgone(); /* set unweapon */
             /* minor side-effect: broken lance won't split puddings */
             useup(obj);
             obj = 0;
@@ -1230,9 +1212,9 @@ int dieroll;
         /* iron weapon using melee or polearm hit [3.6.1: metal weapon too;
            also allow either or both weapons to cause split when twoweap] */
         && obj && (obj == uwep || (u.twoweap && obj == uswapwep))
-        && ((objects[obj->otyp].oc_material == IRON
+        && ((NH_G(objects)[obj->otyp].oc_material == IRON
              /* allow scalpel and tsurugi to split puddings */
-             || objects[obj->otyp].oc_material == METAL)
+             || NH_G(objects)[obj->otyp].oc_material == METAL)
             /* but not bashing with darts, arrows or ya */
             && !(is_ammo(obj) || is_missile(obj)))
         && hand_to_hand) {
@@ -1241,7 +1223,7 @@ int dieroll;
             char withwhat[BUFSZ];
 
             withwhat[0] = '\0';
-            if (u.twoweap && flags.verbose)
+            if (u.twoweap && NH_G(flags).verbose)
                 Sprintf(withwhat, " with %s", yname(obj));
             pline("%s divides as you hit it%s!", Monnam(mon), withwhat);
             hittxt = TRUE;
@@ -1254,7 +1236,7 @@ int dieroll;
             || (thrown && m_shot.n > 1 && m_shot.o == obj->otyp))) {
         if (thrown)
             hit(mshot_xname(obj), mon, exclam(tmp));
-        else if (!flags.verbose)
+        else if (!NH_G(flags).verbose)
             You("hit it.");
         else
             You("%s %s%s",
@@ -1371,7 +1353,7 @@ struct obj *obj;
         || obj->otyp == IRON_CHAIN      /* dmgval handles those first three */
         || obj->otyp == MIRROR          /* silver in the reflective surface */
         || obj->otyp == CLOVE_OF_GARLIC /* causes shades to flee */
-        || objects[obj->otyp].oc_material == SILVER)
+        || NH_G(objects)[obj->otyp].oc_material == SILVER)
         return TRUE;
     return FALSE;
 }
@@ -1445,7 +1427,7 @@ struct attack *mattk;
             s_suffix(mon_nam(mdef)), obj->greased ? "greased" : "slippery",
             /* avoid "slippery slippery cloak"
                for undiscovered oilskin cloak */
-            (obj->greased || objects[obj->otyp].oc_name_known)
+            (obj->greased || NH_G(objects)[obj->otyp].oc_name_known)
                 ? xname(obj)
                 : cloak_simple_name(obj));
 
@@ -1969,7 +1951,7 @@ int specialdmg; /* blessed and/or silver bonus against various things */
                     pline("%s is being crushed.", Monnam(mdef));
             } else {
                 tmp = 0;
-                if (flags.verbose)
+                if (NH_G(flags).verbose)
                     You("brush against %s %s.", s_suffix(mon_nam(mdef)),
                         mbodypart(mdef, LEG));
             }
@@ -2046,7 +2028,7 @@ int specialdmg; /* blessed and/or silver bonus against various things */
             You_feel("embarrassed for a moment.");
             if (tmp)
                 xkilled(mdef, XKILL_NOMSG); /* !tmp but hp<1: already killed */
-        } else if (!flags.verbose) {
+        } else if (!NH_G(flags).verbose) {
             You("destroy it!");
             if (tmp)
                 xkilled(mdef, XKILL_NOMSG);
@@ -2138,9 +2120,11 @@ gulpum(mdef, mattk)
 register struct monst *mdef;
 register struct attack *mattk;
 {
-    /* Msgbuf migrated to nle_ctx_t (per-env). nomovemsg stores
-     * a pointer into msgbuf; with per-env storage that pointer is stable
-     * for the env's own subsequent step (it was racy across envs before). */
+#ifdef LINT /* static char msgbuf[BUFSZ]; */
+    char msgbuf[BUFSZ];
+#else
+    /* msgbuf: per-env nh_g->l_uhitm_c_gulpum_msgbuf */ /* for nomovemsg */
+#endif
     register int tmp;
     register int dam = d((int) mattk->damn, (int) mattk->damd);
     boolean fatal_gulp;
@@ -2200,9 +2184,9 @@ register struct attack *mattk;
                 if (is_rider(pd)) {
                     pline("Unfortunately, digesting any of it is fatal.");
                     end_engulf();
-                    Sprintf(killer.name, "unwisely tried to eat %s",
+                    Sprintf(NH_G(killer).name, "unwisely tried to eat %s",
                             pd->mname);
-                    killer.format = NO_KILLER_PREFIX;
+                    NH_G(killer).format = NO_KILLER_PREFIX;
                     done(DIED);
                     return 0; /* lifesaved */
                 }
@@ -2230,12 +2214,12 @@ register struct attack *mattk;
                 } else {
                     tmp = 1 + (pd->cwt >> 8);
                     if (corpse_chance(mdef, &youmonst, TRUE)
-                        && !(mvitals[monsndx(pd)].mvflags & G_NOCORPSE)) {
+                        && !(NH_G(mvitals)[monsndx(pd)].mvflags & G_NOCORPSE)) {
                         /* nutrition only if there can be a corpse */
                         u.uhunger += (pd->cnutrit + 1) / 2;
                     } else
                         tmp = 0;
-                    Sprintf(msgbuf, "You totally digest %s.", mon_nam(mdef));
+                    Sprintf(NH_G(l_uhitm_c_gulpum_msgbuf), "You totally digest %s.", mon_nam(mdef));
                     if (tmp != 0) {
                         /* setting afternmv = end_engulf is tempting,
                          * but will cause problems if the player is
@@ -2246,12 +2230,12 @@ register struct attack *mattk;
                         if (Slow_digestion)
                             tmp *= 2;
                         nomul(-tmp);
-                        current_nle_ctx->multi_reason = "digesting something";
-                        nomovemsg = msgbuf;
+                        multi_reason = "digesting something";
+                        nomovemsg = NH_G(l_uhitm_c_gulpum_msgbuf);
                     } else
-                        pline1(msgbuf);
+                        pline1(NH_G(l_uhitm_c_gulpum_msgbuf));
                     if (pd == &mons[PM_GREEN_SLIME]) {
-                        Sprintf(msgbuf, "%s isn't sitting well with you.",
+                        Sprintf(NH_G(l_uhitm_c_gulpum_msgbuf), "%s isn't sitting well with you.",
                                 The(pd->mname));
                         if (!Unchanging) {
                             make_slimed(5L, (char *) 0);
@@ -2360,7 +2344,7 @@ boolean wouldhavehit;
 
     if (could_seduce(&youmonst, mdef, mattk))
         You("pretend to be friendly to %s.", mon_nam(mdef));
-    else if (canspotmon(mdef) && flags.verbose)
+    else if (canspotmon(mdef) && NH_G(flags).verbose)
         You("miss %s.", mon_nam(mdef));
     else
         You("miss it.");
@@ -2438,7 +2422,7 @@ register struct monst *mon;
                      || is_missile(uswapwep)) /* dart, shuriken, boomerang */
                 /* and not two-handed and not incapable of being wielded */
                 && !bimanual(uswapwep)
-                && !(objects[uswapwep->otyp].oc_material == SILVER
+                && !(NH_G(objects)[uswapwep->otyp].oc_material == SILVER
                      && Hate_silver))
                 altwep = !altwep; /* toggle for next attack */
             weapon = *originalweapon;
@@ -2571,7 +2555,7 @@ register struct monst *mon;
                         if (mattk->aatyp == AT_CLAW)
                             verb = "hit"; /* not "claws" */
                         You("%s %s.", verb, mon_nam(mon));
-                        if (silverhit && flags.verbose)
+                        if (silverhit && NH_G(flags).verbose)
                             silver_sears(&youmonst, mon, silverhit);
                     }
                     sum[i] = damageum(mon, mattk, specialdmg);
@@ -2635,7 +2619,7 @@ register struct monst *mon;
                    choking hug; deals damage but never grabs hold */
                 if (specialdmg) {
                     You("%s %s%s", verb, mon_nam(mon), exclam(specialdmg));
-                    if (silverhit && flags.verbose)
+                    if (silverhit && NH_G(flags).verbose)
                         silver_sears(&youmonst, mon, silverhit);
                     sum[i] = damageum(mon, mattk, specialdmg);
                 } else {
@@ -2650,7 +2634,7 @@ register struct monst *mon;
                       byhand ? "throttled" : "crushed",
                       /* extra feedback for non-breather being choked */
                       unconcerned ? " but doesn't seem concerned" : "");
-                if (silverhit && flags.verbose)
+                if (silverhit && NH_G(flags).verbose)
                     silver_sears(&youmonst, mon, silverhit);
                 sum[i] = damageum(mon, mattk, specialdmg);
             } else if (i >= 2 && sum[i - 1] && sum[i - 2]) {
@@ -2661,7 +2645,7 @@ register struct monst *mon;
                     uunstick();
                 You("grab %s!", mon_nam(mon));
                 u.ustuck = mon;
-                if (silverhit && flags.verbose)
+                if (silverhit && NH_G(flags).verbose)
                     silver_sears(&youmonst, mon, silverhit);
                 sum[i] = damageum(mon, mattk, specialdmg);
             }
@@ -2748,7 +2732,7 @@ register struct monst *mon;
             break;
         if (!Upolyd)
             break; /* No extra attacks if no longer a monster */
-        if (current_nle_ctx->multi < 0)
+        if (multi < 0)
             break; /* If paralyzed while attacking, i.e. floating eye */
     }
     /* return value isn't used, but make it match hitum()'s */
@@ -2799,7 +2783,7 @@ boolean wep_was_destroyed;
         break;
     case AD_ACID:
         if (mhit && rn2(2)) {
-            if (Blind || !flags.verbose)
+            if (Blind || !NH_G(flags).verbose)
                 You("are splashed!");
             else
                 You("are splashed by %s %s!", s_suffix(mon_nam(mon)),
@@ -2919,7 +2903,7 @@ boolean wep_was_destroyed;
                     } else {
                         You("are frozen by %s gaze!", s_suffix(mon_nam(mon)));
                         nomul((ACURR(A_WIS) > 12 || rn2(4)) ? -tmp : -127);
-                        current_nle_ctx->multi_reason = "frozen by a monster's gaze";
+                        multi_reason = "frozen by a monster's gaze";
                         nomovemsg = 0;
                     }
                 } else {
@@ -2934,7 +2918,7 @@ boolean wep_was_destroyed;
                 You("are frozen by %s!", mon_nam(mon));
                 nomovemsg = You_can_move_again;
                 nomul(-tmp);
-                current_nle_ctx->multi_reason = "frozen by a monster";
+                multi_reason = "frozen by a monster";
                 exercise(A_DEX, FALSE);
             }
             break;
