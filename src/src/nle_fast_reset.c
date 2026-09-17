@@ -50,6 +50,7 @@ extern size_t nle_rl_mirror_size(void);
 extern void   nle_rl_mirror_save(nle_ctx_t *nle, void *dst);
 extern void   nle_rl_mirror_load(nle_ctx_t *nle, const void *src);
 extern void   nle_rl_winproc_reset(nle_ctx_t *nle);
+extern void   nle_rl_fill_obs(nle_ctx_t *nle);
 
 extern int NDECL(nle_n_dgns); /* dungeon.c */
 
@@ -444,6 +445,13 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
         nle_rl_mirror_load(nle, s->saved_mirror);
     if (s->saved_vt && nle->vterminal)
         nle_vt_snapshot_load(nle, s->saved_vt);
+
+    /* Refill the observation planes from the restored state. fill_obs() runs
+     * inside the game coroutine on a normal step, which a restore does not
+     * enter, so without this the caller reads the abandoned branch's last
+     * frame until it steps again. Reads only restored state; no game turn,
+     * no RNG draw. */
+    nle_rl_fill_obs(nle);
 
     /* Rewrite the off-current dungeon level files (and drop the stale ones) so
      * the disk level-file set is exactly the snapshot-time set. Recorded

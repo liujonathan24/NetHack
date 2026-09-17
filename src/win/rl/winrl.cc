@@ -249,6 +249,10 @@ class NetHackRL
     static size_t mirror_blob_size();
     void save_mirror(void *dst) const;
     void load_mirror(const void *src);
+    /* Public for the same reason: a restore has to refill the observation
+     * planes from the restored mirror, and it cannot do that from inside the
+     * game coroutine the way a normal step does. */
+    void fill_obs(nle_obs *);
 
   private:
     struct rl_menu_item {
@@ -384,7 +388,6 @@ class NetHackRL
                             XCHAR_P y);
     void store_screen_description(XCHAR_P x, XCHAR_P y, int glyph);
 
-    void fill_obs(nle_obs *);
     int getch_method();
 
     std::array<LibcString, MAXBLSTATS> status_;
@@ -450,13 +453,22 @@ NetHackRL::mirror_blob_size()
            + n * NLE_SCREEN_DESCRIPTION_LENGTH   /* screen_descriptions_ */
            + sizeof(uint32_t)                    /* inventory_ count */
            + (size_t) NLE_INVENTORY_SIZE * RL_INV_SLOT /* inventory_ slots */
-           + 2 + RL_MSG_MAX;                     /* WIN_MESSAGE last_msg */
+           + 2 + RL_MSG_MAX                      /* WIN_MESSAGE last_msg */
+           + sizeof(int64_t);                    /* condition_bits_ */
 }
 
 void
 NetHackRL::save_mirror(void *dst) const
 {
     char *p = static_cast<char *>(dst);
+    /* condition_bits_ lives on the libc-malloc'd NetHackRL instance, outside
+     * the arena and the ctx block, so the snapshot would otherwise not carry
+     * it and a restored game would report the abandoned branch's condition
+     * mask in blstats[NLE_BL_CONDITION]. */
+    {
+        int64_t cond = (int64_t) condition_bits_;
+        std::memcpy(p, &cond, sizeof(cond)); p += sizeof(cond);
+    }
     std::memcpy(p, glyphs_.data(), sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(p, chars_.data(), sizeof(chars_));       p += sizeof(chars_);
     std::memcpy(p, colors_.data(), sizeof(colors_));     p += sizeof(colors_);
@@ -514,6 +526,11 @@ void
 NetHackRL::load_mirror(const void *src)
 {
     const char *p = static_cast<const char *>(src);
+    {
+        int64_t cond = 0;
+        std::memcpy(&cond, p, sizeof(cond)); p += sizeof(cond);
+        condition_bits_ = (long) cond;
+    }
     std::memcpy(glyphs_.data(), p, sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(chars_.data(), p, sizeof(chars_));       p += sizeof(chars_);
     std::memcpy(colors_.data(), p, sizeof(colors_));     p += sizeof(colors_);
@@ -590,6 +607,23 @@ nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
  * deque from drifting/growing across restores. The matching ScopedStack dtor
  * guards pop-on-empty, so the restored stack's still-pending destructors are
  * harmless no-ops against the now-empty deque. */
+/* Refill the observation planes from the restored state.
+ *
+ * fill_obs() is the only writer of glyphs/chars/colors/specials/message/
+ * blstats/inv_*, and its only other caller is getch_method(), inside the game
+ * coroutine. A restore does not enter the coroutine, so without this the
+ * planes keep the abandoned branch's last frame until the next step. Every
+ * input it reads -- the mirror arrays, NH_G(program_state), in_yn_function /
+ * in_getlin / xwaitingforspace, iflags, and u/sstairs in the arena -- is
+ * restored by the time nle_fr_restore calls this, so it consumes no game turn
+ * and draws no RNG. */
+extern "C" void
+nle_rl_fill_obs(nle_ctx_t *nle)
+{
+    if (nle && nle->rl_instance && nle->observation)
+        static_cast<NetHackRL *>(nle->rl_instance)->fill_obs(nle->observation);
+}
+
 extern "C" void
 nle_rl_winproc_reset(nle_ctx_t *nle)
 {
