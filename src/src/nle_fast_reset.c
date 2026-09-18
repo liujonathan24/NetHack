@@ -90,6 +90,7 @@ typedef struct nle_fr_snapshot {
     size_t              vt_size;
     nle_fr_levelfile_t *levelfiles;
     int                 n_levelfiles;
+    long                ttyrec_off;   /* -1 when nothing is recording */
 } nle_fr_snapshot_t;
 
 /* ------------------------------------------------------------------------
@@ -424,6 +425,10 @@ nle_fr_snapshot(nle_ctx_t *nle)
         nle_fr_destroy(s);
         return NULL;
     }
+
+    /* Close the current bzip2 stream so this point is a cut-safe boundary in
+     * the recording, and remember where to cut back to. */
+    s->ttyrec_off = nle_ttyrec_mark(nle);
     return s;
 }
 
@@ -449,7 +454,14 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
     void *rl_deque = nle->rl_win_proc_calls;
     void *sentinel = nle->sentinel;
     nle_obs *obs = nle->observation;
+    /* The recording is a live OS handle, not game state: the snapshot's copies
+     * are stale (the stream was closed and reopened since), so the current ones
+     * have to survive the block copy and then be cut back. */
+    FILE *ttyrec = nle->ttyrec;
+    void *ttyrec_bz2 = nle->ttyrec_bz2;
     memcpy(nle, s->saved_block, s->block_size);
+    nle->ttyrec = ttyrec;
+    nle->ttyrec_bz2 = ttyrec_bz2;
     nle->arena_base = arena_base;
     nle->arena_cap = arena_cap;
     nle->arena_used = s->arena_used;
@@ -478,6 +490,10 @@ nle_fr_restore(nle_ctx_t *nle, void *snap)
      * frame until it steps again. Reads only restored state; no game turn,
      * no RNG draw. */
     nle_rl_fill_obs(nle);
+
+    /* Cut the recording back to the snapshot: a ttyrec has to read as one
+     * uninterrupted game, with no trace of the branch this restore abandoned. */
+    nle_ttyrec_rewind(nle, s->ttyrec_off);
 
     /* Rewrite the off-current dungeon level files (and drop the stale ones) so
      * the disk level-file set is exactly the snapshot-time set. Recorded

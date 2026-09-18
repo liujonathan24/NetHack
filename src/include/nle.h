@@ -138,6 +138,10 @@ void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
 
 /* Debug: dump the per-env memory map (regions, fmon/fobj chains, monster
  * grid with fmon-membership) to `path` (NULL => stderr). */
+/* ttyrec continuity across a snapshot/restore (see nle.c). */
+long nle_ttyrec_mark(nle_ctx_t *);
+void nle_ttyrec_rewind(nle_ctx_t *, long);
+
 void nle_dbg_memmap(nle_ctx_t *, const char *);
 
 /* Single-level blob save/load.

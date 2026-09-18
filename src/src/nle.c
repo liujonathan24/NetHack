@@ -12,6 +12,7 @@
 #include <fcntl.h>     /* O_WRONLY/O_CREAT/O_TRUNC for nle_load_level */
 #include <sys/time.h>
 #include <sys/mman.h>  /* munmap per-env arena in nle_end */
+#include <unistd.h>    /* ftruncate, to cut a ttyrec back to a snapshot */
 
 #include <tmt.h>
 
@@ -376,6 +377,65 @@ mainloop(fcontext_transfer_t ctx_transfer)
     char *argv[1] = { "nethack" };
 
     unixmain(1, argv);
+}
+
+/* A ttyrec has to read as one uninterrupted game even when the engine is
+ * rewound, so a snapshot has to be able to cut the recording back to where it
+ * was taken. bzip2 output cannot be truncated at an arbitrary byte, so the
+ * stream is closed and reopened here: that makes the snapshot point a stream
+ * boundary, and a file cut there is still a valid (multi-stream) bzip2 file
+ * whose decompressed bytes are exactly what an uninterrupted run wrote.
+ * Returns the byte offset to cut back to, or -1 when nothing is recording. */
+long
+nle_ttyrec_mark(nle_ctx_t *nle)
+{
+    if (!nle || !nle->ttyrec)
+        return -1;
+#ifdef NLE_BZ2_TTYRECS
+    if (nle->ttyrec_bz2) {
+        int bzerror;
+        BZ2_bzWriteClose(&bzerror, nle->ttyrec_bz2, 0, NULL, NULL);
+        nle->ttyrec_bz2 = NULL;
+    }
+#endif
+    fflush(nle->ttyrec);
+    {
+        long off = ftell(nle->ttyrec);
+#ifdef NLE_BZ2_TTYRECS
+        int bzerror;
+        /* Reopen so the game keeps recording; the cut point is now a stream
+         * boundary, which is what makes a later truncate here valid. */
+        nle->ttyrec_bz2 = BZ2_bzWriteOpen(&bzerror, nle->ttyrec, 9, 0, 0);
+        assert(bzerror == BZ_OK);
+#endif
+        return off;
+    }
+}
+
+/* Reopen the recording for writing at `off`, discarding everything after it. */
+void
+nle_ttyrec_rewind(nle_ctx_t *nle, long off)
+{
+    if (!nle || !nle->ttyrec || off < 0)
+        return;
+#ifdef NLE_BZ2_TTYRECS
+    if (nle->ttyrec_bz2) {
+        int bzerror;
+        BZ2_bzWriteClose(&bzerror, nle->ttyrec_bz2, 0, NULL, NULL);
+        nle->ttyrec_bz2 = NULL;
+    }
+#endif
+    fflush(nle->ttyrec);
+    if (ftruncate(fileno(nle->ttyrec), (off_t) off) != 0)
+        return;
+    fseek(nle->ttyrec, off, SEEK_SET);
+#ifdef NLE_BZ2_TTYRECS
+    {
+        int bzerror;
+        nle->ttyrec_bz2 = BZ2_bzWriteOpen(&bzerror, nle->ttyrec, 9, 0, 0);
+        assert(bzerror == BZ_OK);
+    }
+#endif
 }
 
 boolean
@@ -815,9 +875,10 @@ nle_end(nle_ctx_t *nle)
     nle_fflush(stdout);
 
 #ifdef NLE_BZ2_TTYRECS
-    if (nle->ttyrec) {
+    if (nle->ttyrec && nle->ttyrec_bz2) {
         int bzerror;
         BZ2_bzWriteClose(&bzerror, nle->ttyrec_bz2, 0, NULL, NULL);
+        nle->ttyrec_bz2 = NULL;
         assert(bzerror == BZ_OK);
     }
 #endif
