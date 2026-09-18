@@ -165,6 +165,32 @@ nle_fr_is_levelfile(const char *name, const char *base, size_t baselen)
     return *p == '\0';
 }
 
+/* Everything in the hackdir a snapshot has to own, so that the post-restore
+ * disk set is a pure function of the snapshot.
+ *
+ * Beyond the `<base>.<digits>` level files this covers:
+ *   - bones ("bon..." per set_bonesfile_name: bonD0.nn, bonM0.T, bon3QBar.n).
+ *     These are the reason this matters rather than being bookkeeping: a
+ *     snapshot spanning a death leaves bones on disk, and a later descent to
+ *     that depth generates a level containing the ghost and possessions of a
+ *     life the restore abandoned. That breaks "same keys, same dungeon".
+ *   - the bones temp file, "<base>.bn" (set_bonestemp_name).
+ *   - record / logfile / xlogfile, appended at death by topten.
+ *
+ * `perm` is deliberately excluded: it is the lock file, not game state. */
+static int
+nle_fr_is_snapshot_file(const char *name, const char *base, size_t baselen)
+{
+    if (nle_fr_is_levelfile(name, base, baselen))
+        return 1;
+    if (strncmp(name, "bon", 3) == 0)
+        return 1;
+    if (strncmp(name, base, baselen) == 0 && strcmp(name + baselen, ".bn") == 0)
+        return 1;
+    return !strcmp(name, "record") || !strcmp(name, "logfile")
+           || !strcmp(name, "xlogfile");
+}
+
 /* Bundle EVERY "<base>.<n>" level file in the hackdir into the snapshot.
  *
  * Returns 0 on success, -1 on failure. Failure is HARD: nle_fr_snapshot
@@ -201,7 +227,7 @@ nle_fr_bundle_levelfiles(nle_ctx_t *nle, nle_fr_snapshot_t *s)
         ssize_t got;
         nle_fr_levelfile_t *lf;
 
-        if (!nle_fr_is_levelfile(ent->d_name, base, baselen))
+        if (!nle_fr_is_snapshot_file(ent->d_name, base, baselen))
             continue;
         if (strlen(ent->d_name) >= sizeof lf->name)
             goto fail; /* name we could not faithfully restore */
@@ -307,7 +333,7 @@ nle_fr_restore_levelfiles(nle_ctx_t *nle, nle_fr_snapshot_t *s, int stamp_pid)
         char path[512];
         int keep = 0;
 
-        if (!nle_fr_is_levelfile(ent->d_name, base, baselen))
+        if (!nle_fr_is_snapshot_file(ent->d_name, base, baselen))
             continue;
         for (i = 0; i < s->n_levelfiles; i++)
             if (!strcmp(s->levelfiles[i].name, ent->d_name)) {
