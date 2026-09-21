@@ -1070,6 +1070,23 @@ long len;
      * container restore paths; minit() arms the ZEROCOMP read codec (same
      * as nle_load_level before getlev). We do NOT getlev() here -- the
      * caller already installed the target level via nle_load_level. */
+    /* DROP THE RESET GAME'S WORN SLOTS BEFORE LOADING THE HERO. restgamestate()
+     * replaces `struct you` and `invent` wholesale, but the worn-slot pointers
+     * (uarm/uarms/uwep/... in decl.c) are file-scope globals that only
+     * setworn() rebinds -- and only for objects that exist in the LOADED
+     * inventory. Any slot the checkpointed hero is not using kept pointing
+     * at the reset game's starting-kit object, and find_ac() then counted a
+     * phantom item: a Valkyrie whose small shield had been stolen restored at
+     * AC 1 instead of 5 (measured 2026-09-21, ablate_A2_s2_sr1 c27; every
+     * role's kit leaks its own slots, e.g. Monk gloves+robe = +6 AC). The
+     * old objects are left allocated (no kit item carries a timer or a light
+     * source); only the bindings are cleared. */
+    uarm = uarmc = uarmh = uarms = uarmg = uarmf = uarmu = (struct obj *) 0;
+    uamul = uleft = uright = ublindf = (struct obj *) 0;
+    uwep = uswapwep = uquiver = (struct obj *) 0;
+    uskin = uball = uchain = (struct obj *) 0;
+    u.twoweap = 0;
+
     current_nle_ctx->restoring = TRUE;
     minit();
     if (!restgamestate(fd, &stuckid, &steedid)) {
