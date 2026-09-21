@@ -388,6 +388,8 @@ nle_ctx_t *nle;
 long *out_len;
 {
     int fd, ledger;
+    struct obj *sv_piece, *sv_tin, *sv_book;
+    struct monst *sv_hitmon;
     char fq_player[BUFSZ];
     const char *fq_save;
     long sz;
@@ -425,11 +427,40 @@ long *out_len;
      * read back by nle_load_player via restgamestate(), not by dorecover(). */
     ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
     usteed_id = (u.usteed ? u.usteed->m_id : 0);
+
+    /* Same treatment for the four pointers inside `context`. NetHack stamps
+     * their o_id/m_id twins (context.h keeps one beside each pointer for
+     * exactly this) inside saveobjchn/savemonchn -- but only under
+     * release_data(mode), which also frees the object. We keep the live game,
+     * so the stamping never ran and the raw pointers went into the blob, to be
+     * read back in another process as dangling addresses (restore.c's own
+     * comment names these four as "pointers which get set to Null during save
+     * and will be recovered via corresponding o_id or m_id"). Stamp, null for
+     * the write, and put the live pointers straight back. */
+    sv_piece = context.victual.piece;
+    sv_tin = context.tin.tin;
+    sv_book = context.spbook.book;
+    sv_hitmon = context.polearm.hitmon;
+    context.victual.o_id = sv_piece ? sv_piece->o_id : 0;
+    context.tin.o_id = sv_tin ? sv_tin->o_id : 0;
+    context.spbook.o_id = sv_book ? sv_book->o_id : 0;
+    context.polearm.m_id = sv_hitmon ? sv_hitmon->m_id : 0;
+    context.victual.piece = (struct obj *) 0;
+    context.tin.tin = (struct obj *) 0;
+    context.spbook.book = (struct obj *) 0;
+    context.polearm.hitmon = (struct monst *) 0;
+
     bufon(fd);
     savegamestate(fd, WRITE_SAVE);
     bflush(fd);
     bufoff(fd);
     (void) nhclose(fd);
+
+    /* The running game keeps its live pointers; only the blob holds ids. */
+    context.victual.piece = sv_piece;
+    context.tin.tin = sv_tin;
+    context.spbook.book = sv_book;
+    context.polearm.hitmon = sv_hitmon;
 
     /* Slurp the scratch file into a malloc'd blob, then unlink it. */
     fp = fopen(fq_player, "rb");

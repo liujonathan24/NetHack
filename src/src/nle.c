@@ -438,6 +438,21 @@ nle_ttyrec_rewind(nle_ctx_t *nle, long off)
 #endif
 }
 
+/* Every wall-clock read in the game funnels through getnow(); this is where it
+ * is frozen. Covers phase_of_the_moon / friday_13th / night / midnight and the
+ * urealtime stamps that otherwise make two checkpoints of one state differ. */
+time_t
+nle_clock_now()
+{
+    nle_ctx_t *nle = current_nle_ctx;
+    time_t now = 0;
+
+    if (nle && nle->settings.fixed_time)
+        return (time_t) nle->settings.fixed_time;
+    (void) time(&now);
+    return now;
+}
+
 boolean
 write_ttyrec_data(void *buf, int length)
 {

@@ -109,6 +109,12 @@ typedef struct nle_settings {
      * a tiny per-env writable `hackdir`, instead of each copying the ~3.7MB dat
      * tree. Empty => every prefix resolves under `hackdir` (legacy behavior). */
     char datadir[256];
+    /* Freeze the wall clock. NetHack reads the real date and time for the moon
+     * phase, Friday the 13th, night() and midnight(), each of which changes
+     * play -- a full moon grants +1 luck, undead hit harder at midnight -- so
+     * an identical seed replayed on a different day is a different game.
+     * Non-zero pins every clock read to this epoch; 0 uses the real clock. */
+    long fixed_time;
 } nle_settings;
 
 #endif /* NLEOBS_H */

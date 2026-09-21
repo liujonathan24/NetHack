@@ -236,6 +236,13 @@ int nle_seat_on_invocation_square(nle_ctx_t *, int adjacent);
 
 /* Per-env RNG state (rnd.c). CORE = 0 (gameplay RNG), DISP = 1 (display). */
 struct isaac64_ctx *nle_rng_state(int idx);
+
+/* Both RNG contexts (CORE, DISP) as one blob, for the portable checkpoint.
+ * The in-memory snapshot carries them inside the per-env block already; the
+ * on-disk checkpoint stores NetHack's save blobs, which never held the RNG. */
+size_t nle_rng_blob_size(void);
+void nle_rng_save(void *);
+void nle_rng_load(const void *);
 boolean            *nle_rng_init_flag(int idx);
 
 /* Arena-backed calloc (alloc.c). Per-env state allocated through this lands

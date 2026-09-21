@@ -37,6 +37,50 @@ int idx;
     return &rnglist[idx].init;
 }
 
+/* NLE: serialize both RNG contexts for the portable checkpoint.
+ *
+ * There are exactly two — CORE and DISP — and they live in the per-env block,
+ * so an in-memory snapshot already carries them. The on-disk checkpoint stores
+ * NetHack's own save blobs instead, and that format never serialized the RNG
+ * (vanilla re-seeds on restore), so a resume would otherwise rewind the
+ * generator to where a fresh reset(seed) leaves it.
+ *
+ * `fn` is deliberately not serialized: it is a function pointer, meaningless in
+ * another process, and nh_globals_init restores it from the template. */
+size_t
+nle_rng_blob_size()
+{
+    return (size_t) SIZE(rnglist) * (1 + sizeof(isaac64_ctx));
+}
+
+void
+nle_rng_save(dst)
+void *dst;
+{
+    char *p = (char *) dst;
+    int i;
+
+    for (i = 0; i < SIZE(rnglist); ++i) {
+        *p++ = (char) (rnglist[i].init ? 1 : 0);
+        (void) memcpy(p, &rnglist[i].rng_state, sizeof(isaac64_ctx));
+        p += sizeof(isaac64_ctx);
+    }
+}
+
+void
+nle_rng_load(src)
+const void *src;
+{
+    const char *p = (const char *) src;
+    int i;
+
+    for (i = 0; i < SIZE(rnglist); ++i) {
+        rnglist[i].init = *p++ ? TRUE : FALSE;
+        (void) memcpy(&rnglist[i].rng_state, p, sizeof(isaac64_ctx));
+        p += sizeof(isaac64_ctx);
+    }
+}
+
 int
 whichrng(fn)
 int FDECL((*fn), (int));

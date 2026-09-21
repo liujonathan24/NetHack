@@ -918,10 +918,9 @@ int FDECL((*fn), (int));
 time_t
 getnow()
 {
-    time_t datetime = 0;
-
-    (void) time((TIME_type) &datetime);
-    return datetime;
+    /* nle_clock_now() honours nle_settings.fixed_time, so a frozen clock
+     * reaches every caller of getnow()/getlt() without patching each one. */
+    return nle_clock_now();
 }
 
 STATIC_OVL struct tm *

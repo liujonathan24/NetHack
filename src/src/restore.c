@@ -1019,6 +1019,22 @@ long len;
     }
     /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
     restlevelstate(stuckid, steedid);
+
+    /* And the four `context` pointers, from the ids nle_save_player stamped.
+     * The in-chain fixups at restobjchn/restmonchn cannot do it here: this
+     * resume loads the level (and so restores fobj/fmon) BEFORE the player, so
+     * those ran against the pre-restore context and were then overwritten by
+     * restgamestate. Doing it after context is read is the only ordering that
+     * works. */
+    context.victual.piece =
+        context.victual.o_id ? find_oid(context.victual.o_id) : (struct obj *) 0;
+    context.tin.tin =
+        context.tin.o_id ? find_oid(context.tin.o_id) : (struct obj *) 0;
+    context.spbook.book =
+        context.spbook.o_id ? find_oid(context.spbook.o_id) : (struct obj *) 0;
+    context.polearm.hitmon =
+        context.polearm.m_id ? find_mid(context.polearm.m_id, FM_EVERYWHERE)
+                             : (struct monst *) 0;
     (void) nhclose(fd);
     (void) unlink(fq_player);
 
