@@ -1027,6 +1027,27 @@ time_t date;
     return NH_G(l_hacklib_c_yyyymmddhhmmss_datestr);
 }
 
+/* NLE: seconds since the epoch for a broken-down UTC time, the inverse of
+ * gmtime() (Howard Hinnant's days_from_civil), so a time written by
+ * yyyymmddhhmmss() reads back the same under any TZ; mktime() would read it
+ * as local time. */
+STATIC_OVL time_t
+utc_seconds(t)
+struct tm *t;
+{
+    long y = (long) t->tm_year + 1900L, m = (long) t->tm_mon + 1L;
+    long era, yoe, doy, doe;
+
+    y -= (m <= 2L);
+    era = (y >= 0L ? y : y - 399L) / 400L;
+    yoe = y - era * 400L;
+    doy = (153L * (m > 2L ? m - 3L : m + 9L) + 2L) / 5L + (long) t->tm_mday - 1L;
+    doe = yoe * 365L + yoe / 4L - yoe / 100L + doy;
+    return (time_t) ((era * 146097L + doe - 719468L) * 86400L
+                     + (long) t->tm_hour * 3600L + (long) t->tm_min * 60L
+                     + (long) t->tm_sec);
+}
+
 time_t
 time_from_yyyymmddhhmmss(buf)
 char *buf;
@@ -1071,7 +1092,7 @@ char *buf;
             t.tm_hour = atoi(h);
             t.tm_min = atoi(mi);
             t.tm_sec = atoi(s);
-            timeresult = mktime(&t);
+            timeresult = utc_seconds(&t); /* NLE: UTC, as written */
         }
         if ((int) timeresult == -1)
             debugpline1("time_from_yyyymmddhhmmss(%s) would have returned -1",
