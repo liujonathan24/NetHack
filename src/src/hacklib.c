@@ -928,7 +928,7 @@ getlt()
 {
     time_t date = getnow();
 
-    return localtime((LOCALTIME_type) &date);
+    return gmtime((LOCALTIME_type) &date);
 }
 
 int
@@ -967,7 +967,7 @@ time_t date;
     if (date == 0)
         lt = getlt();
     else
-        lt = localtime((LOCALTIME_type) &date);
+        lt = gmtime((LOCALTIME_type) &date); /* NLE: UTC, as getlt() */
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -992,7 +992,7 @@ time_t date;
     if (date == 0)
         lt = getlt();
     else
-        lt = localtime((LOCALTIME_type) &date);
+        lt = gmtime((LOCALTIME_type) &date); /* NLE: UTC, as getlt() */
 
     timenum = lt->tm_hour * 10000L + lt->tm_min * 100L + lt->tm_sec;
     return timenum;
@@ -1011,9 +1011,9 @@ time_t date;
     else
 #if (defined(ULTRIX) && !(defined(ULTRIX_PROTO) || defined(NHSTDC))) \
     || defined(BSD)
-        lt = localtime((long *) (&date));
+        lt = gmtime((long *) (&date)); /* NLE: UTC, as getlt() */
 #else
-        lt = localtime(&date);
+        lt = gmtime(&date); /* NLE: UTC, as getlt() */
 #endif
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */

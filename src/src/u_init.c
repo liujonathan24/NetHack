@@ -685,11 +685,8 @@ u_init()
     u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =
         aligns[NH_G(flags).initalign].value;
 
-#if defined(BSD) && !defined(POSIX_TYPES)
-    (void) time((long *) &ubirthday);
-#else
-    (void) time(&ubirthday);
-#endif
+    /* NLE: the fixed time (hacklib.c getnow), never the wall clock. */
+    ubirthday = getnow();
 
     /*
      *  For now, everyone starts out with a night vision range of 1 and
