@@ -1009,6 +1009,15 @@ long len;
      * container restore paths; minit() arms the ZEROCOMP read codec (same
      * as nle_load_level before getlev). We do NOT getlev() here -- the
      * caller already installed the target level via nle_load_level. */
+    /* restgamestate() replaces u and invent but only setworn()s the loaded
+     * hero's slots; a slot it does not use would keep the reset game's kit
+     * object and find_ac() would count it. */
+    uarm = uarmc = uarmh = uarms = uarmg = uarmf = uarmu = (struct obj *) 0;
+    uamul = uleft = uright = ublindf = (struct obj *) 0;
+    uwep = uswapwep = uquiver = (struct obj *) 0;
+    uskin = uball = uchain = (struct obj *) 0;
+    u.twoweap = 0;
+
     restoring = TRUE;
     minit();
     if (!restgamestate(fd, &stuckid, &steedid)) {
