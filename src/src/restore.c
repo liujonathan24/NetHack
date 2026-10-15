@@ -956,10 +956,11 @@ register int fd;
  * current level's fobj -- so the target level must already be in place.
  *
  * Implemented here (not nle.c) because restgamestate() / restlevelstate()
- * are file-static. Returns 0 on success, nonzero on error.
+ * are file-static. Returns 0 on success, nonzero on error (7: the restore
+ * failed or panicked).
  * =================================================================== */
-int
-nle_load_player(nle, blob, len)
+STATIC_OVL int
+nle_load_player_inner(nle, blob, len)
 nle_ctx_t *nle;
 const void *blob;
 long len;
@@ -970,7 +971,6 @@ long len;
     unsigned int stuckid = 0, steedid = 0;
     struct obj *otmp;
 
-    nle_anchor(nle);
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
 
@@ -1057,6 +1057,24 @@ long len;
      * coroutine to repaint. Same two-phase contract as nle_load_level. */
     vision_reset();
     return 0;
+}
+
+int
+nle_load_player(nle, blob, len)
+nle_ctx_t *nle;
+const void *blob;
+long len;
+{
+    int rc;
+
+    nle_anchor(nle);
+    if (NLE_HOST_CALL_BEGIN(nle)) {
+        restoring = FALSE;
+        return 7;
+    }
+    rc = nle_load_player_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 void

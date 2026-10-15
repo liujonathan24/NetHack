@@ -3,6 +3,7 @@
 
 #define NLE_BZ2_TTYRECS
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stddef.h>
 
@@ -113,9 +114,31 @@ typedef struct nle_ctx {
 
     void *sentinel; /* nle_sentinel slot for this env (may be NULL) */
 
+    /* a panic() inside a blob call (nle_save_level & co run NetHack code
+     * from the host context, where nh_terminate cannot yield) unwinds here */
+    int host_call_armed;
+    jmp_buf host_call_jmp;
+
     /* the game's globals; points just past this struct in the same block */
     struct nh_globals *g;
 } nle_ctx_t;
+
+/* Arm the unwind for a blob call; setjmp must run in the API function itself.
+ * Nonzero on the unwind path: the caller returns its failure value. */
+#define NLE_HOST_CALL_BEGIN(nle)                                        \
+    (((nle) && !(nle)->host_call_armed)                                 \
+         ? (setjmp((nle)->host_call_jmp)                                \
+                ? (nle_save_io_reset(), 1)                              \
+                : ((nle)->host_call_armed = 1, 0))                      \
+         : 0)
+#define NLE_HOST_CALL_END(nle)                                          \
+    do {                                                                \
+        if (nle)                                                        \
+            (nle)->host_call_armed = 0;                                 \
+    } while (0)
+
+void nle_host_call_abort(void); /* nle.c; does not return when armed */
+void nle_save_io_reset(void);   /* save.c */
 
 /* THE per-env context pointer: thread-local so every stepping thread chases
  * its own environment. Re-anchored (together with nh_g) at every public

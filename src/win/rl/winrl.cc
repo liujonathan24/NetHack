@@ -373,6 +373,21 @@ class NetHackRL
         return LibcRlWindowPtr(new (mem) rl_window{ type, {}, {} });
     }
 
+    /* windows_ is outside the snapshot, so after nle_fr_restore the core
+     * can name a window whose mirror slot a later destroy nulled; give it
+     * a slot again instead of dereferencing null. */
+    rl_window *
+    rl_win_ensure(winid wid, int type)
+    {
+        if (wid < 0)
+            return nullptr;
+        if ((size_t) wid >= windows_.size())
+            windows_.resize((size_t) wid + 1);
+        if (!windows_[wid])
+            windows_[wid] = make_libc_rl_window(type);
+        return windows_[wid].get();
+    }
+
     std::array<int16_t, (COLNO - 1) * ROWNO> glyphs_;
 
     /* Output of mapglyph */
@@ -1171,7 +1186,10 @@ void
 NetHackRL::putstr_method(winid wid, int attr, const char *str)
 {
     DEBUG_API("About to set strings on " << wid << std::endl);
-    windows_[wid]->last_msg = make_libc_string(str);
+    rl_window *w = rl_win_ensure(wid, NHW_TEXT);
+    if (!w)
+        return;
+    w->last_msg = make_libc_string(str);
 }
 
 winid
@@ -1262,7 +1280,8 @@ void
 NetHackRL::destroy_nhwindow_method(winid wid)
 {
     DEBUG_API("rl_destroy_nhwindow(wid=" << wid << ")" << std::endl);
-    windows_[wid].reset(nullptr);
+    if (wid >= 0 && (size_t) wid < windows_.size())
+        windows_[wid].reset(nullptr);
     tty_destroy_nhwindow(wid);
 }
 
@@ -1271,7 +1290,10 @@ NetHackRL::start_menu_method(winid wid)
 {
     DEBUG_API("rl_start_menu(wid=" << wid << ")" << std::endl);
     tty_start_menu(wid);
-    windows_[wid]->menu_items.clear();
+    rl_window *w = rl_win_ensure(wid, NHW_MENU);
+    if (!w)
+        return;
+    w->menu_items.clear();
 }
 
 void
@@ -1293,7 +1315,10 @@ NetHackRL::add_menu_method(
        we won't see any updates happening during tty_select_menu. We could
        try to inspect tty's own menu items instead? */
 
-    windows_[wid]->menu_items.emplace_back(rl_menu_item{
+    rl_window *w = rl_win_ensure(wid, NHW_MENU);
+    if (!w)
+        return;
+    w->menu_items.emplace_back(rl_menu_item{
         glyph, *identifier, -1L, make_libc_string(str), attr, preselected, ch,
         gch });
 }

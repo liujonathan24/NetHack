@@ -382,8 +382,8 @@ char *whynot;
  * Implemented here (not nle.c) because savegamestate() is file-static.
  * Returns the blob and writes its length to *out_len, or NULL on error.
  * =================================================================== */
-void *
-nle_save_player(nle, out_len)
+STATIC_OVL void *
+nle_save_player_inner(nle, out_len)
 nle_ctx_t *nle;
 long *out_len;
 {
@@ -395,10 +395,6 @@ long *out_len;
     long sz;
     void *blob;
     FILE *fp;
-
-    nle_anchor(nle);
-    if (out_len)
-        *out_len = 0;
 
     /* Derive a per-env scratch path. NLE leaves `lock[]` empty during play
      * (it is only populated when a level file is created), so we populate it
@@ -450,11 +446,10 @@ long *out_len;
     context.spbook.book = (struct obj *) 0;
     context.polearm.hitmon = (struct monst *) 0;
 
+    /* bclose() (not bufoff + nhclose): see nle_save_level */
     bufon(fd);
     savegamestate(fd, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    (void) nhclose(fd);
+    bclose(fd);
 
     /* The running game keeps its live pointers; only the blob holds ids. */
     context.victual.piece = sv_piece;
@@ -492,6 +487,23 @@ long *out_len;
     (void) unlink(fq_player);
     if (out_len)
         *out_len = sz;
+    return blob;
+}
+
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
+{
+    void *blob;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return (genericptr_t) 0;
+    blob = nle_save_player_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
     return blob;
 }
 
@@ -809,6 +821,24 @@ const int nh_tmpl_s_save_c_bw_fd =
 -1;
 #define bw_FILE (nh_g->s_save_c_bw_FILE)
 #define buffering (nh_g->s_save_c_buffering)
+
+/* Drop a buffered save stream a panic unwind left open (nle_host_call_abort
+ * skips the bclose). A no-op when nothing is open. */
+void
+nle_save_io_reset()
+{
+    if (!current_nle_ctx)
+        return;
+    if (bw_fd >= 0) {
+        FILE *bf = bw_FILE;
+
+        bw_fd = -1;
+        bw_FILE = 0;
+        if (bf)
+            (void) fclose(bf);
+    }
+    buffering = FALSE;
+}
 
 STATIC_OVL void
 def_bufon(fd)

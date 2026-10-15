@@ -952,12 +952,27 @@ nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
  * Single-level blob save/load.
  * =================================================================== */
 
+/* Unwind a panic raised inside a blob call (see host_call_armed in nle.h).
+ * Does not return when armed. */
+void
+nle_host_call_abort(void)
+{
+    nle_ctx_t *nle = current_nle_ctx;
+
+    if (nle && nle->host_call_armed) {
+        nle->host_call_armed = 0;
+        longjmp(nle->host_call_jmp, 1);
+    }
+    fflush(stderr);
+    abort();
+}
+
 /* Serialize the CURRENT dungeon level to a malloc'd byte blob.
  * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
  * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
  * Returns the blob (and writes its length to *out_len), or NULL on error. */
-void *
-nle_save_level(nle_ctx_t *nle, long *out_len)
+static void *
+nle_save_level_inner(nle_ctx_t *nle, long *out_len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
@@ -966,10 +981,6 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     void *blob;
     FILE *fp;
 
-    nle_anchor(nle);
-    if (out_len)
-        *out_len = 0;
-
     ledger = ledger_no(&u.uz);
     /* Write the in-memory current level to its <lock>.<ledger> file.
      * WRITE_SAVE without FREE_SAVE so the live level stays intact. */
@@ -977,12 +988,12 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     if (fd < 0)
         return (void *) 0;
     /* Exactly the do.c goto_level levelfile shape: no version header,
-     * just savelev() bytes. bufon/bufoff bracket the zerocomp stream. */
+     * just savelev() bytes. bclose() (not bufoff + nhclose) is what resets
+     * bw_fd and bw_FILE; otherwise they keep a closed fd and the next
+     * bufon() on a reused fd number panics ("double buffering unexpected"). */
     bufon(fd);
     savelev(fd, ledger, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    nhclose(fd);
+    bclose(fd);
 
     /* Slurp the file back into a blob. */
     set_levelfile_name(lock, ledger);
@@ -1013,6 +1024,21 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     return blob;
 }
 
+void *
+nle_save_level(nle_ctx_t *nle, long *out_len)
+{
+    void *blob;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return (void *) 0;
+    blob = nle_save_level_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
+    return blob;
+}
+
 /* Release a blob returned by nle_save_level & co (libc memory, so bypass
  * the arena-aware `free` macro). */
 void
@@ -1028,15 +1054,14 @@ nle_free_blob(void *blob)
  * CONTENTS in place.
  *
  * Two-phase: this mutates state and resets vision but does NOT re-render.
- * Returns 0 on success, nonzero on error. */
-int
-nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+ * Returns 0 on success, nonzero on error (7: the load panicked). */
+static int
+nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
     const char *fq;
 
-    nle_anchor(nle);
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
     ledger = ledger_no(&u.uz);
@@ -1107,6 +1132,19 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
      * runs docrt() inside the coroutine. */
     vision_reset();
     return 0;
+}
+
+int
+nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+{
+    int rc;
+
+    nle_anchor(nle);
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return 7;
+    rc = nle_load_level_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 /* ===================================================================

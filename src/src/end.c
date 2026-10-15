@@ -577,6 +577,25 @@ VA_DECL(const char *, str)
     VA_START(str);
     VA_INIT(str, char *);
 
+    /* Raised from a blob call (host context): record the reason and unwind
+     * to the API entry, since really_done() -> nh_terminate() -> nle_yield()
+     * would jump to a context we are not suspended from. */
+    if (current_nle_ctx && current_nle_ctx->host_call_armed) {
+        char hbuf[BUFSZ];
+
+#if !defined(NO_VSNPRINTF)
+        (void) vsnprintf(hbuf, sizeof hbuf, str, VA_ARGS);
+#else
+        Vsprintf(hbuf, str, VA_ARGS);
+#endif
+        nle_sentinel_set_panic(current_nle_ctx->sentinel, hbuf);
+        paniclog("panic", hbuf);
+        fprintf(stderr, "NLE_HOST_CALL_PANIC: %s\n", hbuf);
+        fflush(stderr);
+        va_end(VA_ARGS); /* not VA_END(): that macro also closes the brace */
+        nle_host_call_abort();
+    }
+
     if (NH_G(program_state).panicking++)
         NH_abort(); /* avoid loops - this should never happen*/
 
