@@ -122,6 +122,7 @@
  *                vertical.
  */
 #include "hack.h"
+#include "nle.h"
 
 STATIC_DCL void FDECL(show_mon_or_warn, (int, int, int));
 STATIC_DCL void FDECL(display_monster,
@@ -1376,9 +1377,18 @@ docrt()
 {
     register int x, y;
     register struct rm *lev;
+    int *keep = (int *) 0; /* see rl_keep_memory (nle.h) */
 
     if (!u.ux)
         return; /* display isn't ready yet */
+
+    if (current_nle_ctx && current_nle_ctx->rl_keep_memory) {
+        current_nle_ctx->rl_keep_memory = 0;
+        keep = (int *) alloc(COLNO * ROWNO * sizeof *keep);
+        for (x = 0; x < COLNO; x++)
+            for (y = 0; y < ROWNO; y++)
+                keep[x * ROWNO + y] = levl[x][y].glyph;
+    }
 
     if (u.uswallow) {
         swallowed(1);
@@ -1423,6 +1433,13 @@ docrt()
     update_inventory();
 
     context.botlx = 1; /* force a redraw of the bottom line */
+
+    if (keep) {
+        for (x = 0; x < COLNO; x++)
+            for (y = 0; y < ROWNO; y++)
+                levl[x][y].glyph = keep[x * ROWNO + y];
+        free((genericptr_t) keep);
+    }
 }
 
 /* for panning beyond a clipped region; resend the current map data to

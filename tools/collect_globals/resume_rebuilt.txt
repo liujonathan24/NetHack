@@ -40,3 +40,4 @@ s_vision_c_cs_rmax1	vision_recalc	the could-see rows, computed by the ^R render
 s_vision_c_viz_clear	vision_reset	dug from the loaded level
 s_vision_c_left_ptrs	vision_reset	dug from the loaded level
 s_vision_c_right_ptrs	vision_reset	dug from the loaded level
+defer_see_monsters	nle_load_player	cleared after restgamestate; moveloop's prologue, which clears it, never runs again in a resumed process

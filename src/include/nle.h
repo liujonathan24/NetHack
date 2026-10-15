@@ -111,6 +111,18 @@ typedef struct nle_ctx {
     void *rl_win_proc_calls;
     int rl_in_yn_function;
     int rl_in_getlin;
+    /* set by parse() for its first key read, cleared when any key arrives:
+     * the game waits for a command, not for a count, prefix, cursor, ^A or
+     * extended-command key (none of those sets a prompt flag) */
+    int rl_cmd_boundary;
+    /* set by nle_load_player: the next command (the render after the load)
+     * leaves the loaded ^A queue alone instead of replacing it */
+    int rl_redo_keep;
+    /* set by nle_load_player: the next docrt() (the render after the load)
+     * puts the level memory back as the blob had it; the redraw feels the
+     * hero's square and re-maps every seen cell, which the straight game
+     * does only on its own events */
+    int rl_keep_memory;
 
     void *sentinel; /* nle_sentinel slot for this env (may be NULL) */
 
@@ -202,18 +214,27 @@ int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 void *nle_save_player(nle_ctx_t *, long *out_len);
 int   nle_load_player(nle_ctx_t *, const void *blob, long len);
 
+/* The rl display mirror (win/rl/winrl.cc: the glyph planes, the inventory
+ * cache, the last message) as a fixed-size blob, pointer-free. A checkpoint
+ * carries it and loads it after the resume render, so the cells the render
+ * leaves alone and the hallucinated inventory glyphs match the straight
+ * game. nle_mirror_load refills the observation. */
+size_t nle_mirror_blob_size(void);
+void   nle_mirror_save(nle_ctx_t *, void *dst);
+void   nle_mirror_load(nle_ctx_t *, const void *src);
+
 /* After savegamestate() the player blob carries a versioned tail: magic,
- * version byte, fixed length, this struct, the hero's trail and the random
- * monster table as raw bytes, then multi_reason, nomovemsg and occtxt as
- * length-prefixed strings. These are the per-game globals outside
+ * version byte, fixed length, this struct, the hero's trail, the random
+ * monster table and the ^A key queues as raw bytes, then multi_reason,
+ * nomovemsg and occtxt as length-prefixed strings. These are the per-game globals outside
  * NetHack's own save set that change play (the in-memory snapshot carries
  * the whole nh_globals block). Function pointers travel as nle_fn_id()
  * indexes, pointers to objects and monsters as o_id / m_id.
  * A blob without a tail (written before it existed) loads with those
  * globals at the reset game's values. nle_load_player: rc 9 = bad
- * magic/version/length, 10 = unknown function id. */
+ * magic/version/length or a tail cut short, 10 = unknown function id. */
 #define NLE_PLAYER_TAIL_MAGIC "NLEt"
-#define NLE_PLAYER_TAIL_VERSION 2
+#define NLE_PLAYER_TAIL_VERSION 3
 
 struct nle_player_tail {
     int you_movement, you_m_ap_type, you_mspec_used; /* youmonst */
@@ -241,6 +262,7 @@ struct nle_player_tail {
     long rock_msgmv, pick_msgmv, break_msgmv;
     int break_peaceful_shk;
     char empty_shops[5];
+    int redo_phead, redo_ptail, redo_shead, redo_stail, redo_last_multi;
 };
 
 /* Secure state-modification API.

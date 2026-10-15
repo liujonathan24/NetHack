@@ -1039,6 +1039,33 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     return blob;
 }
 
+/* win/rl/winrl.cc */
+extern size_t nle_rl_mirror_size(void);
+extern void nle_rl_mirror_save(nle_ctx_t *, void *);
+extern void nle_rl_mirror_load(nle_ctx_t *, const void *);
+extern void nle_rl_fill_obs(nle_ctx_t *);
+
+size_t
+nle_mirror_blob_size(void)
+{
+    return nle_rl_mirror_size();
+}
+
+void
+nle_mirror_save(nle_ctx_t *nle, void *dst)
+{
+    nle_anchor(nle);
+    nle_rl_mirror_save(nle, dst);
+}
+
+void
+nle_mirror_load(nle_ctx_t *nle, const void *src)
+{
+    nle_anchor(nle);
+    nle_rl_mirror_load(nle, src);
+    nle_rl_fill_obs(nle);
+}
+
 /* Release a blob returned by nle_save_level & co (libc memory, so bypass
  * the arena-aware `free` macro). */
 void
@@ -1579,6 +1606,16 @@ VA_DECL(const char *, s)
 {
     VA_START(s);
     VA_INIT(s, const char *);
+
+    /* inside a blob call (a short read in a truncated blob): unwind to the
+     * API entry and keep the window port */
+    if (current_nle_ctx && current_nle_ctx->host_call_armed) {
+        fprintf(stderr, "NLE_HOST_CALL_ERROR: ");
+        vfprintf(stderr, s, VA_ARGS);
+        fprintf(stderr, "\n");
+        va_end(VA_ARGS);
+        nle_host_call_abort();
+    }
 
     if (iflags.window_inited)
         exit_nhwindows((char *) 0); /* for tty, will call settty() */

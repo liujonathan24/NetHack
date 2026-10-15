@@ -78,12 +78,6 @@ s_cmd_c_alt_esc	options	options: pet names, autopickup exceptions, message types
 Cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
 s_cmd_c_readchar_queue	transient	keys queued by dotravel/click_to_cmd, drained before the next real key read
 s_cmd_c_clicklook_cc	transient	inside one command / one monster action
-s_cmd_c_pushq	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
-s_cmd_c_saveq	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
-s_cmd_c_phead	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
-s_cmd_c_ptail	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
-s_cmd_c_shead	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
-s_cmd_c_stail	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
 s_cmd_c_en_win	transient	inside one command / one monster action
 s_cmd_c_en_via_menu	transient	inside one command / one monster action
 l_cmd_c_basics_enlightenment_Power	transient	string/scratch buffer
@@ -93,7 +87,6 @@ l_cmd_c_key2extcmddesc_key2cmdbuf	transient	string/scratch buffer
 l_cmd_c_reset_commands_back_dir_cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
 l_cmd_c_reset_commands_backed_dir_cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
 l_cmd_c_randomkey_i	transient	fuzzer key counter; the fuzzer is off
-s_cmd_c_last_multi	transient	^A redo queue of the last command's keys; ^A is not in the action vocabulary
 l_cmd_c_click_to_cmd_cmd	transient	string/scratch buffer
 l_cmd_c_parse_in_line	transient	string/scratch buffer
 l_cmd_c_dotravel_cmd	transient	string/scratch buffer
@@ -117,7 +110,6 @@ program_state	process	process identity and lock/file names
 tbx	transient	inside one command / one monster action
 tby	transient	inside one command / one monster action
 m_shot	transient	inside one command / one monster action
-defer_see_monsters	transient	level-change scratch
 in_mklev	transient	level-generation scratch
 stoned	transient	inside one command / one monster action
 mrg_to_wielded	transient	inside one command / one monster action

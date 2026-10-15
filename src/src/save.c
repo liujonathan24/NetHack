@@ -428,7 +428,8 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
     struct repo *rp = &NH_G(s_shk_c_repo);
     uchar version = NLE_PLAYER_TAIL_VERSION;
     int len = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
-                     + sizeof NH_G(s_makemon_c_rndmonst_state));
+                     + sizeof NH_G(s_makemon_c_rndmonst_state)
+                     + sizeof NH_G(s_cmd_c_saveq) + sizeof NH_G(s_cmd_c_pushq));
 
     (void) memset((genericptr_t) &t, 0, sizeof t);
     t.you_movement = youmonst.movement;
@@ -492,6 +493,11 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
     t.break_peaceful_shk = NH_G(l_dothrow_c_breakobj_peaceful_shk);
     (void) memcpy(t.empty_shops, NH_G(l_shk_c_u_entered_shop_empty_shops),
                   sizeof t.empty_shops);
+    t.redo_phead = NH_G(s_cmd_c_phead);
+    t.redo_ptail = NH_G(s_cmd_c_ptail);
+    t.redo_shead = NH_G(s_cmd_c_shead);
+    t.redo_stail = NH_G(s_cmd_c_stail);
+    t.redo_last_multi = NH_G(s_cmd_c_last_multi);
 
     bwrite(fd, (genericptr_t) NLE_PLAYER_TAIL_MAGIC, 4);
     bwrite(fd, (genericptr_t) &version, sizeof version);
@@ -501,6 +507,8 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
            sizeof NH_G(s_track_c_utrack));
     bwrite(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
            sizeof NH_G(s_makemon_c_rndmonst_state));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_saveq), sizeof NH_G(s_cmd_c_saveq));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_pushq), sizeof NH_G(s_cmd_c_pushq));
     nle_save_string(fd, multi_reason);
     nle_save_string(fd, nomovemsg);
     nle_save_string(fd, occtxt);

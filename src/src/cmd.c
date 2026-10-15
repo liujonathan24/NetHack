@@ -6,6 +6,7 @@
 #include "hack.h"
 #include "lev.h"
 #include "func_tab.h"
+#include "nle.h"
 
 /* Macros for meta and ctrl modifiers:
  *   M and C return the meta/ctrl code for the given character;
@@ -5809,6 +5810,8 @@ parse()
 #ifdef ALTMETA
     alt_esc = iflags.altmeta; /* readchar() hack */
 #endif
+    if (!in_doagain)
+        current_nle_ctx->rl_cmd_boundary = 1;
     if (!Cmd.num_pad || (foo = readchar()) == Cmd.spkeys[NHKF_COUNT]) {
         long tmpmulti = multi;
 
@@ -5830,6 +5833,8 @@ parse()
         multi = last_multi = 0;
     } else if (foo == Cmd.spkeys[NHKF_DOAGAIN] || in_doagain) {
         multi = last_multi;
+    } else if (current_nle_ctx->rl_redo_keep) {
+        current_nle_ctx->rl_redo_keep = 0;
     } else {
         last_multi = multi;
         savech(0); /* reset input queue */

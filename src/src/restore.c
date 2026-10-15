@@ -938,6 +938,24 @@ register int fd;
     return 1;
 }
 
+/* mread that reports a short read (a blob cut inside the tail) instead of
+ * ending the game */
+STATIC_OVL boolean
+nle_tail_read(fd, buf, len)
+int fd;
+genericptr_t buf;
+unsigned len;
+{
+    restoreprocs.mread_flags = 1;
+    mread(fd, buf, len);
+    if (restoreprocs.mread_flags == -1) {
+        restoreprocs.mread_flags = 0;
+        return FALSE;
+    }
+    restoreprocs.mread_flags = 0;
+    return TRUE;
+}
+
 /* a string written by nle_save_string (save.c): an arena copy, or NULL */
 STATIC_OVL boolean
 nle_rest_string(fd, sp)
@@ -947,16 +965,16 @@ const char **sp;
     int len;
     char *s;
 
-    mread(fd, (genericptr_t) &len, sizeof len);
-    if (len < -1 || len > BUFSZ)
+    if (!nle_tail_read(fd, (genericptr_t) &len, sizeof len)
+        || len < -1 || len > BUFSZ)
         return FALSE;
     if (len < 0) {
         *sp = (const char *) 0;
         return TRUE;
     }
     s = (char *) alloc((unsigned) len + 1);
-    if (len > 0)
-        mread(fd, (genericptr_t) s, (unsigned) len);
+    if (len > 0 && !nle_tail_read(fd, (genericptr_t) s, (unsigned) len))
+        return FALSE;
     s[len] = '\0';
     *sp = s;
     return TRUE;
@@ -978,26 +996,28 @@ int fd;
 
     /* a blob written before the tail existed ends here: those globals
      * keep the reset game's values */
-    restoreprocs.mread_flags = 1;
-    mread(fd, (genericptr_t) magic, sizeof magic);
-    if (restoreprocs.mread_flags == -1) {
-        restoreprocs.mread_flags = 0;
+    if (!nle_tail_read(fd, (genericptr_t) magic, sizeof magic))
         return 0;
-    }
-    restoreprocs.mread_flags = 0;
     if (strncmp(magic, NLE_PLAYER_TAIL_MAGIC, sizeof magic))
         return 9;
-    mread(fd, (genericptr_t) &version, sizeof version);
-    mread(fd, (genericptr_t) &len, sizeof len);
-    if (version != NLE_PLAYER_TAIL_VERSION
+    if (!nle_tail_read(fd, (genericptr_t) &version, sizeof version)
+        || !nle_tail_read(fd, (genericptr_t) &len, sizeof len)
+        || version != NLE_PLAYER_TAIL_VERSION
         || len != (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
-                         + sizeof NH_G(s_makemon_c_rndmonst_state)))
+                         + sizeof NH_G(s_makemon_c_rndmonst_state)
+                         + sizeof NH_G(s_cmd_c_saveq)
+                         + sizeof NH_G(s_cmd_c_pushq)))
         return 9;
-    mread(fd, (genericptr_t) &t, sizeof t);
-    mread(fd, (genericptr_t) NH_G(s_track_c_utrack),
-          sizeof NH_G(s_track_c_utrack));
-    mread(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
-          sizeof NH_G(s_makemon_c_rndmonst_state));
+    if (!nle_tail_read(fd, (genericptr_t) &t, sizeof t)
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_track_c_utrack),
+                          sizeof NH_G(s_track_c_utrack))
+        || !nle_tail_read(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
+                          sizeof NH_G(s_makemon_c_rndmonst_state))
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_saveq),
+                          sizeof NH_G(s_cmd_c_saveq))
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_pushq),
+                          sizeof NH_G(s_cmd_c_pushq)))
+        return 9;
     if (!nle_rest_string(fd, &multi_reason)
         || !nle_rest_string(fd, &nomovemsg)
         || !nle_rest_string(fd, &occtxt))
@@ -1062,6 +1082,13 @@ int fd;
     NH_G(l_dothrow_c_breakobj_peaceful_shk) = (boolean) t.break_peaceful_shk;
     (void) memcpy(NH_G(l_shk_c_u_entered_shop_empty_shops), t.empty_shops,
                   sizeof t.empty_shops);
+    NH_G(s_cmd_c_phead) = t.redo_phead;
+    NH_G(s_cmd_c_ptail) = t.redo_ptail;
+    NH_G(s_cmd_c_shead) = t.redo_shead;
+    NH_G(s_cmd_c_stail) = t.redo_stail;
+    NH_G(s_cmd_c_last_multi) = t.redo_last_multi;
+    current_nle_ctx->rl_redo_keep = 1;
+    current_nle_ctx->rl_keep_memory = 1;
     return 0;
 }
 
@@ -1161,6 +1188,9 @@ long len;
         restoring = FALSE;
         return rc;
     }
+    /* restgamestate defers see_monsters() to moveloop's prologue, which
+     * the resumed process never runs again */
+    defer_see_monsters = FALSE;
     /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
     restlevelstate(stuckid, steedid);
 

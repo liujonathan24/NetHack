@@ -676,7 +676,7 @@ NetHackRL::fill_obs(nle_obs *obs)
         obs->internal[2] = in_getlin;
         obs->internal[3] = xwaitingforspace;
         obs->internal[4] = stairs_down;
-        obs->internal[5] = 0; /* Used to be core seed */
+        obs->internal[5] = current_nle_ctx->rl_cmd_boundary;
         obs->internal[6] = 0; /* Used to be disp seed */
         obs->internal[7] = u.uhunger;
         obs->internal[8] =
@@ -1011,6 +1011,7 @@ NetHackRL::getch_method()
 {
     fill_obs(nle_get_obs());
     int i = ((nle_obs *) nle_yield(TRUE))->action;
+    current_nle_ctx->rl_cmd_boundary = 0;
 
     /* NOT calling tty_nhgetch() but instead getting the input from
        the context switch. No stdin required. The following code is from
