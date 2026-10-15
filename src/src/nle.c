@@ -1103,6 +1103,18 @@ nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
     getlev(fd, 0, (xchar) 0, FALSE);
     nhclose(fd);
 
+    /* rest_regions() aged every timed region by (moves - its stamp) with
+     * the reset game's clock; the real clock arrives with the hero blob.
+     * The level's stamp is omoves. */
+    {
+        int i;
+
+        for (i = 0; i < NH_G(s_region_c_n_regions); i++)
+            if (NH_G(s_region_c_regions)[i]->ttl >= 0L)
+                NH_G(s_region_c_regions)[i]->ttl -=
+                    NH_G(s_restore_c_omoves) - moves;
+    }
+
     /* Standalone-load context fixups: place the hero on a sane, walkable
      * tile of the LOADED level. The destination game's u.ux/u.uy is stale
      * relative to the swapped-in contents and may land on rock/void, so we

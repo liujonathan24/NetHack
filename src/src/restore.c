@@ -970,6 +970,7 @@ long len;
     const char *fq_save;
     unsigned int stuckid = 0, steedid = 0;
     struct obj *otmp;
+    struct monst *mtmp;
 
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
@@ -1028,6 +1029,13 @@ long len;
     }
     /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
     restlevelstate(stuckid, steedid);
+
+    /* getlev() ran set_residency() while u.uz was still the reset game's
+     * level, so a shop elsewhere has no resident; link them now that u.uz
+     * is the checkpoint's. */
+    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
+        if (mtmp->isshk)
+            set_residency(mtmp, FALSE);
 
     /* And the four `context` pointers, from the ids nle_save_player stamped.
      * The in-chain fixups at restobjchn/restmonchn cannot do it here: this
