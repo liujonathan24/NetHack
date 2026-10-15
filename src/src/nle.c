@@ -991,6 +991,36 @@ nle_host_call_abort(void)
     abort();
 }
 
+/* wipe_engr_at moves engr_txt past a wiped prefix and savelev writes the
+ * text from its start, as a level change does. The level blob ends with
+ * each moved pointer's offset, then their count and NLE_ENGR_MAGIC, so the
+ * reload holds the text the live game holds. */
+#define NLE_ENGR_MAGIC 0x52474e45 /* "ENGR" */
+
+struct nle_engr_off {
+    int x, y;
+    unsigned off;
+};
+
+static int
+nle_engr_offsets(struct nle_engr_off *dst)
+{
+    struct engr *ep;
+    int n = 0;
+
+    for (ep = NH_G(s_engrave_c_head_engr); ep; ep = ep->nxt_engr)
+        if (ep->engr_lth && ep->engr_txt[0]
+            && ep->engr_txt != (char *) (ep + 1)) {
+            if (dst) {
+                dst[n].x = ep->engr_x;
+                dst[n].y = ep->engr_y;
+                dst[n].off = (unsigned) (ep->engr_txt - (char *) (ep + 1));
+            }
+            n++;
+        }
+    return n;
+}
+
 /* Serialize the CURRENT dungeon level to a malloc'd byte blob.
  * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
  * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
@@ -1004,6 +1034,8 @@ nle_save_level_inner(nle_ctx_t *nle, long *out_len)
     long sz;
     void *blob;
     FILE *fp;
+    int n_engr;
+    size_t tail;
 
     ledger = ledger_no(&u.uz);
     /* Write the in-memory current level to its <lock>.<ledger> file.
@@ -1032,7 +1064,9 @@ nle_save_level_inner(nle_ctx_t *nle, long *out_len)
         fclose(fp);
         return (void *) 0;
     }
-    blob = malloc((size_t) sz);
+    n_engr = nle_engr_offsets((struct nle_engr_off *) 0);
+    tail = n_engr * sizeof(struct nle_engr_off) + 2 * sizeof(int);
+    blob = malloc((size_t) sz + tail);
     if (!blob) {
         fclose(fp);
         return (void *) 0;
@@ -1043,8 +1077,17 @@ nle_save_level_inner(nle_ctx_t *nle, long *out_len)
         return (void *) 0;
     }
     fclose(fp);
+    {
+        char *p = (char *) blob + sz;
+        int magic = NLE_ENGR_MAGIC;
+
+        nle_engr_offsets((struct nle_engr_off *) p);
+        p += n_engr * sizeof(struct nle_engr_off);
+        memcpy(p, &n_engr, sizeof n_engr);
+        memcpy(p + sizeof n_engr, &magic, sizeof magic);
+    }
     if (out_len)
-        *out_len = sz;
+        *out_len = sz + (long) tail;
     return blob;
 }
 
@@ -1183,8 +1226,26 @@ nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
     char errbuf[BUFSZ];
     const char *fq;
 
+    const struct nle_engr_off *engr_off = 0;
+    int n_engr = 0;
+
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
+    if (len >= (long) (2 * sizeof(int))) {
+        const char *end = (const char *) blob + len;
+        int magic;
+
+        memcpy(&magic, end - sizeof magic, sizeof magic);
+        memcpy(&n_engr, end - 2 * sizeof(int), sizeof n_engr);
+        if (magic != NLE_ENGR_MAGIC || n_engr < 0
+            || (long) (n_engr * sizeof *engr_off + 2 * sizeof(int)) > len)
+            n_engr = 0;
+        else {
+            len -= (long) (n_engr * sizeof *engr_off + 2 * sizeof(int));
+            engr_off = (const struct nle_engr_off *) ((const char *) blob
+                                                      + len);
+        }
+    }
     ledger = ledger_no(&u.uz);
 
     /* Stamp the blob over the target ledger's levelfile, then getlev it. */
@@ -1223,6 +1284,19 @@ nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
      * hackpid.) pid/lev are used nowhere else in getlev(). */
     getlev(fd, 0, (xchar) 0, FALSE);
     nhclose(fd);
+    {
+        int i;
+
+        for (i = 0; i < n_engr; i++) {
+            struct nle_engr_off e;
+            struct engr *ep;
+
+            memcpy(&e, engr_off + i, sizeof e);
+            ep = engr_at((xchar) e.x, (xchar) e.y);
+            if (ep && e.off < ep->engr_lth)
+                ep->engr_txt = (char *) (ep + 1) + e.off;
+        }
+    }
 
     /* rest_regions() aged every timed region by (moves - its stamp) with
      * the reset game's clock; the real clock arrives with the hero blob.
