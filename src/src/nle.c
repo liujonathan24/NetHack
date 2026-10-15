@@ -162,40 +162,17 @@ nle_vt_callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
     }
 }
 
-/* The whole screen into tty_chars / tty_colors; the update callback above
- * copies the dirty rows only. */
-void
-nle_vt_refresh_obs(nle_ctx_t *nle)
-{
-    const TMTSCREEN *s = tmt_screen(nle->vterminal);
-    nle_obs *obs = nle->observation;
-    size_t r, c;
-
-    if (!obs || (!obs->tty_chars && !obs->tty_colors))
-        return;
-    for (r = 0; r < s->nline; r++)
-        for (c = 0; c < s->ncol; c++) {
-            size_t offset = (r * NLE_TERM_CO) + c;
-            TMTCHAR *tmt_c = &(s->lines[r]->chars[c]);
-
-            if (obs->tty_chars)
-                obs->tty_chars[offset] = tmt_c->c;
-            if (obs->tty_colors)
-                obs->tty_colors[offset] = vt_char_color_extract(tmt_c);
-        }
-}
-
 /* ---- virtual terminal snapshot -------------------------------------------
  * The TMT terminal emulator that produces the tty_* observations lives in
  * libc memory, outside the context block and the arena, and only repaints
- * cells the game redraws. A snapshot therefore carries the whole screen and
- * the cursor, so a restore cannot leave menu/message residue from the
- * abandoned continuation in tty_chars. */
+ * cells the game redraws. A snapshot therefore carries the whole screen,
+ * the cursor and the tty_* buffers themselves, so a restore cannot leave
+ * menu/message residue from the abandoned continuation in tty_chars. */
 size_t
 nle_vt_snapshot_size(nle_ctx_t *nle)
 {
     const TMTSCREEN *s = tmt_screen(nle->vterminal);
-    return s->nline * s->ncol * sizeof(TMTCHAR) + 2 * sizeof(int);
+    return s->nline * s->ncol * (sizeof(TMTCHAR) + 2) + 2 * sizeof(int);
 }
 
 void
@@ -214,6 +191,25 @@ nle_vt_snapshot_save(nle_ctx_t *nle, void *dst)
     c[0] = (int) cur->r;
     c[1] = (int) cur->c;
     memcpy(p, c, sizeof c);
+    p += sizeof c;
+    /* the reveal_map overlay draws into tty_chars too, and what it drew stays
+     * in the rows the terminal has not redrawn since */
+    for (r = 0; r < s->nline; r++) {
+        size_t col;
+
+        for (col = 0; col < s->ncol; col++) {
+            size_t offset = (r * NLE_TERM_CO) + col;
+            TMTCHAR *tmt_c = &(s->lines[r]->chars[col]);
+            nle_obs *obs = nle->observation;
+
+            p[col] = (obs && obs->tty_chars) ? obs->tty_chars[offset]
+                                             : (char) tmt_c->c;
+            p[s->ncol + col] = (obs && obs->tty_colors)
+                                   ? obs->tty_colors[offset]
+                                   : vt_char_color_extract(tmt_c);
+        }
+        p += 2 * s->ncol;
+    }
 }
 
 void
@@ -244,8 +240,19 @@ nle_vt_snapshot_load(nle_ctx_t *nle, const void *src)
     for (r = 0; r < s->nline; r++)
         s->lines[r]->dirty = true;
     if (nle->observation) {
+        nle_obs *obs = nle->observation;
+
         nle_vt_callback(TMT_MSG_UPDATE, vt, s, nle);   /* copies + cleans */
         nle_vt_callback(TMT_MSG_MOVED, vt, tmt_cursor(vt), nle);
+        p += sizeof c;
+        for (r = 0; r < s->nline; r++) {
+            if (obs->tty_chars)
+                memcpy(obs->tty_chars + r * NLE_TERM_CO, p, s->ncol);
+            if (obs->tty_colors)
+                memcpy(obs->tty_colors + r * NLE_TERM_CO, p + s->ncol,
+                       s->ncol);
+            p += 2 * s->ncol;
+        }
     }
 }
 
@@ -1114,7 +1121,7 @@ extern void nle_rl_fill_obs(nle_ctx_t *);
 
 /* the terminal is NLE_TERM_LI x NLE_TERM_CO (nle_start) */
 #define NLE_VT_SNAPSHOT_SIZE \
-    (NLE_TERM_LI * NLE_TERM_CO * sizeof(TMTCHAR) + 2 * sizeof(int))
+    (NLE_TERM_LI * NLE_TERM_CO * (sizeof(TMTCHAR) + 2) + 2 * sizeof(int))
 
 /* display.c's buffer of what is on screen: a cell the resume render drew
  * afresh (a door the hero remembers as a wall) would otherwise never be

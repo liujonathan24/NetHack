@@ -224,7 +224,6 @@ int   nle_load_player(nle_ctx_t *, const void *blob, long len);
  * inventory glyphs match the straight game. nle_mirror_load refills the
  * observation. */
 size_t nle_mirror_blob_size(void);
-void   nle_vt_refresh_obs(nle_ctx_t *); /* the screen into tty_chars/colors */
 void   nle_mirror_save(nle_ctx_t *, void *dst);
 void   nle_mirror_load(nle_ctx_t *, const void *src);
 
