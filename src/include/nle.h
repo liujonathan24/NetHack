@@ -121,7 +121,8 @@ typedef struct nle_ctx {
     /* set by nle_load_player: the next docrt() (the render after the load)
      * puts the level memory back as the blob had it; the redraw feels the
      * hero's square and re-maps every seen cell, which the straight game
-     * does only on its own events */
+     * does only on its own events. 2: the line of sight too, as the player
+     * blob carried it */
     int rl_keep_memory;
 
     void *sentinel; /* nle_sentinel slot for this env (may be NULL) */
@@ -229,16 +230,20 @@ void   nle_mirror_load(nle_ctx_t *, const void *src);
 
 /* After savegamestate() the player blob carries a versioned tail: magic,
  * version byte, fixed length, this struct, the hero's trail, the random
- * monster table and the ^A key queues as raw bytes, then multi_reason,
+ * monster table, the ^A key queues and (version 4) the hero's line of sight
+ * (the could-see rows with their row min and max: a hero moved without a
+ * vision recalc still sees from where he was) as raw bytes, then multi_reason,
  * nomovemsg and occtxt as length-prefixed strings. These are the per-game globals outside
  * NetHack's own save set that change play (the in-memory snapshot carries
  * the whole nh_globals block). Function pointers travel as nle_fn_id()
  * indexes, pointers to objects and monsters as o_id / m_id.
  * A blob without a tail (written before it existed) loads with those
- * globals at the reset game's values. nle_load_player: rc 9 = bad
+ * globals at the reset game's values, a version-3 tail with the line of
+ * sight the resume render computes. nle_load_player: rc 9 = bad
  * magic/version/length or a tail cut short, 10 = unknown function id. */
 #define NLE_PLAYER_TAIL_MAGIC "NLEt"
-#define NLE_PLAYER_TAIL_VERSION 3
+#define NLE_PLAYER_TAIL_VERSION 4
+#define NLE_TAIL_VISION_SIZE (ROWNO * COLNO + 2 * ROWNO)
 
 struct nle_player_tail {
     int you_movement, you_m_ap_type, you_mspec_used; /* youmonst */

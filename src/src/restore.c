@@ -983,8 +983,9 @@ const char **sp;
 /* the tail described at struct nle_player_tail (nle.h); 0 or an rc of
  * nle_load_player */
 STATIC_OVL int
-nle_load_player_tail(fd)
+nle_load_player_tail(fd, vision)
 int fd;
+char *vision;
 {
     struct nle_player_tail t;
     struct xlock_s *xl = &NH_G(s_lock_c_xlock);
@@ -992,7 +993,7 @@ int fd;
     struct repo *rp = &NH_G(s_shk_c_repo);
     char magic[4];
     uchar version;
-    int len;
+    int len, base;
 
     /* a blob written before the tail existed ends here: those globals
      * keep the reset game's values */
@@ -1000,13 +1001,14 @@ int fd;
         return 0;
     if (strncmp(magic, NLE_PLAYER_TAIL_MAGIC, sizeof magic))
         return 9;
+    base = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                  + sizeof NH_G(s_makemon_c_rndmonst_state)
+                  + sizeof NH_G(s_cmd_c_saveq) + sizeof NH_G(s_cmd_c_pushq));
     if (!nle_tail_read(fd, (genericptr_t) &version, sizeof version)
         || !nle_tail_read(fd, (genericptr_t) &len, sizeof len)
-        || version != NLE_PLAYER_TAIL_VERSION
-        || len != (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
-                         + sizeof NH_G(s_makemon_c_rndmonst_state)
-                         + sizeof NH_G(s_cmd_c_saveq)
-                         + sizeof NH_G(s_cmd_c_pushq)))
+        || (version == 3 ? len != base
+                         : (version != NLE_PLAYER_TAIL_VERSION
+                            || len != base + NLE_TAIL_VISION_SIZE)))
         return 9;
     if (!nle_tail_read(fd, (genericptr_t) &t, sizeof t)
         || !nle_tail_read(fd, (genericptr_t) NH_G(s_track_c_utrack),
@@ -1016,7 +1018,10 @@ int fd;
         || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_saveq),
                           sizeof NH_G(s_cmd_c_saveq))
         || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_pushq),
-                          sizeof NH_G(s_cmd_c_pushq)))
+                          sizeof NH_G(s_cmd_c_pushq))
+        || (version > 3
+            && !nle_tail_read(fd, (genericptr_t) vision,
+                              NLE_TAIL_VISION_SIZE)))
         return 9;
     if (!nle_rest_string(fd, &multi_reason)
         || !nle_rest_string(fd, &nomovemsg)
@@ -1088,7 +1093,7 @@ int fd;
     NH_G(s_cmd_c_stail) = t.redo_stail;
     NH_G(s_cmd_c_last_multi) = t.redo_last_multi;
     current_nle_ctx->rl_redo_keep = 1;
-    current_nle_ctx->rl_keep_memory = 1;
+    current_nle_ctx->rl_keep_memory = version > 3 ? 2 : 1;
     return 0;
 }
 
@@ -1125,7 +1130,8 @@ long len;
     unsigned int stuckid = 0, steedid = 0;
     struct obj *otmp;
     struct monst *mtmp;
-    int rc;
+    int rc, y;
+    char vision[NLE_TAIL_VISION_SIZE];
 
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
@@ -1182,7 +1188,7 @@ long len;
         restoring = FALSE;
         return 7;
     }
-    if ((rc = nle_load_player_tail(fd)) != 0) {
+    if ((rc = nle_load_player_tail(fd, vision)) != 0) {
         (void) nhclose(fd);
         (void) unlink(fq_player);
         restoring = FALSE;
@@ -1237,6 +1243,12 @@ long len;
      * this entry point; the caller's next nle_step() runs docrt() inside the
      * coroutine to repaint. Same two-phase contract as nle_load_level. */
     vision_reset();
+    if (nle->rl_keep_memory > 1) {
+        for (y = 0; y < ROWNO; y++)
+            (void) memcpy(viz_array[y], vision + y * COLNO, COLNO);
+        (void) memcpy(viz_rmin, vision + ROWNO * COLNO, ROWNO);
+        (void) memcpy(viz_rmax, vision + ROWNO * COLNO + ROWNO, ROWNO);
+    }
     return 0;
 }
 

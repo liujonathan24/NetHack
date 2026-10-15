@@ -1372,22 +1372,88 @@ doredraw()
     return 0;
 }
 
+/* what the resume render (see rl_keep_memory in nle.h) puts back: the level
+ * memory, the overview's view of this level, the traps seen and, when the
+ * player blob carried it, the hero's line of sight */
+struct kept_memory {
+    struct rm locations[COLNO][ROWNO];
+    schar lastseen[COLNO][ROWNO];
+    mapseen *mptr, ms;
+    int ntraps;
+    boolean *tseen;
+    boolean vision;
+    char could_see[ROWNO][COLNO], rmin[ROWNO], rmax[ROWNO];
+};
+
+STATIC_OVL struct kept_memory *
+keep_memory(vision)
+boolean vision;
+{
+    struct kept_memory *k = (struct kept_memory *) alloc(sizeof *k);
+    struct trap *t;
+    int y;
+
+    (void) memcpy(k->locations, levl, sizeof k->locations);
+    (void) memcpy(k->lastseen, lastseentyp, sizeof k->lastseen);
+    for (k->mptr = mapseenchn; k->mptr; k->mptr = k->mptr->next)
+        if (on_level(&k->mptr->lev, &u.uz))
+            break;
+    if (k->mptr)
+        k->ms = *k->mptr;
+    for (k->ntraps = 0, t = ftrap; t; t = t->ntrap)
+        k->ntraps++;
+    k->tseen = (boolean *) alloc(k->ntraps * sizeof *k->tseen + 1);
+    for (y = 0, t = ftrap; t; t = t->ntrap)
+        k->tseen[y++] = t->tseen;
+    k->vision = vision;
+    if (vision) {
+        for (y = 0; y < ROWNO; y++)
+            (void) memcpy(k->could_see[y], viz_array[y], COLNO);
+        (void) memcpy(k->rmin, viz_rmin, ROWNO);
+        (void) memcpy(k->rmax, viz_rmax, ROWNO);
+    }
+    return k;
+}
+
+STATIC_OVL void
+put_memory_back(k)
+struct kept_memory *k;
+{
+    struct trap *t;
+    int y;
+
+    (void) memcpy(levl, k->locations, sizeof k->locations);
+    (void) memcpy(lastseentyp, k->lastseen, sizeof k->lastseen);
+    if (k->mptr) {
+        k->mptr->feat = k->ms.feat;
+        k->mptr->flags = k->ms.flags;
+        (void) memcpy(k->mptr->msrooms, k->ms.msrooms, sizeof k->ms.msrooms);
+    }
+    for (y = 0, t = ftrap; t && y < k->ntraps; t = t->ntrap)
+        t->tseen = k->tseen[y++];
+    if (k->vision) {
+        for (y = 0; y < ROWNO; y++)
+            (void) memcpy(viz_array[y], k->could_see[y], COLNO);
+        (void) memcpy(viz_rmin, k->rmin, ROWNO);
+        (void) memcpy(viz_rmax, k->rmax, ROWNO);
+    }
+    free((genericptr_t) k->tseen);
+    free((genericptr_t) k);
+}
+
 void
 docrt()
 {
     register int x, y;
     register struct rm *lev;
-    int *keep = (int *) 0; /* see rl_keep_memory (nle.h) */
+    struct kept_memory *keep = 0; /* see rl_keep_memory (nle.h) */
 
     if (!u.ux)
         return; /* display isn't ready yet */
 
     if (current_nle_ctx && current_nle_ctx->rl_keep_memory) {
+        keep = keep_memory(current_nle_ctx->rl_keep_memory > 1);
         current_nle_ctx->rl_keep_memory = 0;
-        keep = (int *) alloc(COLNO * ROWNO * sizeof *keep);
-        for (x = 0; x < COLNO; x++)
-            for (y = 0; y < ROWNO; y++)
-                keep[x * ROWNO + y] = levl[x][y].glyph;
     }
 
     if (u.uswallow) {
@@ -1434,12 +1500,8 @@ docrt()
 
     context.botlx = 1; /* force a redraw of the bottom line */
 
-    if (keep) {
-        for (x = 0; x < COLNO; x++)
-            for (y = 0; y < ROWNO; y++)
-                levl[x][y].glyph = keep[x * ROWNO + y];
-        free((genericptr_t) keep);
-    }
+    if (keep)
+        put_memory_back(keep);
 }
 
 /* for panning beyond a clipped region; resend the current map data to

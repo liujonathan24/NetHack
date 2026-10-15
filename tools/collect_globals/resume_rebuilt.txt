@@ -22,21 +22,18 @@ uright	setworn	nulled by nle_load_player, then rebound from the loaded inventory
 uleft	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
 ublindf	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
 vision_full_recalc	vision_reset	set so the ^R render runs vision_recalc
-viz_array	vision_reset	end of nle_load_player; vision_recalc on the ^R render
 s_mkmaze_c_ebubbles	restore_waterlevel	tail pointer of the bubble chain written by save_waterlevel
 mons	role_init	quest-monster flags of the saved role; the reset uses the same character
 s_region_c_max_regions	rest_regions	set to the n_regions read back
 urole	role_init	restgamestate: role, race, gender, alignment from the saved flags
 urace	role_init	restgamestate: role, race, gender, alignment from the saved flags
-viz_rmin	vision_reset	end of nle_load_player; vision_recalc on the ^R render
-viz_rmax	vision_reset	end of nle_load_player; vision_recalc on the ^R render
-s_vision_c_could_see	vision_reset	cleared; filled by vision_recalc on the ^R render
-s_vision_c_cs_rows0	vision_recalc	the could-see rows, computed by the ^R render
-s_vision_c_cs_rows1	vision_recalc	the could-see rows, computed by the ^R render
-s_vision_c_cs_rmin0	vision_recalc	the could-see rows, computed by the ^R render
-s_vision_c_cs_rmax0	vision_recalc	the could-see rows, computed by the ^R render
-s_vision_c_cs_rmin1	vision_recalc	the could-see rows, computed by the ^R render
-s_vision_c_cs_rmax1	vision_recalc	the could-see rows, computed by the ^R render
+s_vision_c_could_see	vision_reset	cleared; the current rows come back from the tail (viz_array, viz_rmin, viz_rmax) and the ^R render keeps them
+s_vision_c_cs_rows0	vision_init	the row pointers into could_see
+s_vision_c_cs_rows1	vision_init	the row pointers into could_see
+s_vision_c_cs_rmin0	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmax0	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmin1	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmax1	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
 s_vision_c_viz_clear	vision_reset	dug from the loaded level
 s_vision_c_left_ptrs	vision_reset	dug from the loaded level
 s_vision_c_right_ptrs	vision_reset	dug from the loaded level

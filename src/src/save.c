@@ -427,9 +427,10 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
     struct trapinfo *ti = &NH_G(s_apply_c_trapinfo);
     struct repo *rp = &NH_G(s_shk_c_repo);
     uchar version = NLE_PLAYER_TAIL_VERSION;
-    int len = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
-                     + sizeof NH_G(s_makemon_c_rndmonst_state)
-                     + sizeof NH_G(s_cmd_c_saveq) + sizeof NH_G(s_cmd_c_pushq));
+    int y, len = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                        + sizeof NH_G(s_makemon_c_rndmonst_state)
+                        + sizeof NH_G(s_cmd_c_saveq)
+                        + sizeof NH_G(s_cmd_c_pushq) + NLE_TAIL_VISION_SIZE);
 
     (void) memset((genericptr_t) &t, 0, sizeof t);
     t.you_movement = youmonst.movement;
@@ -509,6 +510,10 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
            sizeof NH_G(s_makemon_c_rndmonst_state));
     bwrite(fd, (genericptr_t) NH_G(s_cmd_c_saveq), sizeof NH_G(s_cmd_c_saveq));
     bwrite(fd, (genericptr_t) NH_G(s_cmd_c_pushq), sizeof NH_G(s_cmd_c_pushq));
+    for (y = 0; y < ROWNO; y++)
+        bwrite(fd, (genericptr_t) viz_array[y], COLNO);
+    bwrite(fd, (genericptr_t) viz_rmin, ROWNO);
+    bwrite(fd, (genericptr_t) viz_rmax, ROWNO);
     nle_save_string(fd, multi_reason);
     nle_save_string(fd, nomovemsg);
     nle_save_string(fd, occtxt);
