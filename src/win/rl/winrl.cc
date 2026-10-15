@@ -1364,10 +1364,8 @@ NetHackRL::rl_exit_nhwindows(const char *c)
 {
     DEBUG_API("rl_exit_nhwindows" << std::endl);
     ScopedStack s(win_proc_calls(), "exit_nhwindows");
-    if (current_nle_ctx && current_nle_ctx->rl_instance) {
-        destroy_libc(static_cast<NetHackRL*>(current_nle_ctx->rl_instance));
-        current_nle_ctx->rl_instance = nullptr;
-    }
+    /* The instance outlives the game: a snapshot restored after the game's
+     * end steps on through it. nle_end frees it (destroy_for_ctx). */
     tty_exit_nhwindows(c);
 }
 
@@ -1693,16 +1691,6 @@ NetHackRL::rl_end_screen()
     DEBUG_API("rl_end_screen" << std::endl);
     ScopedStack s(win_proc_calls(), "end_screen");
     tty_end_screen();
-
-    if (instance_get()) {
-        // The only way instance can still be around is in an error situation.
-        // Unfortunately, ZQM doesn't close properly when destructed via
-        // global objects. So we do it here.
-        if (current_nle_ctx) {
-            destroy_libc(static_cast<NetHackRL*>(current_nle_ctx->rl_instance));
-            current_nle_ctx->rl_instance = nullptr;
-        }
-    }
 }
 
 void
