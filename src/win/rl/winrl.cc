@@ -469,7 +469,8 @@ NetHackRL::mirror_blob_size()
            + sizeof(uint32_t)                    /* inventory_ count */
            + (size_t) NLE_INVENTORY_SIZE * RL_INV_SLOT /* inventory_ slots */
            + 2 + RL_MSG_MAX                      /* WIN_MESSAGE last_msg */
-           + sizeof(int64_t);                    /* condition_bits_ */
+           + sizeof(int64_t)                     /* condition_bits_ */
+           + MAXWIN;                             /* windows_ types */
 }
 
 void
@@ -484,6 +485,12 @@ NetHackRL::save_mirror(void *dst) const
         int64_t cond = (int64_t) condition_bits_;
         std::memcpy(p, &cond, sizeof(cond)); p += sizeof(cond);
     }
+    /* windows_ is per-game state too: a slot a later destroy nulled would
+     * skip its clear (the map mirror at the game's end) or come back with
+     * another type. 0 = no window. */
+    for (int wid = 0; wid < MAXWIN; wid++)
+        *p++ = (char) (((size_t) wid < windows_.size() && windows_[wid])
+                           ? windows_[wid]->type : 0);
     std::memcpy(p, glyphs_.data(), sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(p, chars_.data(), sizeof(chars_));       p += sizeof(chars_);
     std::memcpy(p, colors_.data(), sizeof(colors_));     p += sizeof(colors_);
@@ -545,6 +552,20 @@ NetHackRL::load_mirror(const void *src)
         int64_t cond = 0;
         std::memcpy(&cond, p, sizeof(cond)); p += sizeof(cond);
         condition_bits_ = (long) cond;
+    }
+    for (int wid = 0; wid < MAXWIN; wid++) {
+        int type = (unsigned char) *p++;
+        if ((size_t) wid >= windows_.size()) {
+            if (!type)
+                continue;
+            windows_.resize((size_t) wid + 1);
+        }
+        if (!type)
+            windows_[wid].reset(nullptr);
+        else if (!windows_[wid])
+            windows_[wid] = make_libc_rl_window(type);
+        else
+            windows_[wid]->type = type;
     }
     std::memcpy(glyphs_.data(), p, sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(chars_.data(), p, sizeof(chars_));       p += sizeof(chars_);
@@ -744,6 +765,10 @@ NetHackRL::fill_obs(nle_obs *obs)
      * this loop never runs, so the default obs is byte-identical to vanilla
      * and golden parity is unaffected. */
     if (nle_tuning.reveal_map > 0.0) {
+        /* on a fresh copy of the screen: the update callback refreshes the
+         * rows the game redrew, so a monster or door the overlay drew into
+         * another row before would linger there */
+        nle_vt_refresh_obs(current_nle_ctx);
         for (int x = 1; x < COLNO; x++) {
             for (int y = 0; y < ROWNO; y++) {
                 size_t i = (x - 1) % (COLNO - 1);
@@ -761,10 +786,6 @@ NetHackRL::fill_obs(nle_obs *obs)
                  * reveal_map>0 path, so default obs is unaffected. */
                 if (levl[x][y].typ == SDOOR) {
                     cvt_sdoor_to_door(&levl[x][y]);
-        /* on a fresh copy of the screen: the update callback refreshes the
-         * rows the game redrew, so a monster or door the overlay drew into
-         * another row before would linger there */
-        nle_vt_refresh_obs(current_nle_ctx);
                 } else if (levl[x][y].typ == SCORR) {
                     levl[x][y].typ = CORR;
                     unblock_point(x, y);

@@ -214,17 +214,21 @@ int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 void *nle_save_player(nle_ctx_t *, long *out_len);
 int   nle_load_player(nle_ctx_t *, const void *blob, long len);
 
-/* The rl display mirror (win/rl/winrl.cc: the glyph planes, the inventory
- * cache, the last message) as a fixed-size blob, pointer-free. A checkpoint
- * carries it and loads it after the resume render, so the cells the render
- * leaves alone and the hallucinated inventory glyphs match the straight
- * game. nle_mirror_load refills the observation. */
+/* The display state outside NetHack's save set as a fixed-size blob,
+ * pointer-free: the rl mirror (win/rl/winrl.cc: the glyph planes, the
+ * window table, the inventory cache, the last message), the terminal screen
+ * (tty_chars, tty_colors, the cursor) with the tty port's message-line state
+ * and display.c's buffer of what is on screen. A checkpoint carries it and
+ * loads it after the resume render, so the cells the render leaves alone or
+ * draws afresh, the rows the straight game never redrew and the hallucinated
+ * inventory glyphs match the straight game. nle_mirror_load refills the
+ * observation. */
 size_t nle_mirror_blob_size(void);
+void   nle_vt_refresh_obs(nle_ctx_t *); /* the screen into tty_chars/colors */
 void   nle_mirror_save(nle_ctx_t *, void *dst);
 void   nle_mirror_load(nle_ctx_t *, const void *src);
 
 /* After savegamestate() the player blob carries a versioned tail: magic,
-void   nle_vt_refresh_obs(nle_ctx_t *); /* the screen into tty_chars/colors */
  * version byte, fixed length, this struct, the hero's trail, the random
  * monster table and the ^A key queues as raw bytes, then multi_reason,
  * nomovemsg and occtxt as length-prefixed strings. These are the per-game globals outside

@@ -24,6 +24,7 @@
 #include "lev.h"        /* WRITE_SAVE / FREE_SAVE for savelev() */
 
 #include "dlb.h"
+#include "wintty.h"     /* the message line's state travels with the screen */
 
 #include "nle.h"
 #include "nle_sentinel.h"
@@ -161,7 +162,6 @@ nle_vt_callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
     }
 }
 
-/* ---- virtual terminal snapshot -------------------------------------------
 /* The whole screen into tty_chars / tty_colors; the update callback above
  * copies the dirty rows only. */
 void
@@ -185,6 +185,7 @@ nle_vt_refresh_obs(nle_ctx_t *nle)
         }
 }
 
+/* ---- virtual terminal snapshot -------------------------------------------
  * The TMT terminal emulator that produces the tty_* observations lives in
  * libc memory, outside the context block and the arena, and only repaints
  * cells the game redraws. A snapshot therefore carries the whole screen and
@@ -1068,24 +1069,94 @@ extern void nle_rl_mirror_save(nle_ctx_t *, void *);
 extern void nle_rl_mirror_load(nle_ctx_t *, const void *);
 extern void nle_rl_fill_obs(nle_ctx_t *);
 
+/* the terminal is NLE_TERM_LI x NLE_TERM_CO (nle_start) */
+#define NLE_VT_SNAPSHOT_SIZE \
+    (NLE_TERM_LI * NLE_TERM_CO * sizeof(TMTCHAR) + 2 * sizeof(int))
+
+/* display.c's buffer of what is on screen: a cell the resume render drew
+ * afresh (a door the hero remembers as a wall) would otherwise never be
+ * printed again when the straight game prints it */
+#define NLE_GBUF_SIZE                                                \
+    (sizeof NH_G(s_display_c_gbuf) + sizeof NH_G(s_display_c_gbuf_start) \
+     + sizeof NH_G(s_display_c_gbuf_stop))
+
+/* the tty port's idea of the screen: the message line it has to clear at
+ * the next command and where the cursor is (win/tty) */
+struct nle_tty_state {
+    int toplin, dismiss_more, curx, cury;
+    long msg_curx, msg_cury;
+    int msg_flags;
+};
+
 size_t
 nle_mirror_blob_size(void)
 {
-    return nle_rl_mirror_size();
+    return nle_rl_mirror_size() + NLE_VT_SNAPSHOT_SIZE + NLE_GBUF_SIZE
+           + sizeof(struct nle_tty_state);
 }
 
 void
 nle_mirror_save(nle_ctx_t *nle, void *dst)
 {
+    char *p = (char *) dst;
+
     nle_anchor(nle);
-    nle_rl_mirror_save(nle, dst);
+    nle_rl_mirror_save(nle, p);
+    p += nle_rl_mirror_size();
+    nle_vt_snapshot_save(nle, p);
+    p += NLE_VT_SNAPSHOT_SIZE;
+    memcpy(p, NH_G(s_display_c_gbuf), sizeof NH_G(s_display_c_gbuf));
+    p += sizeof NH_G(s_display_c_gbuf);
+    memcpy(p, NH_G(s_display_c_gbuf_start), sizeof NH_G(s_display_c_gbuf_start));
+    p += sizeof NH_G(s_display_c_gbuf_start);
+    memcpy(p, NH_G(s_display_c_gbuf_stop), sizeof NH_G(s_display_c_gbuf_stop));
+    p += sizeof NH_G(s_display_c_gbuf_stop);
+    {
+        struct nle_tty_state t;
+        struct WinDesc *cw = wins[WIN_MESSAGE];
+
+        memset(&t, 0, sizeof t);
+        t.toplin = ttyDisplay->toplin;
+        t.dismiss_more = ttyDisplay->dismiss_more;
+        t.curx = ttyDisplay->curx;
+        t.cury = ttyDisplay->cury;
+        t.msg_curx = cw->curx;
+        t.msg_cury = cw->cury;
+        t.msg_flags = cw->flags;
+        memcpy(p, &t, sizeof t);
+    }
 }
 
+/* the screen first: its refresh of tty_chars precedes the overlays fill_obs
+ * draws on top */
 void
 nle_mirror_load(nle_ctx_t *nle, const void *src)
 {
+    const char *p = (const char *) src;
+
     nle_anchor(nle);
-    nle_rl_mirror_load(nle, src);
+    nle_vt_snapshot_load(nle, p + nle_rl_mirror_size());
+    nle_rl_mirror_load(nle, p);
+    p += nle_rl_mirror_size() + NLE_VT_SNAPSHOT_SIZE;
+    memcpy(NH_G(s_display_c_gbuf), p, sizeof NH_G(s_display_c_gbuf));
+    p += sizeof NH_G(s_display_c_gbuf);
+    memcpy(NH_G(s_display_c_gbuf_start), p, sizeof NH_G(s_display_c_gbuf_start));
+    p += sizeof NH_G(s_display_c_gbuf_start);
+    memcpy(NH_G(s_display_c_gbuf_stop), p, sizeof NH_G(s_display_c_gbuf_stop));
+    p += sizeof NH_G(s_display_c_gbuf_stop);
+    {
+        struct nle_tty_state t;
+        struct WinDesc *cw = wins[WIN_MESSAGE];
+
+        memcpy(&t, p, sizeof t);
+        ttyDisplay->toplin = t.toplin;
+        ttyDisplay->dismiss_more = (char) t.dismiss_more;
+        ttyDisplay->curx = (short) t.curx;
+        ttyDisplay->cury = (short) t.cury;
+        cw->curx = t.msg_curx;
+        cw->cury = t.msg_cury;
+        cw->flags = t.msg_flags;
+    }
     nle_rl_fill_obs(nle);
 }
 

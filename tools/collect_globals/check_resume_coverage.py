@@ -2,9 +2,9 @@
 """Every field of struct nh_globals is on the resume path or has a stated reason.
 
 A cross-process resume loads the level blob, the player blob (savegamestate
-plus the nle_player_tail) and the RNG blob. Every per-game global has to be in
-one of them, be rebuilt by the load, or be explained. The class of each field
-is decided from the sources, in this order:
+plus the nle_player_tail), the RNG blob and the mirror blob. Every per-game
+global has to be in one of them, be rebuilt by the load, or be explained. The
+class of each field is decided from the sources, in this order:
 
   saved      the field is used by a save function (SAVE_FUNCTIONS)
   tail       the field is written by nle_save_player_tail (save.c)
@@ -26,7 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # every function that writes game state into a blob: the player blob
 # (savegamestate and what it calls), the level blob (savelev and what it
-# calls) and the RNG blob (nle_rng_save)
+# calls), the RNG blob (nle_rng_save) and the mirror blob (nle_mirror_save)
 SAVE_FUNCTIONS = [
     "savegamestate", "save_killers", "save_timers", "save_light_sources",
     "saveobjchn", "saveobj", "savemonchn", "savemon", "savetrapchn",
@@ -35,7 +35,7 @@ SAVE_FUNCTIONS = [
     "save_oracles", "save_waterlevel", "save_msghistory",
     "tty_getmsghistory", "msghistory_snapshot",
     "savelev", "save_rooms", "save_engravings", "save_regions", "save_worm",
-    "nle_rng_save",
+    "nle_rng_save", "nle_mirror_save",
 ]
 TAIL_FUNCTION = "nle_save_player_tail"
 TAIL_CALLER = "nle_save_player_inner"

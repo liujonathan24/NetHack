@@ -156,9 +156,6 @@ l_display_c_under_water_lastx	display	message/status window state, redrawn by th
 l_display_c_under_water_lasty	display	message/status window state, redrawn by the ^R render
 l_display_c_under_water_dela	display	message/status window state, redrawn by the ^R render
 l_display_c_under_ground_dela	display	message/status window state, redrawn by the ^R render
-s_display_c_gbuf	display	message/status window state, redrawn by the ^R render
-s_display_c_gbuf_start	display	message/status window state, redrawn by the ^R render
-s_display_c_gbuf_stop	display	message/status window state, redrawn by the ^R render
 l_display_c_cls_in_cls	transient	inside one command / one monster action
 l_display_c_flush_screen_flushing	transient	inside one command / one monster action
 l_display_c_flush_screen_delay_flushing	transient	inside one command / one monster action
@@ -500,7 +497,6 @@ s_termcap_c_nulstr	transient	string/scratch buffer
 l_topl_c_tty_putmsghistory_initd	display	message/status window state, redrawn by the ^R render
 tty_procs	display	message/status window state, redrawn by the ^R render
 BASE_WINDOW	display	message/status window state, redrawn by the ^R render
-ttyDisplay	display	message/status window state, redrawn by the ^R render
 s_wintty_c_winpanicstr	transient	string/scratch buffer
 defmorestr	display	message/status window state, redrawn by the ^R render
 l_wintty_c_compress_str_cbuf	transient	string/scratch buffer
