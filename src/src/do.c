@@ -13,7 +13,6 @@ STATIC_DCL void NDECL(polymorph_sink);
 STATIC_DCL boolean NDECL(teleport_sink);
 STATIC_DCL void FDECL(dosinkring, (struct obj *));
 STATIC_PTR int FDECL(drop, (struct obj *));
-STATIC_PTR int NDECL(wipeoff);
 STATIC_DCL int FDECL(menu_drop, (int));
 STATIC_DCL int NDECL(currentlevel_rewrite);
 STATIC_DCL void NDECL(final_level);
@@ -1921,7 +1920,7 @@ donull()
     return 1; /* Do nothing, but let other things happen */
 }
 
-STATIC_PTR int
+int
 wipeoff(VOID_ARGS)
 {
     if (u.ucreamed < 4)

@@ -11,7 +11,6 @@ STATIC_DCL boolean NDECL(rm_waslit);
 STATIC_DCL void FDECL(mkcavepos,
                       (XCHAR_P, XCHAR_P, int, BOOLEAN_P, BOOLEAN_P));
 STATIC_DCL void FDECL(mkcavearea, (BOOLEAN_P));
-STATIC_DCL int NDECL(dig);
 STATIC_DCL void FDECL(dig_up_grave, (coord *));
 STATIC_DCL int FDECL(adj_pit_checks, (coord *, char *));
 STATIC_DCL void FDECL(pit_flow, (struct trap *, SCHAR_P));
@@ -237,7 +236,7 @@ int x, y;
     return TRUE;
 }
 
-STATIC_OVL int
+int
 dig(VOID_ARGS)
 {
     register struct rm *lev;

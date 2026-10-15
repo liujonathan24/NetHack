@@ -6,11 +6,7 @@
 #include "hack.h"
 #include "nle.h"
 
-STATIC_PTR int NDECL(eatmdone);
-STATIC_PTR int NDECL(eatfood);
 STATIC_PTR struct obj *FDECL(costly_tin, (int));
-STATIC_PTR int NDECL(opentin);
-STATIC_PTR int NDECL(unfaint);
 
 STATIC_DCL const char *FDECL(food_xname, (struct obj *, BOOLEAN_P));
 STATIC_DCL void FDECL(choke, (struct obj *));
@@ -154,7 +150,7 @@ static const struct {
 #define eatmbuf (nh_g->s_eat_c_eatmbuf) /* set by cpostfx() */
 
 /* called after mimicing is over */
-STATIC_PTR int
+int
 eatmdone(VOID_ARGS)
 {
     /* release `eatmbuf' */
@@ -429,7 +425,7 @@ do_reset_eat()
 }
 
 /* called each move during eating process */
-STATIC_PTR int
+int
 eatfood(VOID_ARGS)
 {
     if (!context.victual.piece
@@ -1437,7 +1433,7 @@ const char *mesg;
 }
 
 /* called during each move whilst opening a tin */
-STATIC_PTR int
+int
 opentin(VOID_ARGS)
 {
     /* perhaps it was stolen (although that should cause interruption) */
@@ -2913,7 +2909,6 @@ int num;
     newuhs(FALSE);
 }
 
-STATIC_PTR
 int
 unfaint(VOID_ARGS)
 {

@@ -136,7 +136,6 @@ STATIC_PTR int NDECL(dosh_core);
 STATIC_PTR int NDECL(doherecmdmenu);
 STATIC_PTR int NDECL(dotherecmdmenu);
 STATIC_PTR int NDECL(doprev_message);
-STATIC_PTR int NDECL(timed_occupation);
 STATIC_PTR int NDECL(doextcmd);
 STATIC_PTR int NDECL(dotravel);
 STATIC_PTR int NDECL(doterrain);
@@ -220,7 +219,7 @@ doprev_message(VOID_ARGS)
 }
 
 /* Count down by decrementing multi */
-STATIC_PTR int
+int
 timed_occupation(VOID_ARGS)
 {
     (*timed_occ_fn)();

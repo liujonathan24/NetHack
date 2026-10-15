@@ -8,10 +8,6 @@
 /* at most one of `door' and `box' should be non-null at any given time */
 #define xlock (nh_g->s_lock_c_xlock)
 
-/* occupation callbacks */
-STATIC_PTR int NDECL(picklock);
-STATIC_PTR int NDECL(forcelock);
-
 STATIC_DCL const char *NDECL(lock_action);
 STATIC_DCL boolean FDECL(obstructed, (int, int, BOOLEAN_P));
 STATIC_DCL void FDECL(chest_shatter_msg, (struct obj *));
@@ -68,7 +64,7 @@ lock_action()
 }
 
 /* try to open/close a lock */
-STATIC_PTR int
+int
 picklock(VOID_ARGS)
 {
     if (xlock.box) {
@@ -214,7 +210,7 @@ boolean destroyit;
 }
 
 /* try to force a locked chest */
-STATIC_PTR int
+int
 forcelock(VOID_ARGS)
 {
     if ((xlock.box->ox != u.ux) || (xlock.box->oy != u.uy))

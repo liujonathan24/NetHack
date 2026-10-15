@@ -5,8 +5,6 @@
 
 #include "hack.h"
 
-STATIC_PTR int NDECL(stealarm);
-
 STATIC_DCL const char *FDECL(equipname, (struct obj *));
 
 STATIC_OVL const char *
@@ -143,7 +141,7 @@ register struct monst *mtmp;
 /* stealoid: per-env nh_g->stealoid */ /* object to be stolen */
 /* stealmid: per-env, see nh_globals.h */ /* monster doing the stealing */
 
-STATIC_PTR int
+int
 stealarm(VOID_ARGS)
 {
     register struct monst *mtmp;

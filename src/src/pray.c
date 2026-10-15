@@ -4,7 +4,6 @@
 
 #include "hack.h"
 
-STATIC_PTR int NDECL(prayer_done);
 STATIC_DCL struct obj *NDECL(worst_cursed_item);
 STATIC_DCL int NDECL(in_trouble);
 STATIC_DCL void FDECL(fix_worst_trouble, (int));
@@ -1880,7 +1879,7 @@ dopray()
     return 1;
 }
 
-STATIC_PTR int
+int
 prayer_done() /* M. Stephenson (1.0.3b) */
 {
     aligntyp alignment = p_aligntyp;

@@ -938,6 +938,122 @@ register int fd;
     return 1;
 }
 
+/* a string written by nle_save_string (save.c): an arena copy, or NULL */
+STATIC_OVL boolean
+nle_rest_string(fd, sp)
+int fd;
+const char **sp;
+{
+    int len;
+    char *s;
+
+    mread(fd, (genericptr_t) &len, sizeof len);
+    if (len < -1 || len > BUFSZ)
+        return FALSE;
+    if (len < 0) {
+        *sp = (const char *) 0;
+        return TRUE;
+    }
+    s = (char *) alloc((unsigned) len + 1);
+    if (len > 0)
+        mread(fd, (genericptr_t) s, (unsigned) len);
+    s[len] = '\0';
+    *sp = s;
+    return TRUE;
+}
+
+/* the tail described at struct nle_player_tail (nle.h); 0 or an rc of
+ * nle_load_player */
+STATIC_OVL int
+nle_load_player_tail(fd)
+int fd;
+{
+    struct nle_player_tail t;
+    struct xlock_s *xl = &NH_G(s_lock_c_xlock);
+    struct trapinfo *ti = &NH_G(s_apply_c_trapinfo);
+    struct repo *rp = &NH_G(s_shk_c_repo);
+    char magic[4];
+    uchar version;
+    int len;
+
+    restoreprocs.mread_flags = 1; /* a blob without a tail ends here */
+    mread(fd, (genericptr_t) magic, sizeof magic);
+    if (restoreprocs.mread_flags == -1) {
+        restoreprocs.mread_flags = 0;
+        return 8;
+    }
+    restoreprocs.mread_flags = 0;
+    if (strncmp(magic, NLE_PLAYER_TAIL_MAGIC, sizeof magic))
+        return 9;
+    mread(fd, (genericptr_t) &version, sizeof version);
+    mread(fd, (genericptr_t) &len, sizeof len);
+    if (version != NLE_PLAYER_TAIL_VERSION
+        || len != (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                         + sizeof NH_G(s_makemon_c_rndmonst_state)))
+        return 9;
+    mread(fd, (genericptr_t) &t, sizeof t);
+    mread(fd, (genericptr_t) NH_G(s_track_c_utrack),
+          sizeof NH_G(s_track_c_utrack));
+    mread(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
+          sizeof NH_G(s_makemon_c_rndmonst_state));
+    if (!nle_rest_string(fd, &multi_reason)
+        || !nle_rest_string(fd, &nomovemsg)
+        || !nle_rest_string(fd, &occtxt))
+        return 9;
+    if (!nle_fn_lookup(t.afternmv_id, &afternmv)
+        || !nle_fn_lookup(t.occupation_id, &occupation)
+        || !nle_fn_lookup(t.timed_occ_id, &NH_G(s_cmd_c_timed_occ_fn)))
+        return 10;
+
+    youmonst.movement = (short) t.you_movement;
+    youmonst.m_ap_type = (uchar) t.you_m_ap_type;
+    youmonst.mappearance = t.you_mappearance;
+    youmonst.mspec_used = t.you_mspec_used;
+    multi = t.multi_count;
+    occtime = t.occ_time;
+    NH_G(s_invent_c_lastinvnr) = t.last_invnr;
+    NH_G(s_track_c_utcnt) = t.track_cnt;
+    NH_G(s_track_c_utpnt) = t.track_pnt;
+    NH_G(s_pray_c_p_type) = t.pray_type;
+    NH_G(s_pray_c_p_trouble) = t.pray_trouble;
+    NH_G(s_pray_c_p_aligntyp) = (aligntyp) t.pray_aligntyp;
+    NH_G(stealoid) = t.steal_oid;
+    stealmid = t.steal_mid;
+    xl->door = (t.lock_door_x >= 0 && t.lock_door_x < COLNO
+                && t.lock_door_y >= 0 && t.lock_door_y < ROWNO)
+                   ? &levl[t.lock_door_x][t.lock_door_y]
+                   : (struct rm *) 0;
+    xl->box = t.lock_box ? find_oid(t.lock_box) : (struct obj *) 0;
+    xl->picktyp = t.lock_picktyp;
+    xl->chance = t.lock_chance;
+    xl->usedtime = t.lock_usedtime;
+    xl->magic_key = (boolean) t.lock_magic_key;
+    ti->tobj = t.trap_tobj ? find_oid(t.trap_tobj) : (struct obj *) 0;
+    ti->tx = (xchar) t.trap_tx;
+    ti->ty = (xchar) t.trap_ty;
+    ti->time_needed = t.trap_time_needed;
+    ti->force_bungle = (boolean) t.trap_force_bungle;
+    iflags.travelcc.x = (xchar) t.travel_x;
+    iflags.travelcc.y = (xchar) t.travel_y;
+    NH_G(s_artifact_c_mkot_trap_warn_count) = t.mkot_warn_count;
+    NH_G(s_dig_c_did_dig_msg) = (boolean) t.dig_msg;
+    NH_G(s_mhitm_c_far_noise) = (boolean) t.far_noise_flag;
+    NH_G(l_pager_c_dowhatdoes_once) = (boolean) t.whatdoes_once;
+    NH_G(l_pickup_c_encumber_msg_oldcap) = t.encumber_oldcap;
+    wailmsg = t.wail_msg;
+    NH_G(l_eat_c_maybe_cannibal_ate_brains) = t.ate_brains_mv;
+    NH_G(s_mhitm_c_noisetime) = t.noise_time;
+    NH_G(l_mon_c_elemental_clog_msgmv) = t.clog_msgmv;
+    NH_G(s_shk_c_followmsg) = t.follow_msg;
+    rp->shopkeeper = t.repo_shk ? find_mid(t.repo_shk, FM_FMON)
+                                : (struct monst *) 0;
+    rp->location.x = (xchar) t.repo_x;
+    rp->location.y = (xchar) t.repo_y;
+    NH_G(l_uhitm_c_hitum_cleave_clockwise) = (boolean) t.cleave_cw;
+    NH_G(l_mkmaze_c_movebubbles_up) = (boolean) t.bubbles_up;
+    return 0;
+}
+
 /* ===================================================================
  * Hero (player) state blob load.
  *
@@ -971,6 +1087,7 @@ long len;
     unsigned int stuckid = 0, steedid = 0;
     struct obj *otmp;
     struct monst *mtmp;
+    int rc;
 
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
@@ -1026,6 +1143,12 @@ long len;
         (void) unlink(fq_player);
         restoring = FALSE;
         return 7;
+    }
+    if ((rc = nle_load_player_tail(fd)) != 0) {
+        (void) nhclose(fd);
+        (void) unlink(fq_player);
+        restoring = FALSE;
+        return rc;
     }
     /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
     restlevelstate(stuckid, steedid);

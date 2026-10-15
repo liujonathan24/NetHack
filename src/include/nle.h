@@ -202,6 +202,41 @@ int   nle_load_level(nle_ctx_t *, const void *blob, long len);
 void *nle_save_player(nle_ctx_t *, long *out_len);
 int   nle_load_player(nle_ctx_t *, const void *blob, long len);
 
+/* After savegamestate() the player blob carries a versioned tail: magic,
+ * version byte, fixed length, this struct, the hero's trail and the random
+ * monster table as raw bytes, then multi_reason, nomovemsg and occtxt as
+ * length-prefixed strings. These are the per-game globals outside
+ * NetHack's own save set that change play (the in-memory snapshot carries
+ * the whole nh_globals block). Function pointers travel as nle_fn_id()
+ * indexes, pointers to objects and monsters as o_id / m_id.
+ * nle_load_player: rc 8 = no tail, 9 = bad magic/version/length,
+ * 10 = unknown function id. */
+#define NLE_PLAYER_TAIL_MAGIC "NLEt"
+#define NLE_PLAYER_TAIL_VERSION 1
+
+struct nle_player_tail {
+    int you_movement, you_m_ap_type, you_mspec_used; /* youmonst */
+    unsigned you_mappearance;
+    int multi_count, occ_time;
+    int afternmv_id, occupation_id, timed_occ_id; /* nle_fn_id() */
+    int last_invnr;
+    int track_cnt, track_pnt;
+    int pray_type, pray_trouble, pray_aligntyp;
+    unsigned steal_oid, steal_mid;
+    int lock_door_x, lock_door_y;   /* -1: no door */
+    unsigned lock_box;              /* o_id */
+    int lock_picktyp, lock_chance, lock_usedtime, lock_magic_key;
+    unsigned trap_tobj;             /* o_id */
+    int trap_tx, trap_ty, trap_time_needed, trap_force_bungle;
+    int travel_x, travel_y;
+    int mkot_warn_count, dig_msg, far_noise_flag, whatdoes_once,
+        encumber_oldcap;
+    long wail_msg, ate_brains_mv, noise_time, clog_msgmv, follow_msg;
+    unsigned repo_shk;              /* m_id */
+    int repo_x, repo_y;
+    int cleave_cw, bubbles_up;
+};
+
 /* Secure state-modification API.
  *
  * nle_set_state pokes a curated whitelist of simple integer player fields.
