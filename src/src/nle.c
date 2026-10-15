@@ -162,6 +162,29 @@ nle_vt_callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
 }
 
 /* ---- virtual terminal snapshot -------------------------------------------
+/* The whole screen into tty_chars / tty_colors; the update callback above
+ * copies the dirty rows only. */
+void
+nle_vt_refresh_obs(nle_ctx_t *nle)
+{
+    const TMTSCREEN *s = tmt_screen(nle->vterminal);
+    nle_obs *obs = nle->observation;
+    size_t r, c;
+
+    if (!obs || (!obs->tty_chars && !obs->tty_colors))
+        return;
+    for (r = 0; r < s->nline; r++)
+        for (c = 0; c < s->ncol; c++) {
+            size_t offset = (r * NLE_TERM_CO) + c;
+            TMTCHAR *tmt_c = &(s->lines[r]->chars[c]);
+
+            if (obs->tty_chars)
+                obs->tty_chars[offset] = tmt_c->c;
+            if (obs->tty_colors)
+                obs->tty_colors[offset] = vt_char_color_extract(tmt_c);
+        }
+}
+
  * The TMT terminal emulator that produces the tty_* observations lives in
  * libc memory, outside the context block and the arena, and only repaints
  * cells the game redraws. A snapshot therefore carries the whole screen and

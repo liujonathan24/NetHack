@@ -757,23 +757,25 @@ NetHackRL::fill_obs(nle_obs *obs)
                  * impassable in levl[][] until searched, leaving some down-stairs
                  * unreachable and forcing the search skill. Doing the same
                  * conversion search would (cvt_sdoor_to_door / SCORR->CORR) makes
-                 * the level genuinely connected. Run for EVERY cell (even ones
-                 * already "seen" as a wall) and force a re-render of those so the
-                 * emitted obs shows the now-passable glyph. Idempotent; only on
-                 * the opt-in reveal_map>0 path, so default obs is unaffected. */
-                boolean was_secret = (levl[x][y].typ == SDOOR
-                                      || levl[x][y].typ == SCORR);
+                 * the level genuinely connected. Idempotent; only on the opt-in
+                 * reveal_map>0 path, so default obs is unaffected. */
                 if (levl[x][y].typ == SDOOR) {
                     cvt_sdoor_to_door(&levl[x][y]);
+        /* on a fresh copy of the screen: the update callback refreshes the
+         * rows the game redrew, so a monster or door the overlay drew into
+         * another row before would linger there */
+        nle_vt_refresh_obs(current_nle_ctx);
                 } else if (levl[x][y].typ == SCORR) {
                     levl[x][y].typ = CORR;
                     unblock_point(x, y);
                 }
 
                 /* Only overlay cells the hero has not already seen (a blank
-                 * nul_glyph cell) -- EXCEPT cells we just de-secreted, which must
-                 * be re-rendered to replace their stale wall glyph. */
-                if (!was_secret && obs->glyphs && obs->glyphs[offset] != nul_glyph)
+                 * nul_glyph cell). A cell remembered as a wall stays that wall
+                 * even once de-secreted: the overlay is a function of the
+                 * current state, never a one-step flash that would linger in
+                 * tty_chars until the terminal redraws the row. */
+                if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
                 /* back_to_glyph() renders a wall as S_stone (blank) whenever

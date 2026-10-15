@@ -224,6 +224,7 @@ void   nle_mirror_save(nle_ctx_t *, void *dst);
 void   nle_mirror_load(nle_ctx_t *, const void *src);
 
 /* After savegamestate() the player blob carries a versioned tail: magic,
+void   nle_vt_refresh_obs(nle_ctx_t *); /* the screen into tty_chars/colors */
  * version byte, fixed length, this struct, the hero's trail, the random
  * monster table and the ^A key queues as raw bytes, then multi_reason,
  * nomovemsg and occtxt as length-prefixed strings. These are the per-game globals outside
