@@ -1503,7 +1503,10 @@ nle_goto_depth(nle_ctx_t *nle, int n)
 int
 nle_seat_on_stair(nle_ctx_t *nle, int down)
 {
+    xchar ox, oy;
+
     nle_anchor(nle);
+    ox = u.ux, oy = u.uy;
 
     if (down && xdnstair > 0) {
         u_on_newpos(xdnstair, ydnstair);
@@ -1513,6 +1516,8 @@ nle_seat_on_stair(nle_ctx_t *nle, int down)
         return 1; /* no such stair on this level */
     }
 
+    newsym(ox, oy);
+    vision_full_recalc = 1;
     context.botl = TRUE; /* hero position / status is now stale */
     return 0;
 }
