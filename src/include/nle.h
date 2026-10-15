@@ -213,7 +213,7 @@ int   nle_load_player(nle_ctx_t *, const void *blob, long len);
  * globals at the reset game's values. nle_load_player: rc 9 = bad
  * magic/version/length, 10 = unknown function id. */
 #define NLE_PLAYER_TAIL_MAGIC "NLEt"
-#define NLE_PLAYER_TAIL_VERSION 1
+#define NLE_PLAYER_TAIL_VERSION 2
 
 struct nle_player_tail {
     int you_movement, you_m_ap_type, you_mspec_used; /* youmonst */
@@ -236,6 +236,11 @@ struct nle_player_tail {
     unsigned repo_shk;              /* m_id */
     int repo_x, repo_y;
     int cleave_cw, bubbles_up;
+    int unweapon_flag, hs_saved;
+    unsigned hs_save;
+    long rock_msgmv, pick_msgmv, break_msgmv;
+    int break_peaceful_shk;
+    char empty_shops[5];
 };
 
 /* Secure state-modification API.

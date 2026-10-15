@@ -483,6 +483,15 @@ int fd, afternmv_id, occupation_id, timed_occ_id;
     t.repo_y = rp->location.y;
     t.cleave_cw = NH_G(l_uhitm_c_hitum_cleave_clockwise);
     t.bubbles_up = NH_G(l_mkmaze_c_movebubbles_up);
+    t.unweapon_flag = unweapon;
+    t.hs_saved = NH_G(l_eat_c_newuhs_saved_hs);
+    t.hs_save = NH_G(l_eat_c_newuhs_save_hs);
+    t.rock_msgmv = NH_G(l_hack_c_moverock_lastmovetime);
+    t.pick_msgmv = NH_G(l_shk_c_pick_pick_pickmovetime);
+    t.break_msgmv = NH_G(l_dothrow_c_breakobj_lastmovetime);
+    t.break_peaceful_shk = NH_G(l_dothrow_c_breakobj_peaceful_shk);
+    (void) memcpy(t.empty_shops, NH_G(l_shk_c_u_entered_shop_empty_shops),
+                  sizeof t.empty_shops);
 
     bwrite(fd, (genericptr_t) NLE_PLAYER_TAIL_MAGIC, 4);
     bwrite(fd, (genericptr_t) &version, sizeof version);

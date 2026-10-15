@@ -1053,6 +1053,15 @@ int fd;
     rp->location.y = (xchar) t.repo_y;
     NH_G(l_uhitm_c_hitum_cleave_clockwise) = (boolean) t.cleave_cw;
     NH_G(l_mkmaze_c_movebubbles_up) = (boolean) t.bubbles_up;
+    unweapon = (boolean) t.unweapon_flag;
+    NH_G(l_eat_c_newuhs_saved_hs) = (boolean) t.hs_saved;
+    NH_G(l_eat_c_newuhs_save_hs) = t.hs_save;
+    NH_G(l_hack_c_moverock_lastmovetime) = t.rock_msgmv;
+    NH_G(l_shk_c_pick_pick_pickmovetime) = t.pick_msgmv;
+    NH_G(l_dothrow_c_breakobj_lastmovetime) = t.break_msgmv;
+    NH_G(l_dothrow_c_breakobj_peaceful_shk) = (boolean) t.break_peaceful_shk;
+    (void) memcpy(NH_G(l_shk_c_u_entered_shop_empty_shops), t.empty_shops,
+                  sizeof t.empty_shops);
     return 0;
 }
 
