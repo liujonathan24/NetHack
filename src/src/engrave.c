@@ -1188,8 +1188,14 @@ int fd, mode;
     for (ep = head_engr; ep; ep = ep2) {
         ep2 = ep->nxt_engr;
         if (ep->engr_lth && ep->engr_txt[0] && perform_bwrite(mode)) {
-            bwrite(fd, (genericptr_t) &ep->engr_lth, sizeof ep->engr_lth);
-            bwrite(fd, (genericptr_t) ep, sizeof (struct engr) + ep->engr_lth);
+            /* from the text pointer: wipe_engr_at moves it past a wiped
+             * prefix, and the reload must read what the live game read */
+            unsigned lth = ep->engr_lth
+                           - (unsigned) (ep->engr_txt - (char *) (ep + 1));
+
+            bwrite(fd, (genericptr_t) &lth, sizeof lth);
+            bwrite(fd, (genericptr_t) ep, sizeof (struct engr));
+            bwrite(fd, (genericptr_t) ep->engr_txt, lth);
         }
         if (release_data(mode))
             dealloc_engr(ep);
@@ -1217,6 +1223,7 @@ int fd;
         ep->nxt_engr = head_engr;
         head_engr = ep;
         ep->engr_txt = (char *) (ep + 1); /* Andreas Bormann */
+        ep->engr_lth = lth;
         /* Mark as finished for bones levels -- no problem for
          * normal levels as the player must have finished engraving
          * to be able to move again.
