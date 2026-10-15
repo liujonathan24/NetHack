@@ -209,8 +209,9 @@ int   nle_load_player(nle_ctx_t *, const void *blob, long len);
  * NetHack's own save set that change play (the in-memory snapshot carries
  * the whole nh_globals block). Function pointers travel as nle_fn_id()
  * indexes, pointers to objects and monsters as o_id / m_id.
- * nle_load_player: rc 8 = no tail, 9 = bad magic/version/length,
- * 10 = unknown function id. */
+ * A blob without a tail (written before it existed) loads with those
+ * globals at the reset game's values. nle_load_player: rc 9 = bad
+ * magic/version/length, 10 = unknown function id. */
 #define NLE_PLAYER_TAIL_MAGIC "NLEt"
 #define NLE_PLAYER_TAIL_VERSION 1
 

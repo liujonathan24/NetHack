@@ -976,11 +976,13 @@ int fd;
     uchar version;
     int len;
 
-    restoreprocs.mread_flags = 1; /* a blob without a tail ends here */
+    /* a blob written before the tail existed ends here: those globals
+     * keep the reset game's values */
+    restoreprocs.mread_flags = 1;
     mread(fd, (genericptr_t) magic, sizeof magic);
     if (restoreprocs.mread_flags == -1) {
         restoreprocs.mread_flags = 0;
-        return 8;
+        return 0;
     }
     restoreprocs.mread_flags = 0;
     if (strncmp(magic, NLE_PLAYER_TAIL_MAGIC, sizeof magic))
