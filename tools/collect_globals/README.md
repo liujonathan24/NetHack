@@ -62,6 +62,37 @@ The NLE layer (`src/nle.c`, `win/rl/winrl.cc`) is deliberately excluded:
 it owns one `struct nh_globals` per environment, calls `nh_globals_init()`
 when a game starts and sets `nh_g` on every entry.
 
+## Resume coverage
+
+A cross-process resume (engine `checkpoint()`/`resume()`) loads the level
+blob, the player blob and the RNG blob into a freshly reset game. Every
+field of `struct nh_globals` therefore has to be in one of them, be rebuilt
+by the load, or be explained. `check_resume_coverage.py` decides the class
+of each field from the sources and fails on anything unexplained:
+
+| class | decided by |
+|---|---|
+| saved | the field is used by a save function: `savegamestate`, `savelev` and what they call, `nle_rng_save` (list in the script) |
+| tail | written by `nle_save_player_tail` (save.c) into `struct nle_player_tail` (nle.h) |
+| rebuilt | `resume_rebuilt.txt`: name, the function that restores it, how |
+| constant, process, options, display, transient, prompt-only | `resume_allowlist.txt`: name, class, reason |
+
+It also fails on a stale line in either list (a field that no longer
+exists or that is now saved), a `nle_player_tail` field that no global
+feeds, and an audit "dropped-play" field that is not carried any more.
+`prompt-only` fields are live only inside a prompt or while helpless; the
+engine refuses a checkpoint there, so they never reach a blob. Run it after
+any change to a save function, the tail, or a global:
+
+```
+tools/collect_globals/check_resume_coverage.py [-v]
+```
+
+`youmonst` is in the tail for its movement/mimicry/breath fields; its
+`data` pointer is rebuilt by `set_uasmon()`. `rooms` is saved; the
+shopkeeper residency inside it is relinked by `set_residency()` in
+`nle_load_player`.
+
 ## Files
 
 * `nhglobals/analyze.py` — AST pass (definitions, references, macro uses,
@@ -70,3 +101,5 @@ when a game starts and sets `nh_g` on every entry.
 * `nhglobals/cli.py` — `analyze`, `apply`, `inventory`.
 * `keep.txt` — objects intentionally left process-global.
 * `whitelist.txt` — what `check_writable.sh` accepts.
+* `check_resume_coverage.py`, `resume_rebuilt.txt`, `resume_allowlist.txt`
+  — the resume coverage gate (above).

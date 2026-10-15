@@ -50,6 +50,9 @@ compile "interleave" /tmp/t_interleave -O2 -DNLE_ALLOW_SEEDING=1 tests/test_inte
 echo "### no writable globals outside the whitelist"
 run "writable_sections" tools/collect_globals/check_writable.sh src/build/CMakeFiles/nethack.dir
 
+echo "### every per-game global is in a checkpoint blob, the player-blob tail, rebuilt, or allowlisted"
+run "resume_coverage" "${PYTHON:-python3}" tools/collect_globals/check_resume_coverage.py
+
 echo "### determinism (golden replay; needs the PufferLib wrapper, skipped if absent)"
 if [ -f ocean/nethack/nethack.h ]; then run "determinism" bash tests/verify_determinism_all.sh; else echo "  (skipped)"; fi
 
