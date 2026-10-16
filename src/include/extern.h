@@ -2700,6 +2700,7 @@ E void NDECL(vision_init);
 E int FDECL(does_block, (int, int, struct rm *));
 E void NDECL(vision_reset);
 E void FDECL(vision_recalc, (int));
+E void NDECL(reveal_map_memory);
 E void FDECL(block_point, (int, int));
 E void FDECL(unblock_point, (int, int));
 E boolean FDECL(clear_path, (int, int, int, int));

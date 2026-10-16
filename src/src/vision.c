@@ -880,11 +880,53 @@ skip:
 
     recalc_mapseen();
 
-    /* reveal_map knob is now applied as a render-time overlay on
-     * the emitted observation in the rl window port (NetHackRL::fill_obs), never
-     * mutating the hero's remembered map (gbuf) here. This keeps the knobs
-     * reversible and side-effect-free; the vanilla game and golden parity are
-     * untouched. */
+    /* reveal_map knob: the hero remembers the whole level, as after magic
+     * mapping (show_map_spot), so travel, the getpos '<'/'>' jumps, farlook
+     * and #terrain agree with the revealed map. The rl window port's overlay
+     * (NetHackRL::fill_obs) still draws the monsters. Off (the default), this
+     * never runs. */
+    if (nle_tuning.reveal_map > 0.0 && !NH_G(program_state).panicking
+        && !u.uswallow && !Underwater)
+        reveal_map_memory();
+}
+
+/* reveal_map: map every square the hero cannot see into the hero's memory.
+ * Like show_map_spot() for each square (magic mapping), but it also opens
+ * secret doors and corridors (so a revealed level is connected), draws no
+ * RNG (no Confusion roll, no exercise()), keeps a remembered object or trap,
+ * and only touches a square whose memory is terrain that differs from the
+ * real terrain, so it is idempotent. */
+void
+reveal_map_memory()
+{
+    int x, y;
+
+    if (!NH_G(level).flags.hero_memory)
+        return;
+    for (x = 1; x < COLNO; x++)
+        for (y = 0; y < ROWNO; y++) {
+            struct rm *lev = &levl[x][y];
+            int old = lev->glyph;
+            boolean opened = (lev->typ == SDOOR || lev->typ == SCORR);
+
+            if (lev->typ == SDOOR) {
+                cvt_sdoor_to_door(lev);
+            } else if (lev->typ == SCORR) {
+                lev->typ = CORR;
+                unblock_point(x, y);
+            }
+            lev->seenv = SVALL;
+            if (cansee(x, y)) {
+                if (opened)
+                    newsym(x, y); /* in view: redraw the opened passage */
+                continue; /* otherwise vision keeps what is in view */
+            }
+            if (!glyph_is_cmap(old) || glyph_is_trap(old))
+                continue; /* a remembered object, trap or monster stays */
+            magic_map_background(x, y, 0);
+            if (lev->glyph != old)
+                newsym(x, y);
+        }
 }
 
 /*
