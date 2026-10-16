@@ -938,6 +938,165 @@ register int fd;
     return 1;
 }
 
+/* mread that reports a short read (a blob cut inside the tail) instead of
+ * ending the game */
+STATIC_OVL boolean
+nle_tail_read(fd, buf, len)
+int fd;
+genericptr_t buf;
+unsigned len;
+{
+    restoreprocs.mread_flags = 1;
+    mread(fd, buf, len);
+    if (restoreprocs.mread_flags == -1) {
+        restoreprocs.mread_flags = 0;
+        return FALSE;
+    }
+    restoreprocs.mread_flags = 0;
+    return TRUE;
+}
+
+/* a string written by nle_save_string (save.c): an arena copy, or NULL */
+STATIC_OVL boolean
+nle_rest_string(fd, sp)
+int fd;
+const char **sp;
+{
+    int len;
+    char *s;
+
+    if (!nle_tail_read(fd, (genericptr_t) &len, sizeof len)
+        || len < -1 || len > BUFSZ)
+        return FALSE;
+    if (len < 0) {
+        *sp = (const char *) 0;
+        return TRUE;
+    }
+    s = (char *) alloc((unsigned) len + 1);
+    if (len > 0 && !nle_tail_read(fd, (genericptr_t) s, (unsigned) len))
+        return FALSE;
+    s[len] = '\0';
+    *sp = s;
+    return TRUE;
+}
+
+/* the tail described at struct nle_player_tail (nle.h); 0 or an rc of
+ * nle_load_player */
+STATIC_OVL int
+nle_load_player_tail(fd, vision)
+int fd;
+char *vision;
+{
+    struct nle_player_tail t;
+    struct xlock_s *xl = &NH_G(s_lock_c_xlock);
+    struct trapinfo *ti = &NH_G(s_apply_c_trapinfo);
+    struct repo *rp = &NH_G(s_shk_c_repo);
+    char magic[4];
+    uchar version;
+    int len, base;
+
+    /* a blob written before the tail existed ends here: those globals
+     * keep the reset game's values */
+    if (!nle_tail_read(fd, (genericptr_t) magic, sizeof magic))
+        return 0;
+    if (strncmp(magic, NLE_PLAYER_TAIL_MAGIC, sizeof magic))
+        return 9;
+    base = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                  + sizeof NH_G(s_makemon_c_rndmonst_state)
+                  + sizeof NH_G(s_cmd_c_saveq) + sizeof NH_G(s_cmd_c_pushq));
+    if (!nle_tail_read(fd, (genericptr_t) &version, sizeof version)
+        || !nle_tail_read(fd, (genericptr_t) &len, sizeof len)
+        || (version == 3 ? len != base
+                         : (version != NLE_PLAYER_TAIL_VERSION
+                            || len != base + NLE_TAIL_VISION_SIZE)))
+        return 9;
+    if (!nle_tail_read(fd, (genericptr_t) &t, sizeof t)
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_track_c_utrack),
+                          sizeof NH_G(s_track_c_utrack))
+        || !nle_tail_read(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
+                          sizeof NH_G(s_makemon_c_rndmonst_state))
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_saveq),
+                          sizeof NH_G(s_cmd_c_saveq))
+        || !nle_tail_read(fd, (genericptr_t) NH_G(s_cmd_c_pushq),
+                          sizeof NH_G(s_cmd_c_pushq))
+        || (version > 3
+            && !nle_tail_read(fd, (genericptr_t) vision,
+                              NLE_TAIL_VISION_SIZE)))
+        return 9;
+    if (!nle_rest_string(fd, &multi_reason)
+        || !nle_rest_string(fd, &nomovemsg)
+        || !nle_rest_string(fd, &occtxt))
+        return 9;
+    if (!nle_fn_lookup(t.afternmv_id, &afternmv)
+        || !nle_fn_lookup(t.occupation_id, &occupation)
+        || !nle_fn_lookup(t.timed_occ_id, &NH_G(s_cmd_c_timed_occ_fn)))
+        return 10;
+
+    youmonst.movement = (short) t.you_movement;
+    youmonst.m_ap_type = (uchar) t.you_m_ap_type;
+    youmonst.mappearance = t.you_mappearance;
+    youmonst.mspec_used = t.you_mspec_used;
+    multi = t.multi_count;
+    occtime = t.occ_time;
+    NH_G(s_invent_c_lastinvnr) = t.last_invnr;
+    NH_G(s_track_c_utcnt) = t.track_cnt;
+    NH_G(s_track_c_utpnt) = t.track_pnt;
+    NH_G(s_pray_c_p_type) = t.pray_type;
+    NH_G(s_pray_c_p_trouble) = t.pray_trouble;
+    NH_G(s_pray_c_p_aligntyp) = (aligntyp) t.pray_aligntyp;
+    NH_G(stealoid) = t.steal_oid;
+    stealmid = t.steal_mid;
+    xl->door = (t.lock_door_x >= 0 && t.lock_door_x < COLNO
+                && t.lock_door_y >= 0 && t.lock_door_y < ROWNO)
+                   ? &levl[t.lock_door_x][t.lock_door_y]
+                   : (struct rm *) 0;
+    xl->box = t.lock_box ? find_oid(t.lock_box) : (struct obj *) 0;
+    xl->picktyp = t.lock_picktyp;
+    xl->chance = t.lock_chance;
+    xl->usedtime = t.lock_usedtime;
+    xl->magic_key = (boolean) t.lock_magic_key;
+    ti->tobj = t.trap_tobj ? find_oid(t.trap_tobj) : (struct obj *) 0;
+    ti->tx = (xchar) t.trap_tx;
+    ti->ty = (xchar) t.trap_ty;
+    ti->time_needed = t.trap_time_needed;
+    ti->force_bungle = (boolean) t.trap_force_bungle;
+    iflags.travelcc.x = (xchar) t.travel_x;
+    iflags.travelcc.y = (xchar) t.travel_y;
+    NH_G(s_artifact_c_mkot_trap_warn_count) = t.mkot_warn_count;
+    NH_G(s_dig_c_did_dig_msg) = (boolean) t.dig_msg;
+    NH_G(s_mhitm_c_far_noise) = (boolean) t.far_noise_flag;
+    NH_G(l_pager_c_dowhatdoes_once) = (boolean) t.whatdoes_once;
+    NH_G(l_pickup_c_encumber_msg_oldcap) = t.encumber_oldcap;
+    wailmsg = t.wail_msg;
+    NH_G(l_eat_c_maybe_cannibal_ate_brains) = t.ate_brains_mv;
+    NH_G(s_mhitm_c_noisetime) = t.noise_time;
+    NH_G(l_mon_c_elemental_clog_msgmv) = t.clog_msgmv;
+    NH_G(s_shk_c_followmsg) = t.follow_msg;
+    rp->shopkeeper = t.repo_shk ? find_mid(t.repo_shk, FM_FMON)
+                                : (struct monst *) 0;
+    rp->location.x = (xchar) t.repo_x;
+    rp->location.y = (xchar) t.repo_y;
+    NH_G(l_uhitm_c_hitum_cleave_clockwise) = (boolean) t.cleave_cw;
+    NH_G(l_mkmaze_c_movebubbles_up) = (boolean) t.bubbles_up;
+    unweapon = (boolean) t.unweapon_flag;
+    NH_G(l_eat_c_newuhs_saved_hs) = (boolean) t.hs_saved;
+    NH_G(l_eat_c_newuhs_save_hs) = t.hs_save;
+    NH_G(l_hack_c_moverock_lastmovetime) = t.rock_msgmv;
+    NH_G(l_shk_c_pick_pick_pickmovetime) = t.pick_msgmv;
+    NH_G(l_dothrow_c_breakobj_lastmovetime) = t.break_msgmv;
+    NH_G(l_dothrow_c_breakobj_peaceful_shk) = (boolean) t.break_peaceful_shk;
+    (void) memcpy(NH_G(l_shk_c_u_entered_shop_empty_shops), t.empty_shops,
+                  sizeof t.empty_shops);
+    NH_G(s_cmd_c_phead) = t.redo_phead;
+    NH_G(s_cmd_c_ptail) = t.redo_ptail;
+    NH_G(s_cmd_c_shead) = t.redo_shead;
+    NH_G(s_cmd_c_stail) = t.redo_stail;
+    NH_G(s_cmd_c_last_multi) = t.redo_last_multi;
+    current_nle_ctx->rl_redo_keep = 1;
+    current_nle_ctx->rl_keep_memory = version > 3 ? 2 : 1;
+    return 0;
+}
+
 /* ===================================================================
  * Hero (player) state blob load.
  *
@@ -956,10 +1115,11 @@ register int fd;
  * current level's fobj -- so the target level must already be in place.
  *
  * Implemented here (not nle.c) because restgamestate() / restlevelstate()
- * are file-static. Returns 0 on success, nonzero on error.
+ * are file-static. Returns 0 on success, nonzero on error (7: the restore
+ * failed or panicked).
  * =================================================================== */
-int
-nle_load_player(nle, blob, len)
+STATIC_OVL int
+nle_load_player_inner(nle, blob, len)
 nle_ctx_t *nle;
 const void *blob;
 long len;
@@ -969,8 +1129,10 @@ long len;
     const char *fq_save;
     unsigned int stuckid = 0, steedid = 0;
     struct obj *otmp;
+    struct monst *mtmp;
+    int rc, y;
+    char vision[NLE_TAIL_VISION_SIZE];
 
-    nle_anchor(nle);
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
 
@@ -1009,6 +1171,15 @@ long len;
      * container restore paths; minit() arms the ZEROCOMP read codec (same
      * as nle_load_level before getlev). We do NOT getlev() here -- the
      * caller already installed the target level via nle_load_level. */
+    /* restgamestate() replaces u and invent but only setworn()s the loaded
+     * hero's slots; a slot it does not use would keep the reset game's kit
+     * object and find_ac() would count it. */
+    uarm = uarmc = uarmh = uarms = uarmg = uarmf = uarmu = (struct obj *) 0;
+    uamul = uleft = uright = ublindf = (struct obj *) 0;
+    uwep = uswapwep = uquiver = (struct obj *) 0;
+    uskin = uball = uchain = (struct obj *) 0;
+    u.twoweap = 0;
+
     restoring = TRUE;
     minit();
     if (!restgamestate(fd, &stuckid, &steedid)) {
@@ -1017,8 +1188,24 @@ long len;
         restoring = FALSE;
         return 7;
     }
+    if ((rc = nle_load_player_tail(fd, vision)) != 0) {
+        (void) nhclose(fd);
+        (void) unlink(fq_player);
+        restoring = FALSE;
+        return rc;
+    }
+    /* restgamestate defers see_monsters() to moveloop's prologue, which
+     * the resumed process never runs again */
+    defer_see_monsters = FALSE;
     /* relink u.ustuck / u.usteed against the CURRENT level's monster chain */
     restlevelstate(stuckid, steedid);
+
+    /* getlev() ran set_residency() while u.uz was still the reset game's
+     * level, so a shop elsewhere has no resident; link them now that u.uz
+     * is the checkpoint's. */
+    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
+        if (mtmp->isshk)
+            set_residency(mtmp, FALSE);
 
     /* And the four `context` pointers, from the ids nle_save_player stamped.
      * The in-chain fixups at restobjchn/restmonchn cannot do it here: this
@@ -1056,7 +1243,31 @@ long len;
      * this entry point; the caller's next nle_step() runs docrt() inside the
      * coroutine to repaint. Same two-phase contract as nle_load_level. */
     vision_reset();
+    if (nle->rl_keep_memory > 1) {
+        for (y = 0; y < ROWNO; y++)
+            (void) memcpy(viz_array[y], vision + y * COLNO, COLNO);
+        (void) memcpy(viz_rmin, vision + ROWNO * COLNO, ROWNO);
+        (void) memcpy(viz_rmax, vision + ROWNO * COLNO + ROWNO, ROWNO);
+    }
     return 0;
+}
+
+int
+nle_load_player(nle, blob, len)
+nle_ctx_t *nle;
+const void *blob;
+long len;
+{
+    int rc;
+
+    nle_anchor(nle);
+    if (NLE_HOST_CALL_BEGIN(nle)) {
+        restoring = FALSE;
+        return 7;
+    }
+    rc = nle_load_player_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 void

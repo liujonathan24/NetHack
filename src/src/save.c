@@ -367,6 +367,158 @@ char *whynot;
     return FALSE;
 }
 
+/* Every function the game stores by address (afternmv, occupation,
+ * timed_occ_fn: see the assignment sites of those three); the player blob
+ * carries the index here. Index 0 is the null pointer. Append only. */
+static int NDECL((*const resume_fns[])) = {
+    (int NDECL((*))) 0,
+    Armor_on,    Armor_off,  Helmet_on,  Helmet_off,  Gloves_on,
+    Gloves_off,  Boots_on,   Boots_off,  Shield_on,   Shield_off,
+    Cloak_on,    Cloak_off,  Shirt_on,   Shirt_off,   eatmdone,
+    Hear_again,  unfaint,    prayer_done, stealarm,   set_trap,
+    wipeoff,     take_off,   dig,        picklock,    forcelock,
+    opentin,     eatfood,    learn,      timed_occupation, dosearch,
+    donull
+};
+
+/* index of fn in resume_fns[], or -1 */
+int
+nle_fn_id(fn)
+int NDECL((*fn));
+{
+    int i;
+
+    for (i = 0; i < SIZE(resume_fns); i++)
+        if (resume_fns[i] == fn)
+            return i;
+    return -1;
+}
+
+boolean
+nle_fn_lookup(id, fnp)
+int id;
+int NDECL((**fnp));
+{
+    if (id < 0 || id >= SIZE(resume_fns))
+        return FALSE;
+    *fnp = resume_fns[id];
+    return TRUE;
+}
+
+STATIC_OVL void
+nle_save_string(fd, s)
+int fd;
+const char *s;
+{
+    int len = s ? (int) strlen(s) : -1;
+
+    bwrite(fd, (genericptr_t) &len, sizeof len);
+    if (len > 0)
+        bwrite(fd, (genericptr_t) s, (unsigned) len);
+}
+
+/* the tail described at struct nle_player_tail (nle.h) */
+STATIC_OVL void
+nle_save_player_tail(fd, afternmv_id, occupation_id, timed_occ_id)
+int fd, afternmv_id, occupation_id, timed_occ_id;
+{
+    struct nle_player_tail t;
+    struct xlock_s *xl = &NH_G(s_lock_c_xlock);
+    struct trapinfo *ti = &NH_G(s_apply_c_trapinfo);
+    struct repo *rp = &NH_G(s_shk_c_repo);
+    uchar version = NLE_PLAYER_TAIL_VERSION;
+    int y, len = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                        + sizeof NH_G(s_makemon_c_rndmonst_state)
+                        + sizeof NH_G(s_cmd_c_saveq)
+                        + sizeof NH_G(s_cmd_c_pushq) + NLE_TAIL_VISION_SIZE);
+
+    (void) memset((genericptr_t) &t, 0, sizeof t);
+    t.you_movement = youmonst.movement;
+    t.you_m_ap_type = youmonst.m_ap_type;
+    t.you_mappearance = youmonst.mappearance;
+    t.you_mspec_used = youmonst.mspec_used;
+    t.multi_count = multi;
+    t.occ_time = occtime;
+    t.afternmv_id = afternmv_id;
+    t.occupation_id = occupation_id;
+    t.timed_occ_id = timed_occ_id;
+    t.last_invnr = NH_G(s_invent_c_lastinvnr);
+    t.track_cnt = NH_G(s_track_c_utcnt);
+    t.track_pnt = NH_G(s_track_c_utpnt);
+    t.pray_type = NH_G(s_pray_c_p_type);
+    t.pray_trouble = NH_G(s_pray_c_p_trouble);
+    t.pray_aligntyp = NH_G(s_pray_c_p_aligntyp);
+    t.steal_oid = NH_G(stealoid);
+    t.steal_mid = stealmid;
+    if (xl->door) {
+        long idx = (long) (xl->door - &levl[0][0]);
+
+        t.lock_door_x = (int) (idx / ROWNO);
+        t.lock_door_y = (int) (idx % ROWNO);
+    } else {
+        t.lock_door_x = t.lock_door_y = -1;
+    }
+    t.lock_box = xl->box ? xl->box->o_id : 0;
+    t.lock_picktyp = xl->picktyp;
+    t.lock_chance = xl->chance;
+    t.lock_usedtime = xl->usedtime;
+    t.lock_magic_key = xl->magic_key;
+    t.trap_tobj = ti->tobj ? ti->tobj->o_id : 0;
+    t.trap_tx = ti->tx;
+    t.trap_ty = ti->ty;
+    t.trap_time_needed = ti->time_needed;
+    t.trap_force_bungle = ti->force_bungle;
+    t.travel_x = iflags.travelcc.x;
+    t.travel_y = iflags.travelcc.y;
+    t.mkot_warn_count = NH_G(s_artifact_c_mkot_trap_warn_count);
+    t.dig_msg = NH_G(s_dig_c_did_dig_msg);
+    t.far_noise_flag = NH_G(s_mhitm_c_far_noise);
+    t.whatdoes_once = NH_G(l_pager_c_dowhatdoes_once);
+    t.encumber_oldcap = NH_G(l_pickup_c_encumber_msg_oldcap);
+    t.wail_msg = wailmsg;
+    t.ate_brains_mv = NH_G(l_eat_c_maybe_cannibal_ate_brains);
+    t.noise_time = NH_G(s_mhitm_c_noisetime);
+    t.clog_msgmv = NH_G(l_mon_c_elemental_clog_msgmv);
+    t.follow_msg = NH_G(s_shk_c_followmsg);
+    t.repo_shk = rp->shopkeeper ? rp->shopkeeper->m_id : 0;
+    t.repo_x = rp->location.x;
+    t.repo_y = rp->location.y;
+    t.cleave_cw = NH_G(l_uhitm_c_hitum_cleave_clockwise);
+    t.bubbles_up = NH_G(l_mkmaze_c_movebubbles_up);
+    t.unweapon_flag = unweapon;
+    t.hs_saved = NH_G(l_eat_c_newuhs_saved_hs);
+    t.hs_save = NH_G(l_eat_c_newuhs_save_hs);
+    t.rock_msgmv = NH_G(l_hack_c_moverock_lastmovetime);
+    t.pick_msgmv = NH_G(l_shk_c_pick_pick_pickmovetime);
+    t.break_msgmv = NH_G(l_dothrow_c_breakobj_lastmovetime);
+    t.break_peaceful_shk = NH_G(l_dothrow_c_breakobj_peaceful_shk);
+    (void) memcpy(t.empty_shops, NH_G(l_shk_c_u_entered_shop_empty_shops),
+                  sizeof t.empty_shops);
+    t.redo_phead = NH_G(s_cmd_c_phead);
+    t.redo_ptail = NH_G(s_cmd_c_ptail);
+    t.redo_shead = NH_G(s_cmd_c_shead);
+    t.redo_stail = NH_G(s_cmd_c_stail);
+    t.redo_last_multi = NH_G(s_cmd_c_last_multi);
+
+    bwrite(fd, (genericptr_t) NLE_PLAYER_TAIL_MAGIC, 4);
+    bwrite(fd, (genericptr_t) &version, sizeof version);
+    bwrite(fd, (genericptr_t) &len, sizeof len);
+    bwrite(fd, (genericptr_t) &t, sizeof t);
+    bwrite(fd, (genericptr_t) NH_G(s_track_c_utrack),
+           sizeof NH_G(s_track_c_utrack));
+    bwrite(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
+           sizeof NH_G(s_makemon_c_rndmonst_state));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_saveq), sizeof NH_G(s_cmd_c_saveq));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_pushq), sizeof NH_G(s_cmd_c_pushq));
+    for (y = 0; y < ROWNO; y++)
+        bwrite(fd, (genericptr_t) viz_array[y], COLNO);
+    bwrite(fd, (genericptr_t) viz_rmin, ROWNO);
+    bwrite(fd, (genericptr_t) viz_rmax, ROWNO);
+    nle_save_string(fd, multi_reason);
+    nle_save_string(fd, nomovemsg);
+    nle_save_string(fd, occtxt);
+}
+
 /* ===================================================================
  * Hero (player) state blob save.
  *
@@ -382,8 +534,8 @@ char *whynot;
  * Implemented here (not nle.c) because savegamestate() is file-static.
  * Returns the blob and writes its length to *out_len, or NULL on error.
  * =================================================================== */
-void *
-nle_save_player(nle, out_len)
+STATIC_OVL void *
+nle_save_player_inner(nle, out_len)
 nle_ctx_t *nle;
 long *out_len;
 {
@@ -395,10 +547,15 @@ long *out_len;
     long sz;
     void *blob;
     FILE *fp;
+    int afternmv_id = nle_fn_id(afternmv), occupation_id = nle_fn_id(occupation),
+        timed_occ_id = nle_fn_id(NH_G(s_cmd_c_timed_occ_fn));
 
-    nle_anchor(nle);
-    if (out_len)
-        *out_len = 0;
+    if (afternmv_id < 0 || occupation_id < 0 || timed_occ_id < 0) {
+        fprintf(stderr, "nle_save_player: unknown %s function\n",
+                afternmv_id < 0 ? "afternmv"
+                : occupation_id < 0 ? "occupation" : "timed_occ_fn");
+        return (genericptr_t) 0;
+    }
 
     /* Derive a per-env scratch path. NLE leaves `lock[]` empty during play
      * (it is only populated when a level file is created), so we populate it
@@ -450,11 +607,11 @@ long *out_len;
     context.spbook.book = (struct obj *) 0;
     context.polearm.hitmon = (struct monst *) 0;
 
+    /* bclose() (not bufoff + nhclose): see nle_save_level */
     bufon(fd);
     savegamestate(fd, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    (void) nhclose(fd);
+    nle_save_player_tail(fd, afternmv_id, occupation_id, timed_occ_id);
+    bclose(fd);
 
     /* The running game keeps its live pointers; only the blob holds ids. */
     context.victual.piece = sv_piece;
@@ -492,6 +649,23 @@ long *out_len;
     (void) unlink(fq_player);
     if (out_len)
         *out_len = sz;
+    return blob;
+}
+
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
+{
+    void *blob;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return (genericptr_t) 0;
+    blob = nle_save_player_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
     return blob;
 }
 
@@ -809,6 +983,24 @@ const int nh_tmpl_s_save_c_bw_fd =
 -1;
 #define bw_FILE (nh_g->s_save_c_bw_FILE)
 #define buffering (nh_g->s_save_c_buffering)
+
+/* Drop a buffered save stream a panic unwind left open (nle_host_call_abort
+ * skips the bclose). A no-op when nothing is open. */
+void
+nle_save_io_reset()
+{
+    if (!current_nle_ctx)
+        return;
+    if (bw_fd >= 0) {
+        FILE *bf = bw_FILE;
+
+        bw_fd = -1;
+        bw_FILE = 0;
+        if (bf)
+            (void) fclose(bf);
+    }
+    buffering = FALSE;
+}
 
 STATIC_OVL void
 def_bufon(fd)

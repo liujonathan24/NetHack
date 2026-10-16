@@ -23,20 +23,12 @@ static NEARDATA const long takeoff_order[] = {
 STATIC_DCL void FDECL(on_msg, (struct obj *));
 STATIC_DCL void FDECL(toggle_stealth, (struct obj *, long, BOOLEAN_P));
 STATIC_DCL void FDECL(toggle_displacement, (struct obj *, long, BOOLEAN_P));
-STATIC_PTR int NDECL(Armor_on);
-/* int NDECL(Boots_on); -- moved to extern.h */
-STATIC_PTR int NDECL(Cloak_on);
-STATIC_PTR int NDECL(Helmet_on);
-STATIC_PTR int NDECL(Gloves_on);
 STATIC_DCL void FDECL(wielding_corpse, (struct obj *, BOOLEAN_P));
-STATIC_PTR int NDECL(Shield_on);
-STATIC_PTR int NDECL(Shirt_on);
 STATIC_DCL void NDECL(Amulet_on);
 STATIC_DCL void FDECL(learnring, (struct obj *, BOOLEAN_P));
 STATIC_DCL void FDECL(Ring_off_or_gone, (struct obj *, BOOLEAN_P));
 STATIC_PTR int FDECL(select_off, (struct obj *));
 STATIC_DCL struct obj *NDECL(do_takeoff);
-STATIC_PTR int NDECL(take_off);
 STATIC_DCL int FDECL(menu_remarm, (int));
 STATIC_DCL void FDECL(count_worn_stuff, (struct obj **, BOOLEAN_P));
 STATIC_PTR int FDECL(armor_or_accessory_off, (struct obj *));
@@ -277,7 +269,7 @@ Boots_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR int
+int
 Cloak_on(VOID_ARGS)
 {
     long oldprop =
@@ -383,7 +375,6 @@ Cloak_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR
 int
 Helmet_on(VOID_ARGS)
 {
@@ -496,7 +487,6 @@ Helmet_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR
 int
 Gloves_on(VOID_ARGS)
 {
@@ -601,7 +591,7 @@ Gloves_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR int
+int
 Shield_on(VOID_ARGS)
 {
     /* no shield currently requires special handling when put on, but we
@@ -649,7 +639,7 @@ Shield_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR int
+int
 Shirt_on(VOID_ARGS)
 {
     /* no shirt currently requires special handling when put on, but we
@@ -685,7 +675,6 @@ Shirt_off(VOID_ARGS)
     return 0;
 }
 
-STATIC_PTR
 int
 Armor_on(VOID_ARGS)
 {
@@ -2507,7 +2496,6 @@ do_takeoff()
 }
 
 /* occupation callback for 'A' */
-STATIC_PTR
 int
 take_off(VOID_ARGS)
 {

@@ -1,0 +1,518 @@
+# resume_allowlist.txt -- fields of struct nh_globals that are not in any
+# checkpoint blob, not in the player-blob tail and not rebuilt by the load,
+# each with the reason it needs no carrying. Checked by
+# check_resume_coverage.py; one line per field: name, class, reason.
+#
+# classes:
+#   constant     initialiser data only (per-env because the initialiser takes
+#                a per-env address)
+#   process      file handles, paths, pid, terminal, window procs: the same
+#                in the new process
+#   options      option-parsing state, re-applied by the reset's option string
+#   display      screen, status line, message window state: redrawn by the
+#                ^R render
+#   transient    only meaningful inside one command, one monster action or
+#                one level generation; dead at a command boundary
+#   prompt-only  live only while a prompt is open or the hero is helpless.
+#                The engine's checkpoint() refuses those states
+#                (CheckpointAtPromptError while a misc flag is set), so a
+#                checkpoint never sees them.
+s_apply_c_jumping_is_magic	transient	inside one command / one monster action
+s_apply_c_polearm_range_min	transient	inside one command / one monster action
+s_apply_c_polearm_range_max	transient	inside one command / one monster action
+s_artifact_c_spec_dbon_applies	transient	inside one command / one monster action
+s_artifact_c_touch_blasted	transient	inside one command / one monster action
+l_artifact_c_abil_to_spfx_abil2spfx	constant	constant tables
+l_artifact_c_glow_verb_resbuf	transient	string/scratch buffer
+l_artifact_c_retouch_equipment_nesting	transient	inside one command / one monster action
+s_attrib_c_arc_abil	constant	innate-ability tables
+s_attrib_c_bar_abil	constant	innate-ability tables
+s_attrib_c_cav_abil	constant	innate-ability tables
+s_attrib_c_hea_abil	constant	innate-ability tables
+s_attrib_c_kni_abil	constant	innate-ability tables
+s_attrib_c_mon_abil	constant	innate-ability tables
+s_attrib_c_pri_abil	constant	innate-ability tables
+s_attrib_c_ran_abil	constant	innate-ability tables
+s_attrib_c_rog_abil	constant	innate-ability tables
+s_attrib_c_sam_abil	constant	innate-ability tables
+s_attrib_c_tou_abil	constant	innate-ability tables
+s_attrib_c_val_abil	constant	innate-ability tables
+s_attrib_c_wiz_abil	constant	innate-ability tables
+s_attrib_c_dwa_abil	constant	innate-ability tables
+s_attrib_c_elf_abil	constant	innate-ability tables
+s_attrib_c_gno_abil	constant	innate-ability tables
+s_attrib_c_orc_abil	constant	innate-ability tables
+s_attrib_c_hum_abil	constant	innate-ability tables
+l_attrib_c_from_what_buf	transient	string/scratch buffer
+s_ball_c_bcrestriction	transient	inside one command / one monster action
+s_botl_c_mrank_sz	display	status-line bookkeeping, redrawn by the render
+l_botl_c_get_strength_str_buf	transient	string/scratch buffer
+l_botl_c_do_statusline1_newbot1	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_newbot2	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_dloc	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_hlth	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_expr	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_tmmv	display	status-line bookkeeping, redrawn by the render
+l_botl_c_do_statusline2_cond	display	status-line bookkeeping, redrawn by the render
+blstats	display	message/status window state, redrawn by the ^R render
+s_botl_c_blinit	display	status-line bookkeeping, redrawn by the render
+s_botl_c_update_all	display	status-line bookkeeping, redrawn by the render
+s_botl_c_valset	display	status-line bookkeeping, redrawn by the render
+s_botl_c_bl_hilite_moves	display	status-line bookkeeping, redrawn by the render
+s_botl_c_cond_hilites	display	status-line bookkeeping, redrawn by the render
+s_botl_c_now_or_before_idx	display	status-line bookkeeping, redrawn by the render
+l_botl_c_eval_notify_windowport_field_oldrndencode	display	status-line bookkeeping, redrawn by the render
+l_botl_c_eval_notify_windowport_field_oldgoldsym	display	status-line bookkeeping, redrawn by the render
+l_botl_c_init_blstats_initalready	display	status-line bookkeeping, redrawn by the render
+status_hilites	display	message/status window state, redrawn by the ^R render
+l_botl_c_splitsubfields_subfields	display	status-line bookkeeping, redrawn by the render
+l_botl_c_parse_status_hl2_aligntxt	display	status-line bookkeeping, redrawn by the render
+l_botl_c_parse_status_hl2_hutxt	display	status-line bookkeeping, redrawn by the render
+l_botl_c_conditionbitmask2str_buf	transient	string/scratch buffer
+s_botl_c_status_hilite_str	display	status-line bookkeeping, redrawn by the render
+s_botl_c_status_hilite_str_id	display	status-line bookkeeping, redrawn by the render
+l_botl_c_status_hilite2str_buf	transient	string/scratch buffer
+l_botl_c_status_hilite_menu_add_aligntxt	display	status-line bookkeeping, redrawn by the render
+l_botl_c_status_hilite_menu_add_hutxt	display	status-line bookkeeping, redrawn by the render
+s_cmd_c_alt_esc	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+Cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_cmd_c_readchar_queue	transient	keys queued by dotravel/click_to_cmd, drained before the next real key read
+s_cmd_c_clicklook_cc	transient	inside one command / one monster action
+s_cmd_c_en_win	transient	inside one command / one monster action
+s_cmd_c_en_via_menu	transient	inside one command / one monster action
+l_cmd_c_basics_enlightenment_Power	transient	string/scratch buffer
+extcmdlist	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+extcmdlist_length	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+l_cmd_c_key2extcmddesc_key2cmdbuf	transient	string/scratch buffer
+l_cmd_c_reset_commands_back_dir_cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+l_cmd_c_reset_commands_backed_dir_cmd	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+l_cmd_c_randomkey_i	transient	fuzzer key counter; the fuzzer is off
+l_cmd_c_click_to_cmd_cmd	transient	string/scratch buffer
+l_cmd_c_parse_in_line	transient	string/scratch buffer
+l_cmd_c_dotravel_cmd	transient	string/scratch buffer
+s_dbridge_c_occupants	transient	inside one command / one monster action
+l_dbridge_c_E_phrase_wholebuf	transient	string/scratch buffer
+hname	process	process identity and lock/file names
+locknum	process	process identity and lock/file names
+chosen_windowtype	process	process identity and lock/file names
+x_maze_max	constant	COLNO/ROWNO derived, set once by init_dungeons
+y_maze_max	constant	COLNO/ROWNO derived, set once by init_dungeons
+otg_temp	transient	level-change scratch
+in_doagain	transient	set only while ^A replays; ^A is not in the action vocabulary
+smeq	transient	level-generation scratch
+save_cm	process	process identity and lock/file names
+done_money	transient	inside one command / one monster action
+plname	process	process identity and lock/file names
+pl_race	process	process identity and lock/file names
+ransacked	transient	level-generation scratch
+yn_number	transient	inside one command / one monster action
+program_state	process	process identity and lock/file names
+tbx	transient	inside one command / one monster action
+tby	transient	inside one command / one monster action
+m_shot	transient	inside one command / one monster action
+in_mklev	transient	level-generation scratch
+stoned	transient	inside one command / one monster action
+mrg_to_wielded	transient	inside one command / one monster action
+in_steed_dismounting	transient	inside one command / one monster action
+has_strong_rngseed	process	process identity and lock/file names
+bhitpos	transient	inside one command / one monster action
+upstairs_room	transient	level generation: has_upstairs() in mkroom
+dnstairs_room	transient	level generation: has_dnstairs() in mkroom
+sstairs_room	transient	level generation: has_upstairs()/has_dnstairs() in mkroom
+current_wand	transient	inside one command / one monster action
+thrownobj	transient	inside one command / one monster action
+kickedobj	transient	inside one command / one monster action
+dogname	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+catname	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+horsename	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+preferred_pet	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+mydogs	transient	level-change scratch
+apelist	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+domove_attempting	transient	inside one command / one monster action
+domove_succeeded	transient	inside one command / one monster action
+c_color_names	constant	constant tables
+menu_colorings	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+c_obj_colors	constant	constant tables
+c_common_strings	constant	constant tables
+materialnm	constant	constant tables
+WIN_STATUS	display	message/status window state, redrawn by the ^R render
+WIN_MAP	display	message/status window state, redrawn by the ^R render
+WIN_INVEN	display	message/status window state, redrawn by the ^R render
+toplines	display	message/status window state, redrawn by the ^R render
+tc_gbl_data	process	process identity and lock/file names
+fqn_prefix	process	process identity and lock/file names
+fqn_prefix_names	process	process identity and lock/file names
+sfcap	process	process identity and lock/file names
+sfrestinfo	process	process identity and lock/file names
+plinemsg_types	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+ARGV0	process	process identity and lock/file names
+nhUse_dummy	process	process identity and lock/file names
+s_detect_c_level_detects	constant	constant tables
+s_display_c_tgfirst	transient	inside one command / one monster action
+l_display_c_tmp_at_tglyph	transient	inside one command / one monster action
+l_display_c_swallowed_lastx	display	message/status window state, redrawn by the ^R render
+l_display_c_swallowed_lasty	display	message/status window state, redrawn by the ^R render
+l_display_c_under_water_lastx	display	message/status window state, redrawn by the ^R render
+l_display_c_under_water_lasty	display	message/status window state, redrawn by the ^R render
+l_display_c_under_water_dela	display	message/status window state, redrawn by the ^R render
+l_display_c_under_ground_dela	display	message/status window state, redrawn by the ^R render
+l_display_c_cls_in_cls	transient	inside one command / one monster action
+l_display_c_flush_screen_flushing	transient	inside one command / one monster action
+l_display_c_flush_screen_delay_flushing	transient	inside one command / one monster action
+seenv_matrix	constant	constant tables
+s_do_c_at_ladder	transient	level-change scratch
+save_dlevel	transient	level-change scratch
+s_do_c_dfr_pre_msg	transient	level-change scratch
+s_do_c_dfr_post_msg	transient	level-change scratch
+l_do_c_dowipe_buf	transient	string/scratch buffer
+l_do_name_c_nextmbuf_bufs	transient	string/scratch buffer
+l_do_name_c_nextmbuf_bufidx	transient	string/scratch buffer
+s_do_name_c_getpos_hilitefunc	transient	inside one command / one monster action
+s_do_name_c_getpos_getvalid	transient	inside one command / one monster action
+s_do_name_c_gloc_filter_map	transient	inside one command / one monster action
+s_do_name_c_gloc_filter_floodfill_match_glyph	transient	inside one command / one monster action
+l_do_name_c_dxdy_to_dist_descr_buf	transient	string/scratch buffer
+l_do_name_c_coord_desc_screen_fmt	transient	name/getpos buffers
+s_do_name_c_via_naming	transient	inside one command / one monster action
+l_do_name_c_rndmonnam_buf	transient	string/scratch buffer
+s_do_wear_c_initial_don	transient	starting-kit tables, edited only during the reset game's u_init
+s_do_wear_c_Narmorpieces	transient	inside one command / one monster action
+s_do_wear_c_Naccessories	transient	inside one command / one monster action
+l_do_wear_c_armoroff_offdelaybuf	transient	string/scratch buffer
+l_dog_c_makedog_petname_used	transient	starting-kit tables, edited only during the reset game's u_init
+s_dogmove_c_gtyp	transient	inside one command / one monster action
+s_dogmove_c_gx	transient	inside one command / one monster action
+s_dogmove_c_gy	transient	inside one command / one monster action
+s_dokick_c_maploc	transient	inside one command / one monster action
+s_dokick_c_nowhere	transient	inside one command / one monster action
+s_dokick_c_gate_str	transient	inside one command / one monster action
+symset	display	message/status window state, redrawn by the ^R render
+currentgraphics	display	message/status window state, redrawn by the ^R render
+showsyms	display	message/status window state, redrawn by the ^R render
+primary_syms	display	message/status window state, redrawn by the ^R render
+rogue_syms	display	message/status window state, redrawn by the ^R render
+ov_primary_syms	display	message/status window state, redrawn by the ^R render
+ov_rogue_syms	display	message/status window state, redrawn by the ^R render
+warnsyms	display	message/status window state, redrawn by the ^R render
+known_handling	constant	constant tables
+known_restrictions	constant	constant tables
+loadsyms	constant	constant tables
+l_dungeon_c_add_branch_branch_id	transient	next branch id, used by init_dungeons only
+level_map	constant	constant tables
+msgbuf	transient	inside one command / one monster action
+s_eat_c_force_save_hs	transient	inside one command / one monster action
+hu_stat	constant	constant tables
+s_eat_c_eatmbuf	prompt-only	the deferred meal message while helpless after eating a mimic
+s_end_c_gems	constant	constant tables
+s_end_c_amulets	constant	constant tables
+s_end_c_valuables	constant	constant tables
+l_end_c_NH_abort_aborting	transient	inside one command / one monster action
+s_end_c_Schroedingers_cat	transient	inside one command / one monster action
+s_end_c_vanq_sortmode	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_extralev_c_r	transient	rogue-level generation scratch
+s_files_c_fqn_filename_buffer	transient	string/scratch buffer
+bones	process	file names, config, lock fd
+lock	process	file names, config, lock fd
+SAVEF	process	file names, config, lock fd
+s_files_c_wizkit	process	file names, config, lock fd
+s_files_c_config_section_chosen	process	file names, config, lock fd
+s_files_c_config_section_current	process	file names, config, lock fd
+l_files_c_fname_encode_hexdigits	process	file names, config, lock fd
+l_files_c_fname_decode_hexdigits	process	file names, config, lock fd
+s_files_c_nesting	process	file names, config, lock fd
+s_files_c_lockfd	process	file names, config, lock fd
+sflock	process	file names, config, lock fd
+default_configfile	process	file names, config, lock fd
+configfile	process	file names, config, lock fd
+s_files_c_config_error_data	process	file names, config, lock fd
+s_files_c_symset_count	process	file names, config, lock fd
+s_files_c_chosen_symset_start	process	file names, config, lock fd
+s_files_c_chosen_symset_end	process	file names, config, lock fd
+s_files_c_symset_which_set	process	file names, config, lock fd
+s_hack_c_tmp_anything	transient	inside one command / one monster action
+l_hack_c_domove_core_skates	transient	inside one command / one monster action
+l_hack_c_spoteffects_inspoteffects	transient	inside one command / one monster action
+l_hack_c_spoteffects_spotloc	transient	inside one command / one monster action
+l_hack_c_spoteffects_spotterrain	transient	inside one command / one monster action
+l_hack_c_spoteffects_spottrap	transient	inside one command / one monster action
+l_hack_c_spoteffects_spottraptyp	transient	inside one command / one monster action
+l_hack_c_in_rooms_buf	transient	string/scratch buffer
+s_hack_c_wc	transient	weight_cap() recomputes it before every read (inv_weight)
+l_hacklib_c_s_suffix_buf	transient	string/scratch buffer
+l_hacklib_c_ing_suffix_buf	transient	string/scratch buffer
+l_hacklib_c_visctrl_visctrl_bufs	transient	string/scratch buffer
+l_hacklib_c_visctrl_nbuf	transient	string/scratch buffer
+l_hacklib_c_sitoa_buf	transient	string/scratch buffer
+nle_seeds	process	process identity and lock/file names
+l_hacklib_c_yyyymmddhhmmss_datestr	transient	string/scratch buffer
+s_invent_c_venom_inv	constant	constant tables
+l_invent_c_loot_classify_def_srt_order	constant	constant tables
+l_invent_c_loot_classify_armcat	constant	constant tables
+s_invent_c_sortlootmode	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_invent_c_safeq_xprn_ctx	transient	inside one command / one monster action
+l_invent_c_xprname_li	transient	string/scratch buffer
+s_invent_c_cached_pickinv_win	display	message/status window state, redrawn by the ^R render
+s_invent_c_this_type	transient	inside one command / one monster action
+l_invent_c_dfeature_at_altbuf	transient	string/scratch buffer
+s_invent_c_invbuf	display	message/status window state, redrawn by the ^R render
+s_invent_c_invbufsiz	display	message/status window state, redrawn by the ^R render
+s_invent_c_only	transient	inside one command / one monster action
+l_lock_c_pick_lock_no_longer	transient	string/scratch buffer
+l_makemon_c_align_shift_oldmoves	transient	align_shift cache keyed on moves; recomputed when moves differs
+l_makemon_c_align_shift_lev	transient	align_shift cache keyed on moves; recomputed when moves differs
+l_mapglyph_c_encglyph_encbuf	transient	string/scratch buffer
+s_mhitm_c_vis	transient	inside one command / one monster action
+s_mhitm_c_otmp	transient	inside one command / one monster action
+s_mhitm_c_dieroll	transient	inside one command / one monster action
+s_mhitu_c_mon_currwep	transient	inside one command / one monster action
+s_mhitu_c_dieroll	transient	inside one command / one monster action
+s_mklev_c_vault_x	transient	level generation scratch
+s_mklev_c_vault_y	transient	level generation scratch
+s_mklev_c_made_branch	transient	level generation scratch
+s_mkmap_c_new_locations	transient	level generation scratch
+min_rx	transient	level-generation scratch
+max_rx	transient	level-generation scratch
+min_ry	transient	level-generation scratch
+max_ry	transient	level-generation scratch
+s_mkmap_c_n_loc_filled	transient	level generation scratch
+s_mkmaze_c_bughack	transient	maze wallification scratch
+s_mkmaze_c_wportal	transient	inside one command / one monster action
+l_mkobj_c_where_name_unknown	transient	string/scratch buffer
+l_mkroom_c_shrine_pos_buf	transient	string/scratch buffer
+s_mon_c_vamp_rise_msg	transient	inside one command / one monster action
+s_mon_c_disintegested	transient	inside one command / one monster action
+s_mon_c_animal_list	constant	built from mons[] on first use
+s_mon_c_animal_list_count	constant	built from mons[] on first use
+s_mthrowu_c_mesg_given	transient	inside one command / one monster action
+s_mthrowu_c_target	transient	inside one command / one monster action
+s_mthrowu_c_archer	transient	inside one command / one monster action
+m_using	transient	inside one command / one monster action
+s_muse_c_m	transient	inside one command / one monster action
+s_muse_c_trapx	transient	inside one command / one monster action
+s_muse_c_trapy	transient	inside one command / one monster action
+s_muse_c_zap_oseen	transient	inside one command / one monster action
+beats	constant	constant tables
+obj_descr	constant	constant tables
+s_objnam_c_Japanese_items	constant	constant tables
+s_objnam_c_obufs	transient	name buffers
+s_objnam_c_obufidx	transient	string/scratch buffer
+s_objnam_c_distantname	transient	name buffers
+s_objnam_c_one_off	constant	constant tables
+s_options_c_empty_optstr	options	option parsing state
+s_options_c_boolopt	options	option parsing state
+s_options_c_compopt	options	option parsing state
+s_options_c_need_redraw	options	option parsing state
+s_options_c_def_inv_order	options	option parsing state
+mapped_menu_cmds	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_options_c_mapped_menu_op	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_options_c_n_menu_mapped	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_options_c_initial	options	option parsing state
+s_options_c_from_file	options	option parsing state
+l_options_c_parseoptions_gpcoords	options	option parsing state
+l_options_c_parseoptions_valid_settings	options	option parsing state
+s_options_c_fmtstr_doset	options	option parsing state
+s_options_c_fmtstr_doset_tab	options	option parsing state
+s_options_c_n_currently_set	options	option parsing state
+l_options_c_doset_made_fmtstr	options	option parsing state
+symset_list	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_options_c_opt_intro	options	option parsing state
+l_options_c_next_opt_buf	transient	string/scratch buffer
+l_options_c_wc_set_window_colors_fgp	options	option parsing state
+l_options_c_wc_set_window_colors_bgp	options	option parsing state
+l_pager_c_do_screen_description_look_buf	transient	string/scratch buffer
+s_pager_c_suptext1	constant	constant tables
+s_pager_c_suptext2	constant	constant tables
+s_pickup_c_current_container	transient	inside one command / one monster action
+s_pickup_c_abort_looting	transient	inside one command / one monster action
+s_pickup_c_val_for_n_or_more	transient	inside one command / one monster action
+s_pickup_c_valid_menu_classes	transient	inside one command / one monster action
+s_pickup_c_class_filter	transient	inside one command / one monster action
+s_pickup_c_bucx_filter	transient	inside one command / one monster action
+s_pickup_c_shop_filter	transient	inside one command / one monster action
+l_pickup_c_add_valid_menu_class_vmc_count	transient	inside one command / one monster action
+l_pickup_c_autopick_testobj_costly	transient	inside one command / one monster action
+s_pline_c_pline_flags	transient	inside one command / one monster action
+s_pline_c_prevmsg	display	message/status window state, redrawn by the ^R render
+l_pline_c_vpline_in_pline	transient	inside one command / one monster action
+s_pline_c_you_buf	transient	string/scratch buffer
+s_pline_c_you_buf_siz	transient	string/scratch buffer
+s_polyself_c_sex_change_ok	transient	inside one command / one monster action
+notonhead	transient	inside one command / one monster action
+s_potion_c_nothing	transient	inside one command / one monster action
+s_potion_c_unkn	transient	inside one command / one monster action
+bottlenames	constant	constant tables
+l_priest_c_piousness_buf	transient	string/scratch buffer
+s_questpgr_c_cvt_buf	transient	string/scratch buffer
+s_questpgr_c_qt_list	process	quest text offsets, read once from the data file
+s_questpgr_c_msg_file	process	quest text data-file handle
+s_questpgr_c_nambuf	transient	string/scratch buffer
+known	transient	inside one command / one monster action
+s_read_c_gremlins	transient	inside one command / one monster action
+s_rect_c_rect	transient	level generation scratch
+s_rect_c_rect_cnt	transient	level generation scratch
+s_restore_c_restoreprocs	transient	level-change scratch
+s_restore_c_n_ids_mapped	transient	level-change scratch
+s_restore_c_id_map	transient	level-change scratch
+restoring	process	process identity and lock/file names
+s_restore_c_oldfruit	transient	level-change scratch
+s_restore_c_omoves	transient	level-change scratch
+s_rip_c_rip	transient	inside one command / one monster action
+s_role_c_rfilter	options	role-selection filter from the options
+s_role_c_randomstr	transient	inside one command / one monster action
+s_role_c_pa	transient	inside one command / one monster action
+s_role_c_post_attribs	transient	inside one command / one monster action
+l_role_c_root_plselection_prompt_err_ret	transient	string/scratch buffer
+s_rumors_c_true_rumor_size	process	offsets into the rumors data file, read once from the file
+s_rumors_c_false_rumor_size	process	offsets into the rumors data file, read once from the file
+s_rumors_c_true_rumor_start	process	offsets into the rumors data file, read once from the file
+s_rumors_c_false_rumor_start	process	offsets into the rumors data file, read once from the file
+s_rumors_c_true_rumor_end	process	offsets into the rumors data file, read once from the file
+s_rumors_c_false_rumor_end	process	offsets into the rumors data file, read once from the file
+s_save_c_saveprocs	transient	level-change scratch
+s_save_c_bw_fd	transient	level-change scratch
+s_save_c_bw_FILE	transient	level-change scratch
+s_save_c_buffering	transient	level-change scratch
+s_shk_c_sell_response	transient	inside one command / one monster action
+s_shk_c_sell_how	transient	inside one command / one monster action
+s_shk_c_auto_credit	transient	inside one command / one monster action
+Izchak_speaks	constant	constant tables
+s_sp_lev_c_SpLev_Map	transient	special-level generation scratch
+s_sp_lev_c_ralign	transient	special-level generation scratch
+s_sp_lev_c_xstart	transient	special-level generation scratch
+s_sp_lev_c_ystart	transient	special-level generation scratch
+s_sp_lev_c_xsize	transient	special-level generation scratch
+s_sp_lev_c_ysize	transient	special-level generation scratch
+lev_message	transient	level-generation scratch
+lregions	transient	level-generation scratch
+num_lregions	transient	level-generation scratch
+s_sp_lev_c_splev_init_present	transient	special-level generation scratch
+s_sp_lev_c_icedpools	transient	special-level generation scratch
+s_sp_lev_c_mines_prize_count	transient	special-level generation scratch
+s_sp_lev_c_soko_prize_count	transient	special-level generation scratch
+s_sp_lev_c_container_obj	transient	special-level generation scratch
+s_sp_lev_c_container_idx	transient	special-level generation scratch
+s_sp_lev_c_invent_carrying_monster	transient	special-level generation scratch
+l_sp_lev_c_get_unpacked_coord_c	transient	special-level generation scratch
+s_sp_lev_c_selection_flood_check_func	transient	special-level generation scratch
+s_sp_lev_c_floodfillchk_match_under_typ	transient	special-level generation scratch
+l_spell_c_tport_spell_save_tport	transient	inside one command / one monster action
+s_spell_c_spl_sortmode	options	options: pet names, autopickup exceptions, message types, menu colours, command mappings
+s_spell_c_spl_orderindx	transient	inside one command / one monster action
+sysopt	process	process identity and lock/file names
+s_teleport_c_telescroll	transient	inside one command / one monster action
+tt_head	transient	inside one command / one monster action
+s_topten_c_toptenwin	transient	inside one command / one monster action
+l_topten_c_get_rnd_toptenentry_tt_buf	transient	inside one command / one monster action
+s_trap_c_force_mintrap	transient	inside one command / one monster action
+l_trap_c_dotrap_recursive_mine	transient	inside one command / one monster action
+l_trap_c_trapnote_tnbuf	transient	string/scratch buffer
+s_trap_c_launchplace	transient	inside one command / one monster action
+s_trap_c_acid_ctx	transient	inside one command / one monster action
+s_u_init_c_Archeologist	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Barbarian	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Cave_man	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Healer	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Knight	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Monk	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Priest	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Ranger	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Rogue	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Samurai	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Tourist	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Valkyrie	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Wizard	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Tinopener	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Magicmarker	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Lamp	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Blindfold	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Instrument	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Xtra_food	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Leash	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Towel	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Wishing	transient	starting-kit tables, edited only during the reset game's u_init
+s_u_init_c_Money	transient	starting-kit tables, edited only during the reset game's u_init
+l_u_init_c_ini_inv_nocreate	transient	starting-kit tables, edited only during the reset game's u_init
+l_u_init_c_ini_inv_nocreate2	transient	starting-kit tables, edited only during the reset game's u_init
+l_u_init_c_ini_inv_nocreate3	transient	starting-kit tables, edited only during the reset game's u_init
+l_u_init_c_ini_inv_nocreate4	transient	starting-kit tables, edited only during the reset game's u_init
+s_uhitm_c_override_confirmation	transient	inside one command / one monster action
+l_uhitm_c_gulpum_msgbuf	transient	string/scratch buffer
+circle_data	constant	constant tables
+circle_start	constant	constant tables
+s_vision_c_viz_clear_rows	constant	row pointers into viz_clear, set by vision_init
+l_vision_c_vision_recalc_colbump	transient	vision_recalc scratch
+s_vision_c_start_row	transient	view_from scratch
+s_vision_c_start_col	transient	view_from scratch
+s_vision_c_step	transient	view_from scratch
+s_vision_c_cs_rows	transient	vision_recalc scratch
+s_vision_c_cs_left	transient	vision_recalc scratch
+s_vision_c_cs_right	transient	vision_recalc scratch
+s_vision_c_vis_func	transient	do_clear_area callback, set per call
+s_vision_c_varg	transient	do_clear_area callback argument, set per call
+s_weapon_c_propellor	transient	inside one command / one monster action
+windowprocs	display	message/status window state, redrawn by the ^R render
+s_windows_c_winchoices	process	window-port tables
+s_windows_c_last_winchoice	process	window-port tables
+s_windows_c_previnterface_exit_nhwindows	process	window-port tables
+status_fieldnm	constant	constant tables
+status_fieldfmt	constant	constant tables
+status_vals	display	message/status window state, redrawn by the ^R render
+status_activefields	display	message/status window state, redrawn by the ^R render
+l_windows_c_genl_status_update_fieldorder	process	window-port tables
+s_windows_c_dumplog_file	process	window-port tables
+worn	constant	constant tables
+s_zap_c_obj_zapped	transient	inside one command / one monster action
+s_zap_c_poly_zapped	transient	inside one command / one monster action
+termio	process	process identity and lock/file names
+l_posixregex_c_regex_error_desc_buf	transient	string/scratch buffer
+s_unixmain_c_wiz_error_flag	process	unix main scratch
+l_unixmain_c_get_unix_pw_pw	process	unix main scratch
+l_unixmain_c_get_login_name_buf	transient	string/scratch buffer
+morc	display	message/status window state, redrawn by the ^R render
+s_getline_c_suppress_history	display	message/status window state, redrawn by the ^R render
+xwaitingforspace	display	message/status window state, redrawn by the ^R render
+tc_lcl_data	process	termcap strings for the virtual terminal
+s_termcap_c_HO	process	termcap strings for the virtual terminal
+s_termcap_c_CL	process	termcap strings for the virtual terminal
+s_termcap_c_CE	process	termcap strings for the virtual terminal
+s_termcap_c_UP	process	termcap strings for the virtual terminal
+s_termcap_c_XD	process	termcap strings for the virtual terminal
+s_termcap_c_BC	process	termcap strings for the virtual terminal
+s_termcap_c_SO	process	termcap strings for the virtual terminal
+s_termcap_c_SE	process	termcap strings for the virtual terminal
+s_termcap_c_TI	process	termcap strings for the virtual terminal
+s_termcap_c_TE	process	termcap strings for the virtual terminal
+s_termcap_c_VS	process	termcap strings for the virtual terminal
+s_termcap_c_VE	process	termcap strings for the virtual terminal
+s_termcap_c_ME	process	termcap strings for the virtual terminal
+s_termcap_c_MR	process	termcap strings for the virtual terminal
+s_termcap_c_MB	process	termcap strings for the virtual terminal
+s_termcap_c_MH	process	termcap strings for the virtual terminal
+s_termcap_c_MD	process	termcap strings for the virtual terminal
+hilites	process	termcap strings for the virtual terminal
+s_termcap_c_nullstr	transient	string/scratch buffer
+s_termcap_c_tgotobuf	transient	string/scratch buffer
+s_termcap_c_adef_nilstring	transient	string/scratch buffer
+s_termcap_c_nulstr	transient	string/scratch buffer
+l_topl_c_tty_putmsghistory_initd	display	message/status window state, redrawn by the ^R render
+tty_procs	display	message/status window state, redrawn by the ^R render
+BASE_WINDOW	display	message/status window state, redrawn by the ^R render
+s_wintty_c_winpanicstr	transient	string/scratch buffer
+defmorestr	display	message/status window state, redrawn by the ^R render
+l_wintty_c_compress_str_cbuf	transient	string/scratch buffer
+l_wintty_c_tty_nhgetch_nesting	display	tty window-port state, redrawn by the render
+s_wintty_c_tty_colormasks	display	tty window-port state, redrawn by the render
+s_wintty_c_tty_condition_bits	display	tty window-port state, redrawn by the render
+s_wintty_c_tty_status	display	tty status line state, redrawn by the render
+s_wintty_c_hpbar_percent	display	tty window-port state, redrawn by the render
+s_wintty_c_hpbar_color	display	tty window-port state, redrawn by the render
+s_wintty_c_fieldorder	display	tty window-port state, redrawn by the render
+s_wintty_c_finalx	display	tty window-port state, redrawn by the render
+s_wintty_c_windowdata_init	display	tty window-port state, redrawn by the render
+s_wintty_c_cond_shrinklvl	display	tty window-port state, redrawn by the render
+s_wintty_c_enclev	display	tty window-port state, redrawn by the render
+s_wintty_c_enc_shrinklvl	display	tty window-port state, redrawn by the render
+s_wintty_c_dlvl_shrinklvl	display	tty window-port state, redrawn by the render
+s_wintty_c_truncation_expected	display	tty window-port state, redrawn by the render
+l_wintty_c_status_sanity_check_in_sanity_check	display	tty window-port state, redrawn by the render
+l_wintty_c_render_status_once_only	display	tty window-port state, redrawn by the render

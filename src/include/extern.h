@@ -50,6 +50,7 @@ E boolean FDECL(catch_lit, (struct obj *));
 E void FDECL(use_unicorn_horn, (struct obj *));
 E boolean FDECL(tinnable, (struct obj *));
 E void NDECL(reset_trapset);
+E int NDECL(set_trap);
 E void FDECL(fig_transform, (ANY_P *, long));
 E int FDECL(unfixable_trouble_count, (BOOLEAN_P));
 
@@ -201,11 +202,11 @@ E int NDECL(doconduct);
 E int NDECL(domonability);
 E char FDECL(cmd_from_func, (int NDECL((*))));
 E boolean FDECL(redraw_cmd, (CHAR_P));
+E int NDECL(timed_occupation);
 #ifdef USE_TRAMPOLI
 E int NDECL(doextcmd);
 E int NDECL(domonability);
 E int NDECL(doprev_message);
-E int NDECL(timed_occupation);
 E int NDECL(doattributes);
 E int NDECL(wiz_detect);
 E int NDECL(wiz_genesis);
@@ -313,9 +314,7 @@ E void FDECL(reveal_terrain, (int, int));
 
 E int FDECL(dig_typ, (struct obj *, XCHAR_P, XCHAR_P));
 E boolean NDECL(is_digging);
-#ifdef USE_TRAMPOLI
 E int NDECL(dig);
-#endif
 E int NDECL(holetime);
 E boolean FDECL(dig_check, (struct monst *, BOOLEAN_P, int, int));
 E void FDECL(digactualhole, (int, int, struct monst *, int));
@@ -390,8 +389,8 @@ E int FDECL(warning_of, (struct monst *));
 
 #ifdef USE_TRAMPOLI
 E int FDECL(drop, (struct obj *));
-E int NDECL(wipeoff);
 #endif
+E int NDECL(wipeoff);
 E int NDECL(dodrop);
 E boolean FDECL(boulder_hits_pool, (struct obj *, int, int, BOOLEAN_P));
 E boolean FDECL(flooreffects, (struct obj *, int, int, const char *));
@@ -468,13 +467,15 @@ E const char *FDECL(lookup_novel, (const char *, int *));
 /* ### do_wear.c ### */
 
 #ifdef USE_TRAMPOLI
-E int NDECL(Armor_on);
-E int NDECL(Boots_on);
-E int NDECL(Gloves_on);
-E int NDECL(Helmet_on);
 E int FDECL(select_off, (struct obj *));
-E int NDECL(take_off);
 #endif
+E int NDECL(Armor_on);
+E int NDECL(Cloak_on);
+E int NDECL(Helmet_on);
+E int NDECL(Gloves_on);
+E int NDECL(Shield_on);
+E int NDECL(Shirt_on);
+E int NDECL(take_off);
 E const char *FDECL(fingers_or_gloves, (BOOLEAN_P));
 E void FDECL(off_msg, (struct obj *));
 E void FDECL(set_wear, (struct obj *));
@@ -668,12 +669,10 @@ E const char *FDECL(endgamelevelname, (char *, int));
 
 /* ### eat.c ### */
 
-#ifdef USE_TRAMPOLI
 E int NDECL(eatmdone);
 E int NDECL(eatfood);
 E int NDECL(opentin);
 E int NDECL(unfaint);
-#endif
 E void NDECL(eatmupdate);
 E boolean FDECL(is_edible, (struct obj *));
 E void NDECL(init_uhunger);
@@ -1103,10 +1102,8 @@ E int NDECL(wiz_light_sources);
 
 /* ### lock.c ### */
 
-#ifdef USE_TRAMPOLI
 E int NDECL(forcelock);
 E int NDECL(picklock);
-#endif
 E boolean FDECL(picking_lock, (int *, int *));
 E boolean FDECL(picking_at, (int, int));
 E void FDECL(breakchestlock, (struct obj *, BOOLEAN_P));
@@ -1996,9 +1993,7 @@ E const char *NDECL(bottlename);
 
 E boolean FDECL(critically_low_hp, (BOOLEAN_P));
 E boolean NDECL(stuck_in_wall);
-#ifdef USE_TRAMPOLI
 E int NDECL(prayer_done);
-#endif
 E int NDECL(dosacrifice);
 E boolean FDECL(can_pray, (BOOLEAN_P));
 E int NDECL(dopray);
@@ -2241,6 +2236,8 @@ E void FDECL(store_plname_in_file, (int));
 E void NDECL(free_dungeons);
 E void NDECL(freedynamicdata);
 E void FDECL(store_savefileinfo, (int));
+E int FDECL(nle_fn_id, (int NDECL((*))));
+E boolean FDECL(nle_fn_lookup, (int, int NDECL((**))));
 
 /* ### shk.c ### */
 
@@ -2378,9 +2375,7 @@ E void FDECL(selection_floodfill, (struct opvar *, int, int, BOOLEAN_P));
 /* ### spell.c ### */
 
 E void FDECL(book_cursed, (struct obj *));
-#ifdef USE_TRAMPOLI
 E int NDECL(learn);
-#endif
 E int FDECL(study_book, (struct obj *));
 E void FDECL(book_disappears, (struct obj *));
 E void FDECL(book_substitution, (struct obj *, struct obj *));
@@ -2395,9 +2390,7 @@ E void FDECL(initialspell, (struct obj *));
 
 /* ### steal.c ### */
 
-#ifdef USE_TRAMPOLI
 E int NDECL(stealarm);
-#endif
 E long FDECL(somegold, (long));
 E void FDECL(stealgold, (struct monst *));
 E void FDECL(remove_worn_item, (struct obj *, BOOLEAN_P));
@@ -2707,6 +2700,7 @@ E void NDECL(vision_init);
 E int FDECL(does_block, (int, int, struct rm *));
 E void NDECL(vision_reset);
 E void FDECL(vision_recalc, (int));
+E void NDECL(reveal_map_memory);
 E void FDECL(block_point, (int, int));
 E void FDECL(unblock_point, (int, int));
 E boolean FDECL(clear_path, (int, int, int, int));

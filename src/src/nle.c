@@ -24,6 +24,7 @@
 #include "lev.h"        /* WRITE_SAVE / FREE_SAVE for savelev() */
 
 #include "dlb.h"
+#include "wintty.h"     /* the message line's state travels with the screen */
 
 #include "nle.h"
 #include "nle_sentinel.h"
@@ -161,17 +162,37 @@ nle_vt_callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
     }
 }
 
+/* The whole screen into tty_chars / tty_colors; the update callback above
+ * copies the dirty rows only. */
+void
+nle_vt_refresh_obs(nle_ctx_t *nle, nle_obs *obs)
+{
+    const TMTSCREEN *s = tmt_screen(nle->vterminal);
+    size_t r, c;
+
+    for (r = 0; r < s->nline; r++)
+        for (c = 0; c < s->ncol; c++) {
+            size_t offset = (r * NLE_TERM_CO) + c;
+            TMTCHAR *tmt_c = &(s->lines[r]->chars[c]);
+
+            if (obs->tty_chars)
+                obs->tty_chars[offset] = tmt_c->c;
+            if (obs->tty_colors)
+                obs->tty_colors[offset] = vt_char_color_extract(tmt_c);
+        }
+}
+
 /* ---- virtual terminal snapshot -------------------------------------------
  * The TMT terminal emulator that produces the tty_* observations lives in
  * libc memory, outside the context block and the arena, and only repaints
- * cells the game redraws. A snapshot therefore carries the whole screen and
- * the cursor, so a restore cannot leave menu/message residue from the
- * abandoned continuation in tty_chars. */
+ * cells the game redraws. A snapshot therefore carries the whole screen,
+ * the cursor and the tty_* buffers themselves, so a restore cannot leave
+ * menu/message residue from the abandoned continuation in tty_chars. */
 size_t
 nle_vt_snapshot_size(nle_ctx_t *nle)
 {
     const TMTSCREEN *s = tmt_screen(nle->vterminal);
-    return s->nline * s->ncol * sizeof(TMTCHAR) + 2 * sizeof(int);
+    return s->nline * s->ncol * (sizeof(TMTCHAR) + 2) + 2 * sizeof(int);
 }
 
 void
@@ -190,6 +211,25 @@ nle_vt_snapshot_save(nle_ctx_t *nle, void *dst)
     c[0] = (int) cur->r;
     c[1] = (int) cur->c;
     memcpy(p, c, sizeof c);
+    p += sizeof c;
+    /* the reveal_map overlay draws into tty_chars too, and what it drew stays
+     * in the rows the terminal has not redrawn since */
+    for (r = 0; r < s->nline; r++) {
+        size_t col;
+
+        for (col = 0; col < s->ncol; col++) {
+            size_t offset = (r * NLE_TERM_CO) + col;
+            TMTCHAR *tmt_c = &(s->lines[r]->chars[col]);
+            nle_obs *obs = nle->observation;
+
+            p[col] = (obs && obs->tty_chars) ? obs->tty_chars[offset]
+                                             : (char) tmt_c->c;
+            p[s->ncol + col] = (obs && obs->tty_colors)
+                                   ? obs->tty_colors[offset]
+                                   : vt_char_color_extract(tmt_c);
+        }
+        p += 2 * s->ncol;
+    }
 }
 
 void
@@ -220,8 +260,19 @@ nle_vt_snapshot_load(nle_ctx_t *nle, const void *src)
     for (r = 0; r < s->nline; r++)
         s->lines[r]->dirty = true;
     if (nle->observation) {
+        nle_obs *obs = nle->observation;
+
         nle_vt_callback(TMT_MSG_UPDATE, vt, s, nle);   /* copies + cleans */
         nle_vt_callback(TMT_MSG_MOVED, vt, tmt_cursor(vt), nle);
+        p += sizeof c;
+        for (r = 0; r < s->nline; r++) {
+            if (obs->tty_chars)
+                memcpy(obs->tty_chars + r * NLE_TERM_CO, p, s->ncol);
+            if (obs->tty_colors)
+                memcpy(obs->tty_colors + r * NLE_TERM_CO, p + s->ncol,
+                       s->ncol);
+            p += 2 * s->ncol;
+        }
     }
 }
 
@@ -952,12 +1003,57 @@ nle_get_seed(nle_ctx_t *nle, unsigned long *core, unsigned long *disp,
  * Single-level blob save/load.
  * =================================================================== */
 
+/* Unwind a panic raised inside a blob call (see host_call_armed in nle.h).
+ * Does not return when armed. */
+void
+nle_host_call_abort(void)
+{
+    nle_ctx_t *nle = current_nle_ctx;
+
+    if (nle && nle->host_call_armed) {
+        nle->host_call_armed = 0;
+        longjmp(nle->host_call_jmp, 1);
+    }
+    fflush(stderr);
+    abort();
+}
+
+/* wipe_engr_at moves engr_txt past a wiped prefix and savelev writes the
+ * text from its start, as a level change does. The level blob ends with
+ * each moved pointer's offset, then their count and NLE_ENGR_MAGIC, so the
+ * reload holds the text the live game holds. */
+#define NLE_ENGR_MAGIC 0x52474e45 /* "ENGR" */
+
+struct nle_engr_off {
+    int x, y;
+    unsigned off;
+};
+
+static int
+nle_engr_offsets(struct nle_engr_off *dst)
+{
+    struct engr *ep;
+    int n = 0;
+
+    for (ep = NH_G(s_engrave_c_head_engr); ep; ep = ep->nxt_engr)
+        if (ep->engr_lth && ep->engr_txt[0]
+            && ep->engr_txt != (char *) (ep + 1)) {
+            if (dst) {
+                dst[n].x = ep->engr_x;
+                dst[n].y = ep->engr_y;
+                dst[n].off = (unsigned) (ep->engr_txt - (char *) (ep + 1));
+            }
+            n++;
+        }
+    return n;
+}
+
 /* Serialize the CURRENT dungeon level to a malloc'd byte blob.
  * Reuses NetHack's own savelev(WRITE_SAVE) into the per-env levelfile
  * on disk, then slurps the bytes back. Caller frees via nle_free_blob.
  * Returns the blob (and writes its length to *out_len), or NULL on error. */
-void *
-nle_save_level(nle_ctx_t *nle, long *out_len)
+static void *
+nle_save_level_inner(nle_ctx_t *nle, long *out_len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
@@ -965,10 +1061,8 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     long sz;
     void *blob;
     FILE *fp;
-
-    nle_anchor(nle);
-    if (out_len)
-        *out_len = 0;
+    int n_engr;
+    size_t tail;
 
     ledger = ledger_no(&u.uz);
     /* Write the in-memory current level to its <lock>.<ledger> file.
@@ -977,12 +1071,12 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
     if (fd < 0)
         return (void *) 0;
     /* Exactly the do.c goto_level levelfile shape: no version header,
-     * just savelev() bytes. bufon/bufoff bracket the zerocomp stream. */
+     * just savelev() bytes. bclose() (not bufoff + nhclose) is what resets
+     * bw_fd and bw_FILE; otherwise they keep a closed fd and the next
+     * bufon() on a reused fd number panics ("double buffering unexpected"). */
     bufon(fd);
     savelev(fd, ledger, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    nhclose(fd);
+    bclose(fd);
 
     /* Slurp the file back into a blob. */
     set_levelfile_name(lock, ledger);
@@ -997,7 +1091,9 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
         fclose(fp);
         return (void *) 0;
     }
-    blob = malloc((size_t) sz);
+    n_engr = nle_engr_offsets((struct nle_engr_off *) 0);
+    tail = n_engr * sizeof(struct nle_engr_off) + 2 * sizeof(int);
+    blob = malloc((size_t) sz + tail);
     if (!blob) {
         fclose(fp);
         return (void *) 0;
@@ -1008,9 +1104,130 @@ nle_save_level(nle_ctx_t *nle, long *out_len)
         return (void *) 0;
     }
     fclose(fp);
+    {
+        char *p = (char *) blob + sz;
+        int magic = NLE_ENGR_MAGIC;
+
+        nle_engr_offsets((struct nle_engr_off *) p);
+        p += n_engr * sizeof(struct nle_engr_off);
+        memcpy(p, &n_engr, sizeof n_engr);
+        memcpy(p + sizeof n_engr, &magic, sizeof magic);
+    }
     if (out_len)
-        *out_len = sz;
+        *out_len = sz + (long) tail;
     return blob;
+}
+
+void *
+nle_save_level(nle_ctx_t *nle, long *out_len)
+{
+    void *blob;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return (void *) 0;
+    blob = nle_save_level_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
+    return blob;
+}
+
+/* win/rl/winrl.cc */
+extern size_t nle_rl_mirror_size(void);
+extern void nle_rl_mirror_save(nle_ctx_t *, void *);
+extern void nle_rl_mirror_load(nle_ctx_t *, const void *);
+extern void nle_rl_fill_obs(nle_ctx_t *);
+
+/* the terminal is NLE_TERM_LI x NLE_TERM_CO (nle_start) */
+#define NLE_VT_SNAPSHOT_SIZE \
+    (NLE_TERM_LI * NLE_TERM_CO * (sizeof(TMTCHAR) + 2) + 2 * sizeof(int))
+
+/* display.c's buffer of what is on screen: a cell the resume render drew
+ * afresh (a door the hero remembers as a wall) would otherwise never be
+ * printed again when the straight game prints it */
+#define NLE_GBUF_SIZE                                                \
+    (sizeof NH_G(s_display_c_gbuf) + sizeof NH_G(s_display_c_gbuf_start) \
+     + sizeof NH_G(s_display_c_gbuf_stop))
+
+/* the tty port's idea of the screen: the message line it has to clear at
+ * the next command and where the cursor is (win/tty) */
+struct nle_tty_state {
+    int toplin, dismiss_more, curx, cury;
+    long msg_curx, msg_cury;
+    int msg_flags;
+};
+
+size_t
+nle_mirror_blob_size(void)
+{
+    return nle_rl_mirror_size() + NLE_VT_SNAPSHOT_SIZE + NLE_GBUF_SIZE
+           + sizeof(struct nle_tty_state);
+}
+
+void
+nle_mirror_save(nle_ctx_t *nle, void *dst)
+{
+    char *p = (char *) dst;
+
+    nle_anchor(nle);
+    nle_rl_mirror_save(nle, p);
+    p += nle_rl_mirror_size();
+    nle_vt_snapshot_save(nle, p);
+    p += NLE_VT_SNAPSHOT_SIZE;
+    memcpy(p, NH_G(s_display_c_gbuf), sizeof NH_G(s_display_c_gbuf));
+    p += sizeof NH_G(s_display_c_gbuf);
+    memcpy(p, NH_G(s_display_c_gbuf_start), sizeof NH_G(s_display_c_gbuf_start));
+    p += sizeof NH_G(s_display_c_gbuf_start);
+    memcpy(p, NH_G(s_display_c_gbuf_stop), sizeof NH_G(s_display_c_gbuf_stop));
+    p += sizeof NH_G(s_display_c_gbuf_stop);
+    {
+        struct nle_tty_state t;
+        struct WinDesc *cw = wins[WIN_MESSAGE];
+
+        memset(&t, 0, sizeof t);
+        t.toplin = ttyDisplay->toplin;
+        t.dismiss_more = ttyDisplay->dismiss_more;
+        t.curx = ttyDisplay->curx;
+        t.cury = ttyDisplay->cury;
+        t.msg_curx = cw->curx;
+        t.msg_cury = cw->cury;
+        t.msg_flags = cw->flags;
+        memcpy(p, &t, sizeof t);
+    }
+}
+
+/* the screen first: its refresh of tty_chars precedes the overlays fill_obs
+ * draws on top */
+void
+nle_mirror_load(nle_ctx_t *nle, const void *src)
+{
+    const char *p = (const char *) src;
+
+    nle_anchor(nle);
+    nle_vt_snapshot_load(nle, p + nle_rl_mirror_size());
+    nle_rl_mirror_load(nle, p);
+    p += nle_rl_mirror_size() + NLE_VT_SNAPSHOT_SIZE;
+    memcpy(NH_G(s_display_c_gbuf), p, sizeof NH_G(s_display_c_gbuf));
+    p += sizeof NH_G(s_display_c_gbuf);
+    memcpy(NH_G(s_display_c_gbuf_start), p, sizeof NH_G(s_display_c_gbuf_start));
+    p += sizeof NH_G(s_display_c_gbuf_start);
+    memcpy(NH_G(s_display_c_gbuf_stop), p, sizeof NH_G(s_display_c_gbuf_stop));
+    p += sizeof NH_G(s_display_c_gbuf_stop);
+    {
+        struct nle_tty_state t;
+        struct WinDesc *cw = wins[WIN_MESSAGE];
+
+        memcpy(&t, p, sizeof t);
+        ttyDisplay->toplin = t.toplin;
+        ttyDisplay->dismiss_more = (char) t.dismiss_more;
+        ttyDisplay->curx = (short) t.curx;
+        ttyDisplay->cury = (short) t.cury;
+        cw->curx = t.msg_curx;
+        cw->cury = t.msg_cury;
+        cw->flags = t.msg_flags;
+    }
+    nle_rl_fill_obs(nle);
 }
 
 /* Release a blob returned by nle_save_level & co (libc memory, so bypass
@@ -1028,17 +1245,34 @@ nle_free_blob(void *blob)
  * CONTENTS in place.
  *
  * Two-phase: this mutates state and resets vision but does NOT re-render.
- * Returns 0 on success, nonzero on error. */
-int
-nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+ * Returns 0 on success, nonzero on error (7: the load panicked). */
+static int
+nle_load_level_inner(nle_ctx_t *nle, const void *blob, long len)
 {
     int fd, ledger;
     char errbuf[BUFSZ];
     const char *fq;
 
-    nle_anchor(nle);
+    const struct nle_engr_off *engr_off = 0;
+    int n_engr = 0;
+
     if (!blob || len <= 0) /* reject NULL/empty blobs before touching disk */
         return 4;
+    if (len >= (long) (2 * sizeof(int))) {
+        const char *end = (const char *) blob + len;
+        int magic;
+
+        memcpy(&magic, end - sizeof magic, sizeof magic);
+        memcpy(&n_engr, end - 2 * sizeof(int), sizeof n_engr);
+        if (magic != NLE_ENGR_MAGIC || n_engr < 0
+            || (long) (n_engr * sizeof *engr_off + 2 * sizeof(int)) > len)
+            n_engr = 0;
+        else {
+            len -= (long) (n_engr * sizeof *engr_off + 2 * sizeof(int));
+            engr_off = (const struct nle_engr_off *) ((const char *) blob
+                                                      + len);
+        }
+    }
     ledger = ledger_no(&u.uz);
 
     /* Stamp the blob over the target ledger's levelfile, then getlev it. */
@@ -1077,6 +1311,31 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
      * hackpid.) pid/lev are used nowhere else in getlev(). */
     getlev(fd, 0, (xchar) 0, FALSE);
     nhclose(fd);
+    {
+        int i;
+
+        for (i = 0; i < n_engr; i++) {
+            struct nle_engr_off e;
+            struct engr *ep;
+
+            memcpy(&e, engr_off + i, sizeof e);
+            ep = engr_at((xchar) e.x, (xchar) e.y);
+            if (ep && e.off < ep->engr_lth)
+                ep->engr_txt = (char *) (ep + 1) + e.off;
+        }
+    }
+
+    /* rest_regions() aged every timed region by (moves - its stamp) with
+     * the reset game's clock; the real clock arrives with the hero blob.
+     * The level's stamp is omoves. */
+    {
+        int i;
+
+        for (i = 0; i < NH_G(s_region_c_n_regions); i++)
+            if (NH_G(s_region_c_regions)[i]->ttl >= 0L)
+                NH_G(s_region_c_regions)[i]->ttl -=
+                    NH_G(s_restore_c_omoves) - moves;
+    }
 
     /* Standalone-load context fixups: place the hero on a sane, walkable
      * tile of the LOADED level. The destination game's u.ux/u.uy is stale
@@ -1107,6 +1366,19 @@ nle_load_level(nle_ctx_t *nle, const void *blob, long len)
      * runs docrt() inside the coroutine. */
     vision_reset();
     return 0;
+}
+
+int
+nle_load_level(nle_ctx_t *nle, const void *blob, long len)
+{
+    int rc;
+
+    nle_anchor(nle);
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return 7;
+    rc = nle_load_level_inner(nle, blob, len);
+    NLE_HOST_CALL_END(nle);
+    return rc;
 }
 
 /* ===================================================================
@@ -1251,7 +1523,10 @@ nle_goto_depth(nle_ctx_t *nle, int n)
 int
 nle_seat_on_stair(nle_ctx_t *nle, int down)
 {
+    xchar ox, oy;
+
     nle_anchor(nle);
+    ox = u.ux, oy = u.uy;
 
     if (down && xdnstair > 0) {
         u_on_newpos(xdnstair, ydnstair);
@@ -1261,6 +1536,8 @@ nle_seat_on_stair(nle_ctx_t *nle, int down)
         return 1; /* no such stair on this level */
     }
 
+    newsym(ox, oy);
+    vision_full_recalc = 1;
     context.botl = TRUE; /* hero position / status is now stale */
     return 0;
 }
@@ -1529,6 +1806,16 @@ VA_DECL(const char *, s)
 {
     VA_START(s);
     VA_INIT(s, const char *);
+
+    /* inside a blob call (a short read in a truncated blob): unwind to the
+     * API entry and keep the window port */
+    if (current_nle_ctx && current_nle_ctx->host_call_armed) {
+        fprintf(stderr, "NLE_HOST_CALL_ERROR: ");
+        vfprintf(stderr, s, VA_ARGS);
+        fprintf(stderr, "\n");
+        va_end(VA_ARGS);
+        nle_host_call_abort();
+    }
 
     if (iflags.window_inited)
         exit_nhwindows((char *) 0); /* for tty, will call settty() */

@@ -29,7 +29,6 @@ STATIC_DCL int FDECL(spell_let_to_idx, (CHAR_P));
 STATIC_DCL boolean FDECL(cursed_book, (struct obj * bp));
 STATIC_DCL boolean FDECL(confused_book, (struct obj *));
 STATIC_DCL void FDECL(deadbook, (struct obj *));
-STATIC_PTR int NDECL(learn);
 STATIC_DCL boolean NDECL(rejectcasting);
 STATIC_DCL boolean FDECL(getspell, (int *));
 STATIC_PTR int FDECL(CFDECLSPEC spell_cmp, (const genericptr,
@@ -336,7 +335,7 @@ struct obj *book;
         stop_occupation();
 }
 
-STATIC_PTR int
+int
 learn(VOID_ARGS)
 {
     int i;

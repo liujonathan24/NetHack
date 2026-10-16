@@ -3,6 +3,7 @@
 
 #define NLE_BZ2_TTYRECS
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stddef.h>
 
@@ -110,12 +111,47 @@ typedef struct nle_ctx {
     void *rl_win_proc_calls;
     int rl_in_yn_function;
     int rl_in_getlin;
+    /* set by parse() for its first key read, cleared when any key arrives:
+     * the game waits for a command, not for a count, prefix, cursor, ^A or
+     * extended-command key (none of those sets a prompt flag) */
+    int rl_cmd_boundary;
+    /* set by nle_load_player: the next command (the render after the load)
+     * leaves the loaded ^A queue alone instead of replacing it */
+    int rl_redo_keep;
+    /* set by nle_load_player: the next docrt() (the render after the load)
+     * puts the level memory back as the blob had it; the redraw feels the
+     * hero's square and re-maps every seen cell, which the straight game
+     * does only on its own events. 2: the line of sight too, as the player
+     * blob carried it */
+    int rl_keep_memory;
 
     void *sentinel; /* nle_sentinel slot for this env (may be NULL) */
+
+    /* a panic() inside a blob call (nle_save_level & co run NetHack code
+     * from the host context, where nh_terminate cannot yield) unwinds here */
+    int host_call_armed;
+    jmp_buf host_call_jmp;
 
     /* the game's globals; points just past this struct in the same block */
     struct nh_globals *g;
 } nle_ctx_t;
+
+/* Arm the unwind for a blob call; setjmp must run in the API function itself.
+ * Nonzero on the unwind path: the caller returns its failure value. */
+#define NLE_HOST_CALL_BEGIN(nle)                                        \
+    (((nle) && !(nle)->host_call_armed)                                 \
+         ? (setjmp((nle)->host_call_jmp)                                \
+                ? (nle_save_io_reset(), 1)                              \
+                : ((nle)->host_call_armed = 1, 0))                      \
+         : 0)
+#define NLE_HOST_CALL_END(nle)                                          \
+    do {                                                                \
+        if (nle)                                                        \
+            (nle)->host_call_armed = 0;                                 \
+    } while (0)
+
+void nle_host_call_abort(void); /* nle.c; does not return when armed */
+void nle_save_io_reset(void);   /* save.c */
 
 /* THE per-env context pointer: thread-local so every stepping thread chases
  * its own environment. Re-anchored (together with nh_g) at every public
@@ -132,6 +168,7 @@ size_t nle_ctx_block_size(void);
 nle_ctx_t *nle_start(nle_obs *, FILE *, nle_seeds_init_t *, nle_settings *);
 nle_ctx_t *nle_step(nle_ctx_t *, nle_obs *);
 void nle_end(nle_ctx_t *);
+void nle_vt_refresh_obs(nle_ctx_t *, nle_obs *);
 
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
@@ -178,6 +215,65 @@ int   nle_load_level(nle_ctx_t *, const void *blob, long len);
  * be installed. Two-phase like nle_load_level: the caller steps once. */
 void *nle_save_player(nle_ctx_t *, long *out_len);
 int   nle_load_player(nle_ctx_t *, const void *blob, long len);
+
+/* The display state outside NetHack's save set as a fixed-size blob,
+ * pointer-free: the rl mirror (win/rl/winrl.cc: the glyph planes, the
+ * window table, the inventory cache, the last message), the terminal screen
+ * (tty_chars, tty_colors, the cursor) with the tty port's message-line state
+ * and display.c's buffer of what is on screen. A checkpoint carries it and
+ * loads it after the resume render, so the cells the render leaves alone or
+ * draws afresh, the rows the straight game never redrew and the hallucinated
+ * inventory glyphs match the straight game. nle_mirror_load refills the
+ * observation. */
+size_t nle_mirror_blob_size(void);
+void   nle_mirror_save(nle_ctx_t *, void *dst);
+void   nle_mirror_load(nle_ctx_t *, const void *src);
+
+/* After savegamestate() the player blob carries a versioned tail: magic,
+ * version byte, fixed length, this struct, the hero's trail, the random
+ * monster table, the ^A key queues and (version 4) the hero's line of sight
+ * (the could-see rows with their row min and max: a hero moved without a
+ * vision recalc still sees from where he was) as raw bytes, then multi_reason,
+ * nomovemsg and occtxt as length-prefixed strings. These are the per-game globals outside
+ * NetHack's own save set that change play (the in-memory snapshot carries
+ * the whole nh_globals block). Function pointers travel as nle_fn_id()
+ * indexes, pointers to objects and monsters as o_id / m_id.
+ * A blob without a tail (written before it existed) loads with those
+ * globals at the reset game's values, a version-3 tail with the line of
+ * sight the resume render computes. nle_load_player: rc 9 = bad
+ * magic/version/length or a tail cut short, 10 = unknown function id. */
+#define NLE_PLAYER_TAIL_MAGIC "NLEt"
+#define NLE_PLAYER_TAIL_VERSION 4
+#define NLE_TAIL_VISION_SIZE (ROWNO * COLNO + 2 * ROWNO)
+
+struct nle_player_tail {
+    int you_movement, you_m_ap_type, you_mspec_used; /* youmonst */
+    unsigned you_mappearance;
+    int multi_count, occ_time;
+    int afternmv_id, occupation_id, timed_occ_id; /* nle_fn_id() */
+    int last_invnr;
+    int track_cnt, track_pnt;
+    int pray_type, pray_trouble, pray_aligntyp;
+    unsigned steal_oid, steal_mid;
+    int lock_door_x, lock_door_y;   /* -1: no door */
+    unsigned lock_box;              /* o_id */
+    int lock_picktyp, lock_chance, lock_usedtime, lock_magic_key;
+    unsigned trap_tobj;             /* o_id */
+    int trap_tx, trap_ty, trap_time_needed, trap_force_bungle;
+    int travel_x, travel_y;
+    int mkot_warn_count, dig_msg, far_noise_flag, whatdoes_once,
+        encumber_oldcap;
+    long wail_msg, ate_brains_mv, noise_time, clog_msgmv, follow_msg;
+    unsigned repo_shk;              /* m_id */
+    int repo_x, repo_y;
+    int cleave_cw, bubbles_up;
+    int unweapon_flag, hs_saved;
+    unsigned hs_save;
+    long rock_msgmv, pick_msgmv, break_msgmv;
+    int break_peaceful_shk;
+    char empty_shops[5];
+    int redo_phead, redo_ptail, redo_shead, redo_stail, redo_last_multi;
+};
 
 /* Secure state-modification API.
  *
