@@ -928,7 +928,7 @@ getlt()
 {
     time_t date = getnow();
 
-    return localtime((LOCALTIME_type) &date);
+    return gmtime((LOCALTIME_type) &date);
 }
 
 int
@@ -967,7 +967,7 @@ time_t date;
     if (date == 0)
         lt = getlt();
     else
-        lt = localtime((LOCALTIME_type) &date);
+        lt = gmtime((LOCALTIME_type) &date); /* NLE: UTC, as getlt() */
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -992,7 +992,7 @@ time_t date;
     if (date == 0)
         lt = getlt();
     else
-        lt = localtime((LOCALTIME_type) &date);
+        lt = gmtime((LOCALTIME_type) &date); /* NLE: UTC, as getlt() */
 
     timenum = lt->tm_hour * 10000L + lt->tm_min * 100L + lt->tm_sec;
     return timenum;
@@ -1011,9 +1011,9 @@ time_t date;
     else
 #if (defined(ULTRIX) && !(defined(ULTRIX_PROTO) || defined(NHSTDC))) \
     || defined(BSD)
-        lt = localtime((long *) (&date));
+        lt = gmtime((long *) (&date)); /* NLE: UTC, as getlt() */
 #else
-        lt = localtime(&date);
+        lt = gmtime(&date); /* NLE: UTC, as getlt() */
 #endif
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -1025,6 +1025,27 @@ time_t date;
             lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
     debugpline1("yyyymmddhhmmss() produced date string %s", NH_G(l_hacklib_c_yyyymmddhhmmss_datestr));
     return NH_G(l_hacklib_c_yyyymmddhhmmss_datestr);
+}
+
+/* NLE: seconds since the epoch for a broken-down UTC time, the inverse of
+ * gmtime() (Howard Hinnant's days_from_civil), so a time written by
+ * yyyymmddhhmmss() reads back the same under any TZ; mktime() would read it
+ * as local time. */
+STATIC_OVL time_t
+utc_seconds(t)
+struct tm *t;
+{
+    long y = (long) t->tm_year + 1900L, m = (long) t->tm_mon + 1L;
+    long era, yoe, doy, doe;
+
+    y -= (m <= 2L);
+    era = (y >= 0L ? y : y - 399L) / 400L;
+    yoe = y - era * 400L;
+    doy = (153L * (m > 2L ? m - 3L : m + 9L) + 2L) / 5L + (long) t->tm_mday - 1L;
+    doe = yoe * 365L + yoe / 4L - yoe / 100L + doy;
+    return (time_t) ((era * 146097L + doe - 719468L) * 86400L
+                     + (long) t->tm_hour * 3600L + (long) t->tm_min * 60L
+                     + (long) t->tm_sec);
 }
 
 time_t
@@ -1071,7 +1092,7 @@ char *buf;
             t.tm_hour = atoi(h);
             t.tm_min = atoi(mi);
             t.tm_sec = atoi(s);
-            timeresult = mktime(&t);
+            timeresult = utc_seconds(&t); /* NLE: UTC, as written */
         }
         if ((int) timeresult == -1)
             debugpline1("time_from_yyyymmddhhmmss(%s) would have returned -1",

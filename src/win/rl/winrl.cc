@@ -1246,15 +1246,7 @@ NetHackRL::clear_nhwindow_method(winid wid)
     }
 
     DEBUG_API("rl_clear_nhwindow(wid=" << wid << ")" << std::endl);
-    /* Exp_039: tty_clear_nhwindow emits home()/cl_end()/clear_screen() etc.
-     * which all go to nle_putchar -> outbuf. The agent reads the in-memory
-     * window state (windows_[wid]->menu_items, last_msg, glyphs_/chars_/
-     * colors_) which is already cleared above. The TTY-side rendering
-     * here is dead work. Per perf-record: this was ~2.4% of user CPU at
-     * N=1024 (clear_nhwindow_method -> tty_clear_nhwindow -> nle_putchar). */
-#if 0
     tty_clear_nhwindow(wid);
-#endif
 }
 
 void
@@ -1725,13 +1717,7 @@ NetHackRL::rl_status_update(int fldidx, genericptr_t ptr, int chg,
     ScopedStack s(win_proc_calls(), "status_update");
     instance_get()->status_update_method(fldidx, ptr, chg, percent, color,
                                    colormasks);
-    /* Exp_039: tty_status_update() formats the status bar (sprintf-heavy)
-     * into a TTY buffer that the RL agent never reads — the agent gets
-     * its stats via update_blstats / fill_obs straight from u/youmonst.
-     * Per perf-record: this path was ~15% of user CPU under N=128 puffer
-     * training (printf_positional, __vfprintf, __strchrnul, _IO_default_xsputn).
-     * Skip it; nothing downstream consumes the formatted output. */
-#if 0 && defined(STATUS_HILITES)
+#ifdef STATUS_HILITES
     tty_status_update(fldidx, ptr, chg, percent, color, colormasks);
 #endif
 }
