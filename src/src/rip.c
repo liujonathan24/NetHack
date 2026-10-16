@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 
 #if defined(TTY_GRAPHICS) || defined(X11_GRAPHICS) || defined(GEM_GRAPHICS) \
     || defined(MSWIN_GRAPHICS) || defined(DUMPLOG) || defined(CURSES_GRAPHICS)
@@ -70,22 +69,7 @@ static const char *rip_txt[] = {
 #define DEATH_LINE 8 /* *char[] line # for death description */
 #define YEAR_LINE 12 /* *char[] line # for year */
 
-/* Per-env rip.c state. Replaces file-scope static. */
-struct nle_rip_state {
-    char **_rip;
-};
-static struct nle_rip_state *
-nle_rip(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_rip_state *s = (struct nle_rip_state *) current_nle_ctx->s_rip_state;
-    if (!s) {
-        s = (struct nle_rip_state *) nle_arena_calloc(1, sizeof(struct nle_rip_state));
-        current_nle_ctx->s_rip_state = s;
-    }
-    return s;
-}
-#define rip (nle_rip()->_rip)
+/* rip: per-env nh_g->s_rip_c_rip */
 
 STATIC_OVL void
 center(line, text)
@@ -94,7 +78,7 @@ char *text;
 {
     register char *ip, *op;
     ip = text;
-    op = &rip[line][STONE_LINE_CENT - ((strlen(text) + 1) >> 1)];
+    op = &NH_G(s_rip_c_rip)[line][STONE_LINE_CENT - ((strlen(text) + 1) >> 1)];
     while (*ip)
         *op++ = *ip++;
 }
@@ -112,7 +96,7 @@ time_t when;
     register int x;
     int line;
 
-    rip = dp = (char **) alloc(sizeof(rip_txt));
+    NH_G(s_rip_c_rip) = dp = (char **) alloc(sizeof(rip_txt));
     for (x = 0; rip_txt[x]; ++x)
         dp[x] = dupstr(rip_txt[x]);
     dp[x] = (char *) 0;
@@ -123,7 +107,7 @@ time_t when;
     center(NAME_LINE, buf);
 
     /* Put $ on stone */
-    Sprintf(buf, "%ld Au", current_nle_ctx->done_money);
+    Sprintf(buf, "%ld Au", done_money);
     buf[STONE_LINE_LEN] = 0; /* It could be a *lot* of gold :-) */
     center(GOLD_LINE, buf);
 
@@ -174,10 +158,10 @@ time_t when;
         putstr(tmpwin, 0, "");
 
     for (x = 0; rip_txt[x]; x++) {
-        free((genericptr_t) rip[x]);
+        free((genericptr_t) NH_G(s_rip_c_rip)[x]);
     }
-    free((genericptr_t) rip);
-    rip = 0;
+    free((genericptr_t) NH_G(s_rip_c_rip));
+    NH_G(s_rip_c_rip) = 0;
 }
 
 #endif /* TEXT_TOMBSTONE */

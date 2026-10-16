@@ -80,30 +80,7 @@
 #ifdef _DCC
 #define NEARDATA __near /* put some data close */
 #else
-/* Stage 5 / 7 / 8'tc / 9'C: promoted to __thread. The residual swap
- * globals — flags/iflags/sysflags, dlevel_t level, level_info[], rooms[]
- * doors[] subrooms upstairs_room/dnstairs_room/sstairs_room, ftrap,
- * tc_gbl_data, killer, youmonst, urealtime, body-slot pointers,
- * spl_book[], m_shot, mvitals[], quest_status, etc. — now each have a
- * per-thread instance. With current_nle_ctx also __thread (nle.h), the
- * existing nle_dungeon_save swap copies per-env state into the running
- * thread's private globals; no cross-thread races.
- *
- * Static-init breakage was fixed by:
- *   options.c boolopt[]: addresses set to (boolean *)0 in static init,
- *     patched in initoptions_init() by string-name lookup that mirrors
- *     the table's #ifdef structure (so only live entries are patched).
- *   worn.c worn[]: changed from const struct to non-const, addresses
- *     replaced with NULL, populated by worn_init() called from init_nle.
- *   detect.c level_detects[] / dungeon.c level_map[]: rewritten earlier
- *     (stage 6') to use index + accessor functions.
- *   decl.c subrooms = &rooms[N]: still constant — rooms is per-thread
- *     and the offset is a compile-time integer in NetHack's address
- *     arithmetic. Verify if linker objects.
- *
- * macOS caveat: __thread + dynamic library prevents dlclose(). Linux
- * (this build) is fine. Gate with #ifndef __APPLE__ when porting. */
-#define NEARDATA __thread
+#define NEARDATA
 #endif
 #endif
 #ifdef AMIGA

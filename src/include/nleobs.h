@@ -84,11 +84,15 @@ typedef struct {
 #define NLE_TUNE_MAX 64
 
 typedef struct nle_settings {
+    /* Path to NetHack's writable game files (level files, saves, locks). */
     char hackdir[256];
     char scoreprefix[256];
     char options[512];
     char wizkit[256];
+    /* Bool indicating whether to spawn monsters randomly after every step
+     * with some probability (1 by def). */
     int spawn_monsters;
+    /* Filename for nle's ttyrec*.bz2. */
     char ttyrecname[256];
     /* Difficulty-knob overrides applied before the starting level is generated
      * (so reset/generation-time knobs take effect at game start). Zero-safe:
@@ -98,13 +102,19 @@ typedef struct nle_settings {
     int    tune_idx[NLE_TUNE_MAX];
     double tune_val[NLE_TUNE_MAX];
     /* Optional read-only data directory holding the shared, immutable game
-     * data (the DLB `nhdat`, data/oracles/rumors, config, …). When non-empty,
+     * data (the DLB `nhdat`, data/oracles/rumors, config, ...). When non-empty,
      * the read-only file prefixes (DATA/HACK/SYSCONF/CONFIG) resolve here while
      * the writable prefixes (LEVEL/SAVE/BONES/SCORE/LOCK/TROUBLE) stay under
      * `hackdir`. This lets many envs share one data dir read-only and keep only
      * a tiny per-env writable `hackdir`, instead of each copying the ~3.7MB dat
      * tree. Empty => every prefix resolves under `hackdir` (legacy behavior). */
     char datadir[256];
+    /* Freeze the wall clock. NetHack reads the real date and time for the moon
+     * phase, Friday the 13th, night() and midnight(), each of which changes
+     * play -- a full moon grants +1 luck, undead hit harder at midnight -- so
+     * an identical seed replayed on a different day is a different game.
+     * Non-zero pins every clock read to this epoch; 0 uses the real clock. */
+    long fixed_time;
 } nle_settings;
 
 #endif /* NLEOBS_H */

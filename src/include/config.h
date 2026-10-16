@@ -593,4 +593,16 @@ typedef unsigned char uchar;
 
 #include "global.h" /* Define everything else according to choices above */
 
+/* Per-environment globals (tools/collect_globals): every mutable global of
+ * the game lives in struct nh_globals, reached through the thread-local
+ * pointer `nh_g` (see nh_globals.h). NH_G(x) spells such an access
+ * where the plain identifier cannot be an accessor macro. Programs built
+ * with NH_GLOBALS_NONE (makedefs & co, which run before the generated
+ * headers exist) keep plain globals instead. */
+#ifdef NH_GLOBALS_NONE
+#define NH_G(x) x
+#else
+#define NH_G(x) (nh_g->x)
+#endif
+
 #endif /* CONFIG_H */

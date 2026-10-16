@@ -4,11 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* File-statics migrated to nle_ctx_t. */
-#define obj_zapped  (current_nle_ctx->s_obj_zapped)
-#define poly_zapped (current_nle_ctx->s_poly_zapped)
 
 /* Disintegration rays have special treatment; corpses are never left.
  * But the routine which calculates the damage is separate from the routine
@@ -17,11 +12,13 @@
  */
 #define MAGIC_COOKIE 1000
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+#define obj_zapped (nh_g->s_zap_c_obj_zapped)
+#define poly_zapped (nh_g->s_zap_c_poly_zapped)
 
-/* M_using per-env (was extern from muse.c). */
-#define m_using (current_nle_ctx->s_m_using)
+/* notonhead: per-env, see nh_globals.h */ /* for long worms */
+
+/* kludge to use mondied instead of killed */
+/* m_using: per-env, see nh_globals.h */
 
 STATIC_DCL void FDECL(polyuse, (struct obj *, int, int));
 STATIC_DCL void FDECL(create_polymon, (struct obj *, int));
@@ -116,7 +113,7 @@ struct obj *obj;
     if (obj->oclass != SPBOOK_CLASS) {
         /* if type already discovered, treat this item has having been seen
            even if hero is currently blinded (skips redundant makeknown) */
-        if (objects[obj->otyp].oc_name_known) {
+        if (NH_G(objects)[obj->otyp].oc_name_known) {
             obj->dknown = 1; /* will usually be set already */
 
         /* otherwise discover it if item itself has been or can be seen */
@@ -1049,7 +1046,7 @@ register struct obj *obj;
         break;
         /* case RIN_PROTECTION:  not needed */
     }
-    if (objects[otyp].oc_magic
+    if (NH_G(objects)[otyp].oc_magic
         || (obj->spe && (obj->oclass == ARMOR_CLASS
                          || obj->oclass == WEAPON_CLASS || is_weptool(obj)))
         || otyp == POT_ACID
@@ -1110,7 +1107,7 @@ boolean by_you;
 
     /* Is this a charged/enchanted object? */
     if (!obj
-        || (!objects[obj->otyp].oc_charged && obj->oclass != WEAPON_CLASS
+        || (!NH_G(objects)[obj->otyp].oc_charged && obj->oclass != WEAPON_CLASS
             && obj->oclass != ARMOR_CLASS && !is_weptool(obj))
         || obj->spe <= 0)
         return FALSE;
@@ -1247,7 +1244,7 @@ int mat, minwt;
             continue;
 #endif
 
-        if (((int) objects[otmp->otyp].oc_material == mat)
+        if (((int) NH_G(objects)[otmp->otyp].oc_material == mat)
             == (rn2(minwt + 1) != 0)) {
             /* appropriately add damage to bill */
             if (costly_spot(otmp->ox, otmp->oy)) {
@@ -1350,7 +1347,7 @@ int okind;
         break;
     }
 
-    if (!(mvitals[pm_index].mvflags & G_GENOD))
+    if (!(NH_G(mvitals)[pm_index].mvflags & G_GENOD))
         mdat = &mons[pm_index];
 
     mtmp = makemon(mdat, obj->ox, obj->oy, NO_MM_FLAGS);
@@ -1379,7 +1376,7 @@ struct obj *obj;
         /* some may metamorphosize */
         for (i = obj->quan; i; i--)
             if (!rn2(Luck + 45)) {
-                poly_zapped = objects[obj->otyp].oc_material;
+                poly_zapped = NH_G(objects)[obj->otyp].oc_material;
                 break;
             }
     }
@@ -1435,7 +1432,7 @@ int id;
         sokoban_guilt();
     if (id == STRANGE_OBJECT) { /* preserve symbol */
         int try_limit = 3;
-        unsigned magic_obj = objects[obj->otyp].oc_magic;
+        unsigned magic_obj = NH_G(objects)[obj->otyp].oc_magic;
 
         if (obj->otyp == UNICORN_HORN && obj->degraded_horn)
             magic_obj = 0;
@@ -1447,7 +1444,7 @@ int id;
                 delobj(otmp);
             otmp = mkobj(obj->oclass, FALSE);
         } while (--try_limit > 0
-                 && objects[otmp->otyp].oc_magic != magic_obj);
+                 && NH_G(objects)[otmp->otyp].oc_magic != magic_obj);
     } else {
         /* literally replace obj with this new thing */
         otmp = mksobj(id, FALSE, FALSE);
@@ -1544,7 +1541,7 @@ int id;
         delete_contents(otmp);
 
     /* 'n' merged objects may be fused into 1 object */
-    if (otmp->quan > 1L && (!objects[otmp->otyp].oc_merge
+    if (otmp->quan > 1L && (!NH_G(objects)[otmp->otyp].oc_merge
                             || (can_merge && otmp->quan > (long) rn2(1000))))
         otmp->quan = 1L;
 
@@ -1591,8 +1588,8 @@ int id;
 
     case GEM_CLASS:
         if (otmp->quan > (long) rnd(4)
-            && objects[obj->otyp].oc_material == MINERAL
-            && objects[otmp->otyp].oc_material != MINERAL) {
+            && NH_G(objects)[obj->otyp].oc_material == MINERAL
+            && NH_G(objects)[otmp->otyp].oc_material != MINERAL) {
             otmp->otyp = ROCK; /* transmutation backfired */
             otmp->quan /= 2L;  /* some material has been lost */
         }
@@ -1702,8 +1699,8 @@ struct obj *obj;
     xchar oox, ooy;
     boolean smell = FALSE, golem_xform = FALSE;
 
-    if (objects[obj->otyp].oc_material != MINERAL
-        && objects[obj->otyp].oc_material != GEMSTONE)
+    if (NH_G(objects)[obj->otyp].oc_material != MINERAL
+        && NH_G(objects)[obj->otyp].oc_material != GEMSTONE)
         return 0;
     /* Heart of Ahriman usually resists; ordinary items rarely do */
     if (obj_resists(obj, 2, 98))
@@ -1711,7 +1708,7 @@ struct obj *obj;
 
     (void) get_obj_location(obj, &oox, &ooy, 0);
     /* add more if stone objects are added.. */
-    switch (objects[obj->otyp].oc_class) {
+    switch (NH_G(objects)[obj->otyp].oc_class) {
     case ROCK_CLASS: /* boulders and statues */
     case TOOL_CLASS: /* figurines */
         if (obj->otyp == BOULDER) {
@@ -1904,7 +1901,7 @@ struct obj *obj, *otmp;
                 (void) boxlock(obj, otmp);
 
             if (obj_shudders(obj)) {
-                boolean cover = ((obj == level.objs[u.ux][u.uy])
+                boolean cover = ((obj == NH_G(level).objects[u.ux][u.uy])
                                  && u.uundetected
                                  && hides_under(youmonst.data));
 
@@ -2113,17 +2110,17 @@ schar zz;
     }
 
     poly_zapped = -1;
-    for (otmp = level.objs[tx][ty]; otmp; otmp = next_obj) {
+    for (otmp = NH_G(level).objects[tx][ty]; otmp; otmp = next_obj) {
         next_obj = otmp->nexthere;
         /* for zap downwards, don't hit object poly'd hero is hiding under */
-        if (zz > 0 && u.uundetected && otmp == level.objs[u.ux][u.uy]
+        if (zz > 0 && u.uundetected && otmp == NH_G(level).objects[u.ux][u.uy]
             && hides_under(youmonst.data))
             continue;
 
         hitanything += (*fhito)(otmp, obj);
     }
     if (poly_zapped >= 0)
-        create_polymon(level.objs[tx][ty], poly_zapped);
+        create_polymon(NH_G(level).objects[tx][ty], poly_zapped);
 
     return hitanything;
 }
@@ -2193,7 +2190,7 @@ register struct obj *obj;
         break;
     }
     if (known) {
-        if (!objects[obj->otyp].oc_name_known)
+        if (!NH_G(objects)[obj->otyp].oc_name_known)
             more_experienced(0, 10);
         /* effect was observable; discover the wand type provided
            that the wand itself has been seen */
@@ -2214,7 +2211,7 @@ struct obj *otmp;
     useup(otmp);
 }
 
-static const char zap_syms[] = { WAND_CLASS, 0 };
+static NEARDATA const char zap_syms[] = { WAND_CLASS, 0 };
 
 /* 'z' command (or 'y' if numbed_pad==-1) */
 int
@@ -2238,12 +2235,12 @@ dozap()
         backfire(obj); /* the wand blows up in your face! */
         exercise(A_STR, FALSE);
         return 1;
-    } else if (!(objects[obj->otyp].oc_dir == NODIR) && !getdir((char *) 0)) {
+    } else if (!(NH_G(objects)[obj->otyp].oc_dir == NODIR) && !getdir((char *) 0)) {
         if (!Blind)
             pline("%s glows and fades.", The(xname(obj)));
         /* make him pay for knowing !NODIR */
     } else if (!u.dx && !u.dy && !u.dz
-               && !(objects[obj->otyp].oc_dir == NODIR)) {
+               && !(NH_G(objects)[obj->otyp].oc_dir == NODIR)) {
         if ((damage = zapyourself(obj, TRUE)) != 0) {
             char buf[BUFSZ];
 
@@ -2456,8 +2453,8 @@ boolean ordinary;
             break;
         }
         learn_it = TRUE;
-        Sprintf(killer.name, "shot %sself with a death ray", uhim());
-        killer.format = NO_KILLER_PREFIX;
+        Sprintf(NH_G(killer).name, "shot %sself with a death ray", uhim());
+        NH_G(killer).format = NO_KILLER_PREFIX;
         You("irradiate yourself with pure energy!");
         You("die.");
         /* They might survive with an amulet of life saving */
@@ -2997,7 +2994,7 @@ struct obj *obj; /* wand or spell */
          */
         if (u.uundetected && hides_under(youmonst.data)) {
             int hitit = 0;
-            otmp = level.objs[u.ux][u.uy];
+            otmp = NH_G(level).objects[u.ux][u.uy];
 
             if (otmp)
                 hitit = bhito(otmp, obj);
@@ -3033,13 +3030,13 @@ weffects(obj)
 struct obj *obj;
 {
     int otyp = obj->otyp;
-    boolean disclose = FALSE, was_unkn = !objects[otyp].oc_name_known;
+    boolean disclose = FALSE, was_unkn = !NH_G(objects)[otyp].oc_name_known;
 
     exercise(A_WIS, TRUE);
-    if (u.usteed && (objects[otyp].oc_dir != NODIR) && !u.dx && !u.dy
+    if (u.usteed && (NH_G(objects)[otyp].oc_dir != NODIR) && !u.dx && !u.dy
         && (u.dz > 0) && zap_steed(obj)) {
         disclose = TRUE;
-    } else if (objects[otyp].oc_dir == IMMEDIATE) {
+    } else if (NH_G(objects)[otyp].oc_dir == IMMEDIATE) {
         zapsetup(); /* reset obj_zapped */
         if (u.uswallow) {
             (void) bhitm(u.ustuck, obj);
@@ -3052,7 +3049,7 @@ struct obj *obj;
         }
         zapwrapup(); /* give feedback for obj_zapped */
 
-    } else if (objects[otyp].oc_dir == NODIR) {
+    } else if (NH_G(objects)[otyp].oc_dir == NODIR) {
         zapnodir(obj);
 
     } else {
@@ -3164,7 +3161,7 @@ struct monst *mtmp;
 const char *force; /* usually either "." or "!" */
 {
     if ((!cansee(bhitpos.x, bhitpos.y) && !canspotmon(mtmp)
-         && !(u.uswallow && mtmp == u.ustuck)) || !flags.verbose)
+         && !(u.uswallow && mtmp == u.ustuck)) || !NH_G(flags).verbose)
         pline("%s %s it.", The(str), vtense(str, "hit"));
     else
         pline("%s %s %s%s", The(str), vtense(str, "hit"),
@@ -3178,7 +3175,7 @@ register struct monst *mtmp;
 {
     pline(
         "%s %s %s.", The(str), vtense(str, "miss"),
-        ((cansee(bhitpos.x, bhitpos.y) || canspotmon(mtmp)) && flags.verbose)
+        ((cansee(bhitpos.x, bhitpos.y) || canspotmon(mtmp)) && NH_G(flags).verbose)
             ? mon_nam(mtmp)
             : "it");
 }
@@ -3516,7 +3513,7 @@ struct obj **pobj; /* object tossed/used, set to NULL
 }
 
 /* process thrown boomerang, which travels a curving path...
- * A current_nle_ctx->multi-shot volley ought to have all missiles in flight at once,
+ * A multi-shot volley ought to have all missiles in flight at once,
  * but we're called separately for each one.  We terminate the volley
  * early on a failed catch since continuing to throw after being hit
  * is too obviously silly.
@@ -3850,8 +3847,8 @@ xchar sx, sy;
             You("aren't affected.");
             break;
         }
-        killer.format = KILLED_BY_AN;
-        Strcpy(killer.name, fltxt ? fltxt : "");
+        NH_G(killer).format = KILLED_BY_AN;
+        Strcpy(NH_G(killer).name, fltxt ? fltxt : "");
         /* when killed by disintegration breath, don't leave corpse */
         u.ugrave_arise = (type == -ZT_BREATH(ZT_DEATH)) ? -3 : NON_PM;
         done(DIED);
@@ -3915,7 +3912,7 @@ boolean u_caused;
     char buf1[BUFSZ], buf2[BUFSZ];
     int cnt = 0;
 
-    for (obj = level.objs[x][y]; obj; obj = obj2) {
+    for (obj = NH_G(level).objects[x][y]; obj; obj = obj2) {
         obj2 = obj->nexthere;
         if (obj->oclass == SCROLL_CLASS || obj->oclass == SPBOOK_CLASS
             || (obj->oclass == FOOD_CLASS
@@ -3997,7 +3994,7 @@ const char *fltxt;
 
 /* note: worn amulet of life saving must be preserved in order to operate */
 #define oresist_disintegration(obj)                                       \
-    (objects[obj->otyp].oc_oprop == DISINT_RES || obj_resists(obj, 5, 50) \
+    (NH_G(objects)[obj->otyp].oc_oprop == DISINT_RES || obj_resists(obj, 5, 50) \
      || is_quest_artifact(obj) || obj == m_amulet)
 
     for (otmp = mon->minvent; otmp; otmp = otmp2) {
@@ -4462,7 +4459,7 @@ short exploding_wand_typ;
                     msgtxt = "Some water evaporates.";
             } else {
                 rangemod -= 3;
-                lev->typ = ROOM, lev->rmflags = 0;
+                lev->typ = ROOM, lev->flags = 0;
                 t = maketrap(x, y, PIT);
                 if (t)
                     t->tseen = 1;
@@ -4579,7 +4576,7 @@ short exploding_wand_typ;
                     Norep("The %s melt.", defsyms[S_bars].explanation);
                 if (*in_rooms(x, y, SHOPBASE)) {
                     /* in case we ever have a shop bounded by bars */
-                    lev->typ = ROOM, lev->rmflags = 0;
+                    lev->typ = ROOM, lev->flags = 0;
                     if (see_it)
                         newsym(x, y);
                     add_damage(x, y, (type >= 0) ? SHOP_BARS_COST : 0L);
@@ -4745,7 +4742,7 @@ register struct obj *obj; /* no texts here! */
     obj->quan = (long) rn1(60, 7);
     obj->owt = weight(obj);
     obj->dknown = obj->bknown = obj->rknown = 0;
-    obj->known = objects[obj->otyp].oc_uses_known ? 0 : 1;
+    obj->known = NH_G(objects)[obj->otyp].oc_uses_known ? 0 : 1;
     dealloc_oextra(obj);
 
     if (obj->where == OBJ_FLOOR) {
@@ -5013,8 +5010,8 @@ int osym, dmgtyp;
            the rest as already processed once control returns here */
         if (deferral_indx < SIZE(deferrals)
             && ((obj->owornmask != 0L
-                 && (objects[obj->otyp].oc_oprop == LEVITATION
-                     || objects[obj->otyp].oc_oprop == FLYING))
+                 && (NH_G(objects)[obj->otyp].oc_oprop == LEVITATION
+                     || NH_G(objects)[obj->otyp].oc_oprop == FLYING))
                 /* destroyed wands and potions of polymorph don't trigger
                    polymorph so don't need to be deferred */
                 || (obj->otyp == POT_WATER && u.ulycn >= LOW_PM
@@ -5231,7 +5228,7 @@ STATIC_OVL void
 wishcmdassist(triesleft)
 int triesleft;
 {
-    static const char *
+    static NEARDATA const char *
         wishinfo[] = {
   "Wish details:",
   "",
@@ -5295,7 +5292,7 @@ makewish()
 
     promptbuf[0] = '\0';
     nothing = zeroobj; /* lint suppression; only its address matters */
-    if (flags.verbose)
+    if (NH_G(flags).verbose)
         You("may wish for an object.");
  retry:
     Strcpy(promptbuf, "For what do you wish");

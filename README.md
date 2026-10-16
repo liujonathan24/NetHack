@@ -1,47 +1,71 @@
-# NLE (NetHack Learning Environment) — Per-Env Refactor
+# NLE (NetHack Learning Environment) — per-environment engine
 
-Modified fork of [NLE 0.9.0](https://github.com/facebookresearch/nle) / NetHack 3.6.6 for use with [PufferLib](https://github.com/PufferAI/PufferLib)'s native C vecenv.
+Fork of [NLE 0.9.0](https://github.com/facebookresearch/nle) / NetHack 3.6.6
+that turns the game into a library holding **thousands of independent
+environments in one process**, with O(1) in-memory snapshots, difficulty
+knobs, level/player blobs and a secure state-mutation API. It is the engine
+behind [NetHack-engine](https://github.com/liujonathan24/NetHack-engine).
 
-## What changed
+## How the state is organised
 
-Stock NLE uses process-global state (NEARDATA globals, static locals, shared DLB file descriptors), which limits it to **one env per process**. Multi-env training requires either subprocess isolation or dlopen-per-copy — both slow and memory-heavy.
+Stock NetHack keeps its game state in hundreds of file-scope globals and
+function-local statics, which limits it to one game per process. Here every
+one of them lives in a single generated struct:
 
-This fork migrates all mutable state into a per-env `nle_ctx_t` struct (~75KB), enabling thousands of independent NetHack instances in a single process with zero mutexes:
+```
+struct nh_globals   src/include/nh_globals.h   (generated, ~180 KB, ~670 fields)
+```
 
-- **Global-to-local migration**: All NEARDATA/static globals → `nle_ctx_t` fields accessed via `current_nle_ctx` pointer (initial-exec TLS)
-- **Function-local statics**: Per-file state structs for 15+ files with persistent locals (RNG, trap handling, display, save/restore)
-- **Thread-safe DLB**: `pread()` replaces `lseek()+read()` for concurrent data-file access
-- **Per-env arena allocator**: Bump allocator for level data, eliminating malloc contention
-- **Direct linkage**: Single shared libnethack.so, no dlopen overhead
+reached through one thread-local pointer, `nh_g`. The rewrite is **mechanical**:
+`tools/collect_globals` (libclang) takes the unmodified upstream tree, finds every
+static-storage object, and
 
-The C API (`nle_start`, `nle_step`, `nle_end`) is unchanged. Callers set `current_nle_ctx` before each call to select which env instance to operate on.
+* keeps the original identifiers working through accessor macros
+  (`#define moves (nh_g->moves)`), or rewrites the references to `NH_G(name)`
+  where the name collides with a struct field (`level`, `flags`, `objects`, ...);
+* leaves every static initializer in place as a `const` template that
+  `nh_globals_init()` copies into a fresh context, so a new game starts from
+  exactly the compiler's `.data` image;
+* hoists the private types it needs into the header.
+
+Nothing about the game logic changes; the rewritten library replays the same
+seeds and actions to byte-identical observations. `tools/collect_globals/check_writable.sh`
+proves the property after every build: the object files contain no writable
+symbol outside a short, justified whitelist (function-local statics show up
+there too, so a missed object cannot hide).
+
+On top of that generated layer sits the NLE layer (`src/src/nle.c`,
+`win/rl/winrl.cc`, `src/src/alloc.c`, `src/src/nle_fast_reset.c`):
+
+* `nle_ctx_t` = one environment: coroutine, terminal emulator, settings,
+  seeds, knobs, its own bump **arena** for every heap allocation the game
+  makes, the rl window-port instance, and its `struct nh_globals` in the same
+  contiguous block. `nle_anchor()` selects the environment on the calling
+  thread, so any pool thread can step any environment.
+* A **snapshot** (`nle_fr_snapshot`) copies the context block, the coroutine
+  stack, the arena, the display mirror, the terminal screen and the
+  off-current level files; a restore is the matching memcpys. Because every
+  global is in the block, the RNG streams and all other state travel with it
+  (`tests/test_interleave.c` checks solo == interleaved == restored replay).
 
 ## Build
 
 ```bash
-make -C src/build nethack -j8
+cmake -S src -B src/build && cmake --build src/build --target nethack -j8
+tests/run_tests.sh          # sentinel, multi-env, no-hang, isolation, section check
 ```
 
-Produces `src/build/libnethack.so` and `src/build/dat/` (game data files).
+Produces `src/build/libnethack.so` and `src/build/dat/` (game data). The C API
+(`src/include/nle.h`) is `nle_start`/`nle_step`/`nle_end` plus seeds, knobs
+(`nle_tune_*`), snapshots (`nle_fr_*`), level/player blobs, `nle_set_state`,
+and the curriculum helpers (`nle_goto_abs`, `nle_seat_on_stair`, ...).
 
-## Usage with PufferLib
-
-This repo is cloned automatically by PufferLib's `build.sh` when building the `nethack` environment. You don't need to clone it manually.
+## Re-running the refactor on a new upstream
 
 ```bash
-# In PufferLib:
-bash build.sh nethack    # clones this repo into vendor/nle/, builds libnethack.so
+pip install libclang clang
+tools/collect_globals/run.sh        # on an upstream tree; see tools/collect_globals/README.md
 ```
-
-## Performance
-
-With PufferLib's OMP-parallel vecenv:
-
-| Envs | Threads | Training SPS |
-|------|---------|-------------|
-| 64   | 1       | 9,200       |
-| 4096 | 1       | 31,300      |
-| 4096 | 4       | 136,300     |
 
 ## License
 

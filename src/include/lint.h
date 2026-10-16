@@ -24,7 +24,7 @@
    manner in order to suppress warning about unused function arguments;
    viable for scalar and pointer arguments */
 #define nhUse(arg) nhUse_dummy += (unsigned) !(arg)
-extern unsigned nhUse_dummy;
+/* nhUse_dummy: per-env, see nh_globals.h */
 #else
 #define nhUse(arg) /*empty*/
 #endif

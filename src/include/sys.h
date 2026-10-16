@@ -49,8 +49,8 @@ struct sysopt {
 #endif
 };
 
-extern struct sysopt sysopt;
+/* sysopt: per-env, see nh_globals.h */
 
-#define SYSOPT_SEDUCE sysopt.seduce
+#define SYSOPT_SEDUCE NH_G(sysopt).seduce
 
 #endif /* SYS_H */

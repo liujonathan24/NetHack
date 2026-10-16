@@ -5,10 +5,12 @@
 #ifndef VISION_H
 #define VISION_H
 
-/* Stage 8' — vision_full_recalc and viz_array migrated to nle_ctx_t.
- * cansee / couldsee / templit (below) reach them through these macros. */
-#define vision_full_recalc (current_nle_ctx->vision_recalc)
-#define viz_array          (current_nle_ctx->vision_array)
+#if 0 /* (moved to decl.h) */
+extern boolean vision_full_recalc;	/* TRUE if need vision recalc */
+extern char **viz_array;		/* could see/in sight row pointers */
+extern char *viz_rmin;			/* min could see indices */
+extern char *viz_rmax;			/* max could see indices */
+#endif
 #define COULD_SEE 0x1 /* location could be seen, if it were lit */
 #define IN_SIGHT 0x2  /* location can be seen */
 #define TEMP_LIT 0x4  /* location is temporarily lit */

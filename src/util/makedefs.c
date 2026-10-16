@@ -1175,7 +1175,7 @@ make_version()
     for (i = 1; artifact_names[i]; i++)
         continue;
     version.entity_count = (unsigned long) (i - 1);
-    for (i = 1; objects[i].oc_class != ILLOBJ_CLASS; i++)
+    for (i = 1; NH_G(objects)[i].oc_class != ILLOBJ_CLASS; i++)
         continue;
     version.entity_count = (version.entity_count << 12) | (unsigned long) i;
     for (i = 0; mons[i].mlet; i++)
@@ -2801,21 +2801,21 @@ do_objs()
     Fprintf(ofp, "%s", Dont_Edit_Code);
     Fprintf(ofp, "#ifndef ONAMES_H\n#define ONAMES_H\n\n");
 
-    for (i = 0; !i || objects[i].oc_class != ILLOBJ_CLASS; i++) {
+    for (i = 0; !i || NH_G(objects)[i].oc_class != ILLOBJ_CLASS; i++) {
         SpinCursor(3);
 
-        objects[i].oc_name_idx = objects[i].oc_descr_idx = i; /* init */
-        if (!(objnam = tmpdup(OBJ_NAME(objects[i]))))
+        NH_G(objects)[i].oc_name_idx = NH_G(objects)[i].oc_descr_idx = i; /* init */
+        if (!(objnam = tmpdup(OBJ_NAME(NH_G(objects)[i]))))
             continue;
 
         /* make sure probabilities add up to 1000 */
-        if (objects[i].oc_class != class) {
+        if (NH_G(objects)[i].oc_class != class) {
             if (sum && sum != 1000) {
                 Fprintf(stderr, "prob error for class %d (%d%%)", class, sum);
                 (void) fflush(stderr);
                 sumerr = TRUE;
             }
-            class = objects[i].oc_class;
+            class = NH_G(objects)[i].oc_class;
             sum = 0;
         }
 
@@ -2850,7 +2850,7 @@ do_objs()
         case AMULET_CLASS:
             /* avoid trouble with stupid C preprocessors */
             Fprintf(ofp, "#define\t");
-            if (objects[i].oc_material == PLASTIC) {
+            if (NH_G(objects)[i].oc_material == PLASTIC) {
                 Fprintf(ofp, "FAKE_AMULET_OF_YENDOR\t%d\n", i);
                 prefix = -1;
                 break;
@@ -2858,7 +2858,7 @@ do_objs()
             break;
         case GEM_CLASS:
             /* avoid trouble with stupid C preprocessors */
-            if (objects[i].oc_material == GLASS) {
+            if (NH_G(objects)[i].oc_material == GLASS) {
                 Fprintf(ofp, "/* #define\t%s\t%d */\n", objnam, i);
                 prefix = -1;
                 break;
@@ -2871,7 +2871,7 @@ do_objs()
             Fprintf(ofp, "%s\t%d\n", limit(objnam, prefix), i);
         prefix = 0;
 
-        sum += objects[i].oc_prob;
+        sum += NH_G(objects)[i].oc_prob;
     }
 
     /* check last set of probabilities */

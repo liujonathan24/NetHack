@@ -4,56 +4,13 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 
 STATIC_DCL void FDECL(m_lose_armor, (struct monst *, struct obj *));
 STATIC_DCL void FDECL(m_dowear_type,
                       (struct monst *, long, BOOLEAN_P, BOOLEAN_P));
 STATIC_DCL int FDECL(extra_pref, (struct monst *, struct obj *));
 
-/* Stage 9' batch D: body-slot pointers are now per-env fields on
- * nle_ctx_t.  worn[] stores byte offsets into nle_ctx_t so the table
- * can be process-global (one copy) while each access resolves through
- * current_nle_ctx — no per-thread addresses, no per-env table copy. */
-#include <stddef.h>
-
-struct worn {
-    long   w_mask;
-    size_t w_off;  /* offsetof(nle_ctx_t, s9_uXXX) */
-};
-
-/* Resolve a worn[] entry to the per-env obj* pointer. */
-#define worn_slot(wp) \
-    ((struct obj **)((char *)(current_nle_ctx) + (wp)->w_off))
-
-static struct worn worn[] = {
-    { W_ARM,    offsetof(nle_ctx_t, s9_uarm)     },
-    { W_ARMC,   offsetof(nle_ctx_t, s9_uarmc)    },
-    { W_ARMH,   offsetof(nle_ctx_t, s9_uarmh)    },
-    { W_ARMS,   offsetof(nle_ctx_t, s9_uarms)    },
-    { W_ARMG,   offsetof(nle_ctx_t, s9_uarmg)    },
-    { W_ARMF,   offsetof(nle_ctx_t, s9_uarmf)    },
-    { W_ARMU,   offsetof(nle_ctx_t, s9_uarmu)    },
-    { W_RINGL,  offsetof(nle_ctx_t, s9_uleft)    },
-    { W_RINGR,  offsetof(nle_ctx_t, s9_uright)   },
-    { W_WEP,    offsetof(nle_ctx_t, s9_uwep)     },
-    { W_SWAPWEP,offsetof(nle_ctx_t, s9_uswapwep) },
-    { W_QUIVER, offsetof(nle_ctx_t, s9_uquiver)  },
-    { W_AMUL,   offsetof(nle_ctx_t, s9_uamul)    },
-    { W_TOOL,   offsetof(nle_ctx_t, s9_ublindf)  },
-    { W_BALL,   offsetof(nle_ctx_t, s9_uball)    },
-    { W_CHAIN,  offsetof(nle_ctx_t, s9_uchain)   },
-    { 0,        0                                 }
-};
-
-/* worn_init() is now a no-op: the table is statically initialized with
- * offsets and needs no runtime patching.  Kept for call-site compatibility
- * (nle.c calls it from init_nle). */
-void
-worn_init(void)
-{
-    /* nothing to do — worn[] uses offsetof, not runtime addresses */
-}
+/* worn: per-env nh_g->worn */
 
 /* This only allows for one blocking item per property */
 #define w_blocks(o, m) \
@@ -76,15 +33,15 @@ long mask;
     register int p;
 
     if ((mask & (W_ARM | I_SPECIAL)) == (W_ARM | I_SPECIAL)) {
-        /* current_nle_ctx->restoring saved game; no properties are conferred via skin */
+        /* restoring saved game; no properties are conferred via skin */
         uskin = obj;
         /* assert( !uarm ); */
     } else {
         if ((mask & W_ARMOR))
             u.uroleplay.nudist = FALSE;
-        for (wp = worn; wp->w_mask; wp++)
+        for (wp = NH_G(worn); wp->w_mask; wp++)
             if (wp->w_mask & mask) {
-                oobj = *(worn_slot(wp));
+                oobj = *(wp->w_obj);
                 if (oobj && !(oobj->owornmask & wp->w_mask))
                     impossible("Setworn: mask = %ld.", wp->w_mask);
                 if (oobj) {
@@ -94,7 +51,7 @@ long mask;
                     if (wp->w_mask & ~(W_SWAPWEP | W_QUIVER)) {
                         /* leave as "x = x <op> y", here and below, for broken
                          * compilers */
-                        p = objects[oobj->otyp].oc_oprop;
+                        p = NH_G(objects)[oobj->otyp].oc_oprop;
                         u.uprops[p].extrinsic =
                             u.uprops[p].extrinsic & ~wp->w_mask;
                         if ((p = w_blocks(oobj, mask)) != 0)
@@ -106,7 +63,7 @@ long mask;
                        is pending (via 'A' command for multiple items) */
                     cancel_doff(oobj, wp->w_mask);
                 }
-                *(worn_slot(wp)) = obj;
+                *(wp->w_obj) = obj;
                 if (obj) {
                     obj->owornmask |= wp->w_mask;
                     /* Prevent getting/blocking intrinsics from wielding
@@ -117,7 +74,7 @@ long mask;
                     if (wp->w_mask & ~(W_SWAPWEP | W_QUIVER)) {
                         if (obj->oclass == WEAPON_CLASS || is_weptool(obj)
                             || mask != W_WEP) {
-                            p = objects[obj->otyp].oc_oprop;
+                            p = NH_G(objects)[obj->otyp].oc_oprop;
                             u.uprops[p].extrinsic =
                                 u.uprops[p].extrinsic | wp->w_mask;
                             if ((p = w_blocks(obj, mask)) != 0)
@@ -145,14 +102,14 @@ register struct obj *obj;
         return;
     if (obj == uwep || obj == uswapwep)
         u.twoweap = 0;
-    for (wp = worn; wp->w_mask; wp++)
-        if (obj == *(worn_slot(wp))) {
+    for (wp = NH_G(worn); wp->w_mask; wp++)
+        if (obj == *(wp->w_obj)) {
             /* in case wearing or removal is in progress or removal
                is pending (via 'A' command for multiple items) */
             cancel_doff(obj, wp->w_mask);
 
-            *(worn_slot(wp)) = 0;
-            p = objects[obj->otyp].oc_oprop;
+            *(wp->w_obj) = 0;
+            p = NH_G(objects)[obj->otyp].oc_oprop;
             u.uprops[p].extrinsic = u.uprops[p].extrinsic & ~wp->w_mask;
             obj->owornmask &= ~wp->w_mask;
             if (obj->oartifact)
@@ -170,9 +127,9 @@ long wornmask;
 {
     const struct worn *wp;
 
-    for (wp = worn; wp->w_mask; wp++)
+    for (wp = NH_G(worn); wp->w_mask; wp++)
         if (wp->w_mask & wornmask)
-            return *(worn_slot(wp));
+            return *wp->w_obj;
     return (struct obj *) 0;
 }
 
@@ -194,7 +151,7 @@ struct obj *obj;
         res = W_RINGL | W_RINGR; /* W_RING, BOTH_SIDES */
         break;
     case ARMOR_CLASS:
-        switch (objects[otyp].oc_armcat) {
+        switch (NH_G(objects)[otyp].oc_armcat) {
         case ARM_SUIT:
             res = W_ARM;
             break; /* WORN_ARMOR */
@@ -220,7 +177,7 @@ struct obj *obj;
         break;
     case WEAPON_CLASS:
         res = W_WEP | W_SWAPWEP;
-        if (objects[otyp].oc_merge)
+        if (NH_G(objects)[otyp].oc_merge)
             res |= W_QUIVER;
         break;
     case TOOL_CLASS:
@@ -310,7 +267,7 @@ struct obj *obj; /* item to make known if effect can be seen */
     }
 
     for (otmp = mon->minvent; otmp; otmp = otmp->nobj)
-        if (otmp->owornmask && objects[otmp->otyp].oc_oprop == FAST)
+        if (otmp->owornmask && NH_G(objects)[otmp->otyp].oc_oprop == FAST)
             break;
     if (otmp) /* speed boots */
         mon->mspeed = MFAST;
@@ -327,7 +284,7 @@ struct obj *obj; /* item to make known if effect can be seen */
         if (petrify) {
             /* mimic the player's petrification countdown; "slowing down"
                even if fast movement rate retained via worn speed boots */
-            if (flags.verbose)
+            if (NH_G(flags).verbose)
                 pline("%s is slowing down.", Monnam(mon));
         } else if (adjust > 0 || mon->mspeed == MFAST)
             pline("%s is suddenly moving %sfaster.", Monnam(mon), howmuch);
@@ -351,7 +308,7 @@ boolean on, silently;
     int unseen;
     uchar mask;
     struct obj *otmp;
-    int which = (int) objects[obj->otyp].oc_oprop;
+    int which = (int) NH_G(objects)[obj->otyp].oc_oprop;
 
     unseen = !canseemon(mon);
     if (!which)
@@ -424,7 +381,7 @@ boolean on, silently;
             for (otmp = mon->minvent; otmp; otmp = otmp->nobj)
                 if (otmp != obj
                     && otmp->owornmask
-                    && (int) objects[otmp->otyp].oc_oprop == which)
+                    && (int) NH_G(objects)[otmp->otyp].oc_oprop == which)
                     break;
             if (!otmp)
                 mon->mextrinsics &= ~((unsigned short) mask);
@@ -630,7 +587,7 @@ outer_break:
     /* when upgrading a piece of armor, account for time spent
        taking off current one */
     if (old)
-        m_delay += objects[old->otyp].oc_delay;
+        m_delay += NH_G(objects)[old->otyp].oc_delay;
 
     if (old) /* do this first to avoid "(being worn)" */
         old->owornmask = 0L;
@@ -649,7 +606,7 @@ outer_break:
                       simpleonames(best), otense(best, "glow"),
                       hcolor(NH_BLACK));
         } /* can see it */
-        m_delay += objects[best->otyp].oc_delay;
+        m_delay += NH_G(objects)[best->otyp].oc_delay;
         mon->mfrozen = m_delay;
         if (mon->mfrozen)
             mon->mcanmove = 0;
@@ -1051,3 +1008,35 @@ struct obj *obj;
     return 0;
 }
 /*worn.c*/
+
+
+/* nh_globals: copy this file's initialized per-env objects into the
+ * current context. Generated by tools/collect_globals. */
+#ifndef NH_INIT_WORN_C_DONE
+#define NH_INIT_WORN_C_DONE
+void
+nh_init_worn_c(void)
+{
+    {
+        struct worn nh_tmp[17] = { { W_ARM, &uarm },
+             { W_ARMC, &uarmc },
+             { W_ARMH, &uarmh },
+             { W_ARMS, &uarms },
+             { W_ARMG, &uarmg },
+             { W_ARMF, &uarmf },
+             { W_ARMU, &uarmu },
+             { W_RINGL, &uleft },
+             { W_RINGR, &uright },
+             { W_WEP, &uwep },
+             { W_SWAPWEP, &uswapwep },
+             { W_QUIVER, &uquiver },
+             { W_AMUL, &uamul },
+             { W_TOOL, &ublindf },
+             { W_BALL, &uball },
+             { W_CHAIN, &uchain },
+             { 0, 0 }
+};
+        memcpy(&(nh_g->worn), &nh_tmp, sizeof nh_tmp);
+    }
+}
+#endif

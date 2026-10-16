@@ -3,22 +3,7 @@
 /* NetHack may be freely redistributed.  See license for details.       */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
-
-/* Per-env scratch array — colbump is written/read across
- * the vision_recalc body and bracketed by zero-fills at function entry
- * and exit, so per-env storage matches the original lifetime. */
-#define colbump (current_nle_ctx->s_vision_colbump)
-#include <stdlib.h> /* calloc */
-
-/* Close_dy/far_dy are arrays of pointers into the
- * generated close_table[]/far_table[] vis_tab.h tables. Per-env storage
- * lives on nle_ctx_t as void * (size depends on CLOSE_MAX_BC_DY /
- * FAR_MAX_BC_DY which come from the generated header — not visible to
- * nle.h). The macros below cast to the real typed pointer-array.
- * view_init() allocates lazily on first call per env. */
-#define close_dy ((close2d **) current_nle_ctx->s_close_dy)
-#define far_dy   ((far2d   **) current_nle_ctx->s_far_dy)
+#include "nle.h" /* nle_tuning difficulty knobs */
 
 /* Circles
  * ==================================================================*/
@@ -39,7 +24,9 @@
  *              @...X   +4
  *
  */
-char circle_data[] = {
+/* circle_data: per-env, see nh_globals.h */
+const char nh_tmpl_circle_data[] =
+{
     /*  0*/ 1,  1,
     /*  2*/ 2,  2,  1,
     /*  5*/ 3,  3,  2,  1,
@@ -62,7 +49,9 @@ char circle_data[] = {
  * These are the starting indexes into the circle_data[] array for a
  * circle of a given radius.
  */
-char circle_start[] = {
+/* circle_start: per-env, see nh_globals.h */
+const char nh_tmpl_circle_start[] =
+{
     /*  */ 0, /* circles of radius zero are not used */
     /* 1*/ 0,
     /* 2*/ 2,
@@ -87,27 +76,31 @@ char circle_start[] = {
 
 /*------ global variables ------*/
 
-/* viz_array is already a per-env macro in vision.h (stage 8'). Migrate
- * viz_rmin/viz_rmax similarly. */
-#define viz_rmin  (current_nle_ctx->s_viz_rmin)
-#define viz_rmax  (current_nle_ctx->s_viz_rmax)
+#if 0 /* (moved to decl.c) */
+/* True if we need to run a full vision recalculation. */
+boolean vision_full_recalc = 0;
+
+/* Pointers to the current vision array. */
+char    **viz_array;
+#endif
+/* viz_rmin: per-env, see nh_globals.h */
+/* viz_rmax: per-env, see nh_globals.h */ /* current vision cs bounds */
 
 /*------ local variables ------*/
 
-/* All five 2D vision work-buffers migrated to nle_ctx_t. cs_rows0/1
- * are arrays of pointers — they get populated in vision_init() to point
- * into could_see; we just move them with the rest. */
-#define could_see ((char (*)[ROWNO][COLNO]) current_nle_ctx->s_could_see_p)
-#define viz_clear ((char (*)[COLNO]) current_nle_ctx->s_viz_clear_p)
-#define left_ptrs ((char (*)[COLNO]) current_nle_ctx->s_left_ptrs_p)
-#define right_ptrs ((char (*)[COLNO]) current_nle_ctx->s_right_ptrs_p)
-#define cs_rows0       (current_nle_ctx->s_cs_rows0)
-#define cs_rows1       (current_nle_ctx->s_cs_rows1)
-#define cs_rmin0       (current_nle_ctx->s_cs_rmin0)
-#define cs_rmax0       (current_nle_ctx->s_cs_rmax0)
-#define cs_rmin1       (current_nle_ctx->s_cs_rmin1)
-#define cs_rmax1       (current_nle_ctx->s_cs_rmax1)
-#define viz_clear_rows (current_nle_ctx->s_viz_clear_rows)
+#define could_see (nh_g->s_vision_c_could_see) /* vision work space */
+#define cs_rows0 (nh_g->s_vision_c_cs_rows0)
+#define cs_rows1 (nh_g->s_vision_c_cs_rows1)
+#define cs_rmin0 (nh_g->s_vision_c_cs_rmin0)
+#define cs_rmax0 (nh_g->s_vision_c_cs_rmax0)
+#define cs_rmin1 (nh_g->s_vision_c_cs_rmin1)
+#define cs_rmax1 (nh_g->s_vision_c_cs_rmax1)
+
+#define viz_clear (nh_g->s_vision_c_viz_clear) /* vision clear/blocked map */
+#define viz_clear_rows (nh_g->s_vision_c_viz_clear_rows)
+
+#define left_ptrs (nh_g->s_vision_c_left_ptrs) /* LOS algorithm helpers */
+#define right_ptrs (nh_g->s_vision_c_right_ptrs)
 
 /* Forward declarations. */
 STATIC_DCL void FDECL(fill_point, (int, int));
@@ -187,7 +180,7 @@ register struct rm *lev;
         return 1;
 
     /* Boulders block light. */
-    for (obj = level.objs[x][y]; obj; obj = obj->nexthere)
+    for (obj = NH_G(level).objects[x][y]; obj; obj = obj->nexthere)
         if (obj->otyp == BOULDER)
             return 1;
 
@@ -530,8 +523,8 @@ int control;
     register int col;  /* inner loop counter */
     register struct rm *lev; /* pointer to current pos */
     struct rm *flev; /* pointer to position in "front" of current pos */
-    extern unsigned char seenv_matrix[3][3]; /* from display.c */
-    /* Colbump migrated to nle_ctx_t */
+    /* seenv_matrix: per-env, see nh_globals.h */ /* from display.c */
+    /* colbump: per-env nh_g->l_vision_c_vision_recalc_colbump */ /* cols to bump sv */
     unsigned char *sv;                       /* ptr to seen angle bits */
     int oldseenv;                            /* previous seenv value */
 
@@ -744,7 +737,7 @@ int control;
      *      Even so, that is not entirely correct.  But it seems close
      *      enough for now.
      */
-    colbump[u.ux] = colbump[u.ux + 1] = 1;
+    NH_G(l_vision_c_vision_recalc_colbump)[u.ux] = NH_G(l_vision_c_vision_recalc_colbump)[u.ux + 1] = 1;
     for (row = 0; row < ROWNO; row++) {
         dy = u.uy - row;
         dy = sign(dy);
@@ -759,7 +752,7 @@ int control;
         sv = &seenv_matrix[dy + 1][start < u.ux ? 0 : (start > u.ux ? 2 : 1)];
 
         for (col = start; col <= stop;
-             lev += ROWNO, sv += (int) colbump[++col]) {
+             lev += ROWNO, sv += (int) NH_G(l_vision_c_vision_recalc_colbump)[++col]) {
             /* vision_radius knob (hard sight limit): force any cell farther than
              * `vision_radius` from the hero out of sight -- even inside a lit
              * room, which NetHack would otherwise reveal whole. Routing through
@@ -870,15 +863,15 @@ int control;
 
         } /* end for col . . */
     }     /* end for row . .  */
-    colbump[u.ux] = colbump[u.ux + 1] = 0;
+    NH_G(l_vision_c_vision_recalc_colbump)[u.ux] = NH_G(l_vision_c_vision_recalc_colbump)[u.ux + 1] = 0;
 
 skip:
     /* This newsym() caused a crash delivering msg about failure to open
      * dungeon file init_dungeons() -> panic() -> done(11) ->
      * vision_recalc(2) -> newsym() -> crash!  u.ux and u.uy are 0 and
-     * current_nle_ctx->program_state.panicking == 1 under those circumstances
+     * program_state.panicking == 1 under those circumstances
      */
-    if (!current_nle_ctx->program_state.panicking)
+    if (!NH_G(program_state).panicking)
         newsym(u.ux, u.uy); /* Make sure the hero shows up! */
 
     /* Set the new min and max pointers. */
@@ -1156,23 +1149,25 @@ int row, col;
 /*
  * Variables local to both Algorithms C and D.
  */
-/* File-scope statics moved per-env to nle_ctx_t. */
-#define start_row  (current_nle_ctx->s_vis_start_row)
-#define start_col  (current_nle_ctx->s_vis_start_col)
-#define step       (current_nle_ctx->s_vis_step)
-#define cs_rows    (current_nle_ctx->s_vis_cs_rows)
-#define cs_left    (current_nle_ctx->s_vis_cs_left)
-#define cs_right   (current_nle_ctx->s_vis_cs_right)
-#define vis_func   (current_nle_ctx->s_vis_func)
-#define varg       (current_nle_ctx->s_vis_varg)
+#define start_row (nh_g->s_vision_c_start_row)
+#define start_col (nh_g->s_vision_c_start_col)
+#define step (nh_g->s_vision_c_step)
+#define cs_rows (nh_g->s_vision_c_cs_rows)
+#define cs_left (nh_g->s_vision_c_cs_left)
+#define cs_right (nh_g->s_vision_c_cs_right)
 
-/* Per-env vision recursion-depth guard. Legitimate
+#define vis_func (nh_g->s_vision_c_vis_func)
+#define varg (nh_g->s_vision_c_varg)
+
+/* Vision recursion-depth guard. Legitimate
  * left_side/right_side recursion is bounded by ROWNO=21. If we exceed
- * 64 we know we're looping. The volatile cast prevents the compiler
+ * 64 we know we're looping. The volatile qualifier prevents the compiler
  * from optimizing the guard away based on dataflow analysis of the
- * recursive call chain. */
+ * recursive call chain. Reset to 0 at every view_from() entry, so it never
+ * carries state across calls (nor across environments, which never yield
+ * inside a vision recursion). */
 #define VISION_RECUR_LIMIT 64
-#define vision_recur_depth (*(volatile int *)&current_nle_ctx->s_vision_recur_depth)
+static volatile int vision_recur_depth;
 
 /*
  * Both Algorithms C and D use the following macros.
@@ -1675,8 +1670,9 @@ cleardone:
  */
 #include "vis_tab.h"
 
-/* 3D table pointers moved into nle_ctx_t.{s_close_dy,s_far_dy}.
- * Allocated lazily in view_init() per env. */
+/* 3D table pointers. */
+static close2d *close_dy[CLOSE_MAX_BC_DY];
+static far2d *far_dy[FAR_MAX_BC_DY];
 
 STATIC_DCL void FDECL(right_side,  (int, int, int, int, int,
                                     int, int, char *));
@@ -1692,18 +1688,6 @@ STATIC_OVL void
 view_init()
 {
     int i;
-
-    /* Allocate per-env close_dy/far_dy on demand.
-     * Re-entry on a re-init is safe: free + alloc keeps tables fresh in
-     * case vis_tab.h is ever regenerated with new sizes. */
-    if (current_nle_ctx->s_close_dy)
-        free(current_nle_ctx->s_close_dy);
-    if (current_nle_ctx->s_far_dy)
-        free(current_nle_ctx->s_far_dy);
-    current_nle_ctx->s_close_dy =
-        calloc(CLOSE_MAX_BC_DY, sizeof(close2d *));
-    current_nle_ctx->s_far_dy =
-        calloc(FAR_MAX_BC_DY, sizeof(far2d *));
 
     for (i = 0; i < CLOSE_MAX_BC_DY; i++)
         close_dy[i] = &close_table[i];
@@ -2467,7 +2451,7 @@ char *limits;   /* points at range limit for current row, or NULL */
     /* NLE vecenv: bound this loop. The legitimate iteration count is at
      * most COLNO cells across a row; if we exceed that, a corrupt or
      * pathological right_ptrs has put us in an infinite "left = right_edge"
-     * back-up loop (see line ~2470 below). Bail to keep multi-env training
+     * back-up loop (see below). Bail to keep multi-env training
      * from hanging in dog_move -> do_clear_area -> right_side. */
     int nle_iter = 0;
     while (left <= right_mark) {

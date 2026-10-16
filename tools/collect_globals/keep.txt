@@ -1,0 +1,7 @@
+# Objects deliberately left as process globals (one per line, '#' comments).
+# Each is process-level state that is identical for every environment.
+ptrbuf          # alloc.c fmt_ptr(): rotating "%p" scratch buffers for panic/debug text
+ptrbufidx       # ditto
+dlb_libs        # dlb.c: the read-only data-library file table, opened once per process
+dlb_procs       # dlb.c: active dlb backend vtable (always &lib_dlb_procs)
+dlb_initialized # dlb.c: one-time dlb_init latch

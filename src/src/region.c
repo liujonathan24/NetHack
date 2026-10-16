@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "lev.h"
 
 /*
@@ -12,11 +11,9 @@
  * structure eventually.
  */
 
-/* Per-env region storage. Was process-global + __thread —
- * env A's gas clouds leaked into env B's effect-of-being-in-cloud check. */
-#define regions     (*(NhRegion ***)&current_nle_ctx->s_regions)
-#define n_regions   (current_nle_ctx->s_n_regions)
-#define max_regions (current_nle_ctx->s_max_regions)
+#define regions (nh_g->s_region_c_regions)
+#define n_regions (nh_g->s_region_c_n_regions)
+#define max_regions (nh_g->s_region_c_max_regions)
 
 #define NO_CALLBACK (-1)
 
@@ -317,7 +314,7 @@ NhRegion *reg;
             if (!isok(i, j))
                 continue;
             if (MON_AT(i, j) && inside_region(reg, i, j))
-                add_mon_to_reg(reg, level.monsters[i][j]);
+                add_mon_to_reg(reg, NH_G(level).monsters[i][j]);
             if (reg->visible && cansee(i, j))
                 newsym(i, j);
         }

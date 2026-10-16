@@ -3,34 +3,11 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 #include "dlb.h"
 
 /*  quest-specific pager routines. */
 
 #include "qtext.h"
-
-/* Per-env quest pager state. Was four file-statics
- * (cvt_buf, nambuf, qt_list, msg_file) racing across envs; now all four
- * route through current_nle_ctx. qt_list is a heap-allocated struct
- * qtlists pointed to by s_qt_list_p; nle.c allocates it in init_nle via
- * nle_qtlist_alloc() so nle.h doesn't need qtext.h. */
-#define cvt_buf  (current_nle_ctx->s_cvt_buf)
-#define nambuf   (current_nle_ctx->s_nambuf)
-#define qt_list  (*current_nle_ctx->s_qt_list_p)
-#define msg_file (current_nle_ctx->s_msg_file)
-
-/* called from init_nle (nle.c) to alloc the per-env qt_list backing store. */
-void
-nle_qtlist_alloc(struct qtlists **target)
-{
-    struct qtlists *q = (struct qtlists *) alloc(sizeof(struct qtlists));
-    if (q) {
-        q->common = (struct qtmsg *) 0;
-        q->chrole = (struct qtmsg *) 0;
-    }
-    *target = q;
-}
 
 #define QTEXT_FILE "quest.dat"
 
@@ -38,12 +15,8 @@ nle_qtlist_alloc(struct qtlists **target)
 #include "wintty.h"
 #endif
 
-/* Lev_message migrated to per-env nle_ctx_t. Was a NON-static
- * cross-TU heap pointer freed here in deliver_splev_message; env B's level
- * entry could free() env A's still-pending lev_message → dangling UAF.
- * Routing the macro to the same per-env slot as sp_lev.c eliminates the
- * cross-env free. */
-#define lev_message (current_nle_ctx->s_sp_lev_message_p)
+/* from sp_lev.c, for deliver_splev_message() */
+/* lev_message: per-env, see nh_globals.h */
 
 static void NDECL(dump_qtlist);
 static void FDECL(Fread, (genericptr_t, int, int, dlb *));
@@ -61,7 +34,11 @@ STATIC_DCL void FDECL(deliver_by_pline, (struct qtmsg *));
 STATIC_DCL void FDECL(deliver_by_window, (struct qtmsg *, int));
 STATIC_DCL boolean FDECL(skip_pager, (BOOLEAN_P));
 
-/* cvt_buf, qt_list, msg_file, nambuf migrated to nle_ctx_t — see macros above. */
+#define cvt_buf (nh_g->s_questpgr_c_cvt_buf)
+#define qt_list (nh_g->s_questpgr_c_qt_list)
+#define msg_file (nh_g->s_questpgr_c_msg_file)
+/* used by ldrname() and neminame(), then copied into cvt_buf */
+#define nambuf (nh_g->s_questpgr_c_nambuf)
 
 /* dump the character msg list to check appearance;
    build with DEBUG enabled and use DEBUGFILES=questpgr.c
@@ -267,7 +244,7 @@ unsigned whichchains;
             qarti = find_qarti(migrating_objs);
     }
     if (!qarti && (whichchains & (1 << OBJ_BURIED)) != 0)
-        qarti = find_qarti(level.buriedobjlist);
+        qarti = find_qarti(NH_G(level).buriedobjlist);
 
     return qarti;
 }
@@ -361,19 +338,19 @@ char c;
         str = plname;
         break;
     case 'c':
-        str = (flags.female && urole.name.f) ? urole.name.f : urole.name.m;
+        str = (NH_G(flags).female && urole.name.f) ? urole.name.f : urole.name.m;
         break;
     case 'r':
-        str = rank_of(u.ulevel, Role_switch, flags.female);
+        str = rank_of(u.ulevel, Role_switch, NH_G(flags).female);
         break;
     case 'R':
-        str = rank_of(MIN_QUEST_LEVEL, Role_switch, flags.female);
+        str = rank_of(MIN_QUEST_LEVEL, Role_switch, NH_G(flags).female);
         break;
     case 's':
-        str = (flags.female) ? "sister" : "brother";
+        str = (NH_G(flags).female) ? "sister" : "brother";
         break;
     case 'S':
-        str = (flags.female) ? "daughter" : "son";
+        str = (NH_G(flags).female) ? "daughter" : "son";
         break;
     case 'l':
         str = ldrname();
@@ -606,7 +583,7 @@ skip_pager(common)
 boolean common;
 {
     /* WIZKIT: suppress plot feedback if starting with quest artifact */
-    if (current_nle_ctx->program_state.wizkit_wishing)
+    if (NH_G(program_state).wizkit_wishing)
         return TRUE;
     if (!(common ? qt_list.common : qt_list.chrole)) {
         panic("%s: no %s quest text data available",
@@ -682,12 +659,12 @@ qt_montype()
 
     if (rn2(5)) {
         qpm = urole.enemy1num;
-        if (qpm != NON_PM && rn2(5) && !(mvitals[qpm].mvflags & G_GENOD))
+        if (qpm != NON_PM && rn2(5) && !(NH_G(mvitals)[qpm].mvflags & G_GENOD))
             return &mons[qpm];
         return mkclass(urole.enemy1sym, 0);
     }
     qpm = urole.enemy2num;
-    if (qpm != NON_PM && rn2(5) && !(mvitals[qpm].mvflags & G_GENOD))
+    if (qpm != NON_PM && rn2(5) && !(NH_G(mvitals)[qpm].mvflags & G_GENOD))
         return &mons[qpm];
     return mkclass(urole.enemy2sym, 0);
 }
