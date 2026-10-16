@@ -765,6 +765,11 @@ NetHackRL::fill_obs(nle_obs *obs)
      * this loop never runs, so the default obs is byte-identical to vanilla
      * and golden parity is unaffected. */
     if (nle_tuning.reveal_map > 0.0) {
+        /* on a fresh copy of the screen: the update callback refreshes the
+         * rows the game redrew, so a monster the overlay drew into another
+         * row before would linger there */
+        if (current_nle_ctx)
+            nle_vt_refresh_obs(current_nle_ctx, obs);
         for (int x = 1; x < COLNO; x++) {
             for (int y = 0; y < ROWNO; y++) {
                 size_t i = (x - 1) % (COLNO - 1);

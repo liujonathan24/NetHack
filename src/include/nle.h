@@ -168,6 +168,7 @@ size_t nle_ctx_block_size(void);
 nle_ctx_t *nle_start(nle_obs *, FILE *, nle_seeds_init_t *, nle_settings *);
 nle_ctx_t *nle_step(nle_ctx_t *, nle_obs *);
 void nle_end(nle_ctx_t *);
+void nle_vt_refresh_obs(nle_ctx_t *, nle_obs *);
 
 void nle_set_seed(nle_ctx_t *, unsigned long, unsigned long, boolean);
 void nle_get_seed(nle_ctx_t *, unsigned long *, unsigned long *, boolean *);
