@@ -136,14 +136,14 @@ desc		: DESCRIPTION ':' DESCRIPTOR
 			if($<i>3 <= TOWN || $<i>3 >= D_ALIGN_CHAOTIC)
 			    yyerror("Illegal description - ignoring!");
 			else
-			    tmpdungeon[n_dgns].tflags |= $<i>3 ;
+			    tmpdungeon[n_dgns].flags |= $<i>3 ;
 		  }
 		| ALIGNMENT ':' DESCRIPTOR
 		  {
 			if($<i>3 && $<i>3 < D_ALIGN_CHAOTIC)
 			    yyerror("Illegal alignment - ignoring!");
 			else
-			    tmpdungeon[n_dgns].tflags |= $<i>3 ;
+			    tmpdungeon[n_dgns].flags |= $<i>3 ;
 		  }
 		;
 
@@ -214,14 +214,14 @@ levdesc		: LEVELDESC ':' DESCRIPTOR
 			if($<i>3 >= D_ALIGN_CHAOTIC)
 			    yyerror("Illegal description - ignoring!");
 			else
-			    tmplevel[n_levs].tflags |= $<i>3 ;
+			    tmplevel[n_levs].flags |= $<i>3 ;
 		  }
 		| LEVALIGN ':' DESCRIPTOR
 		  {
 			if($<i>3 && $<i>3 < D_ALIGN_CHAOTIC)
 			    yyerror("Illegal alignment - ignoring!");
 			else
-			    tmplevel[n_levs].tflags |= $<i>3 ;
+			    tmplevel[n_levs].flags |= $<i>3 ;
 		  }
 		;
 
@@ -447,7 +447,7 @@ init_dungeon()
 	tmpdungeon[n_dgns].chance = 100;
 	Strcpy(tmpdungeon[n_dgns].name, "");
 	Strcpy(tmpdungeon[n_dgns].protoname, "");
-	tmpdungeon[n_dgns].tflags = 0;
+	tmpdungeon[n_dgns].flags = 0;
 	tmpdungeon[n_dgns].levels = 0;
 	tmpdungeon[n_dgns].branches = 0;
 	tmpdungeon[n_dgns].entry_lev = 0;
@@ -465,7 +465,7 @@ init_level()
 	tmplevel[n_levs].lev.rand = 0;
 	tmplevel[n_levs].chance = 100;
 	tmplevel[n_levs].rndlevs = 0;
-	tmplevel[n_levs].tflags = 0;
+	tmplevel[n_levs].flags = 0;
 	Strcpy(tmplevel[n_levs].name, "");
 	tmplevel[n_levs].chain = -1;
 }

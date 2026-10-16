@@ -4,17 +4,10 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 #include "mfndpos.h"
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
-
-/* Pet-goal state per-env (was STATIC_VAR xchar gtyp,gx,gy). */
-#define gtyp (current_nle_ctx->s_gtyp)
-#define gx   (current_nle_ctx->s_gx)
-#define gy   (current_nle_ctx->s_gy)
+/* notonhead: per-env, see nh_globals.h */
 
 STATIC_DCL boolean FDECL(dog_hunger, (struct monst *, struct edog *));
 STATIC_DCL int FDECL(dog_invent, (struct monst *, struct edog *, int));
@@ -126,10 +119,12 @@ struct monst *mon;
     return (struct obj *) 0; /* don't drop anything */
 }
 
-static const char nofetch[] = { BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
+static NEARDATA const char nofetch[] = { BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
                                          0 };
 
-/* Gtyp/gx/gy migrated to nle_ctx_t (see top of file). */
+#define gtyp (nh_g->s_dogmove_c_gtyp)
+#define gx (nh_g->s_dogmove_c_gx)
+#define gy (nh_g->s_dogmove_c_gy) /* type and position of dog's current goal */
 
 STATIC_PTR void FDECL(wantdoor, (int, int, genericptr_t));
 
@@ -139,7 +134,7 @@ int x, y;
 {
     struct obj *otmp;
 
-    for (otmp = level.objs[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = NH_G(level).objects[x][y]; otmp; otmp = otmp->nexthere)
         if (otmp->cursed)
             return TRUE;
     return FALSE;
@@ -161,8 +156,8 @@ struct obj *obj;
             mtmp->meating = 3 + (mons[obj->corpsenm].cwt >> 6);
             nutrit = mons[obj->corpsenm].cnutrit;
         } else {
-            mtmp->meating = objects[obj->otyp].oc_delay;
-            nutrit = objects[obj->otyp].oc_nutrition;
+            mtmp->meating = NH_G(objects)[obj->otyp].oc_delay;
+            nutrit = NH_G(objects)[obj->otyp].oc_nutrition;
         }
         switch (mtmp->data->msize) {
         case MZ_TINY:
@@ -203,7 +198,7 @@ struct obj *obj;
          * eat.c.  (This also applies to pets eating gold.)
          */
         mtmp->meating = obj->owt / 20 + 1;
-        nutrit = 5 * objects[obj->otyp].oc_nutrition;
+        nutrit = 5 * NH_G(objects)[obj->otyp].oc_nutrition;
     }
     return nutrit;
 }
@@ -308,7 +303,7 @@ boolean devour;
             costly_alteration(obj, COST_DEGRD);
         obj->oerodeproof = 0;
         mtmp->mstun = 1;
-        if (canseemon(mtmp) && flags.verbose) {
+        if (canseemon(mtmp) && NH_G(flags).verbose) {
             pline("%s spits %s out in disgust!", Monnam(mtmp),
                   distant_name(obj, doname));
         }
@@ -435,7 +430,7 @@ int udist;
                 edog->droptime = monstermoves;
             }
     } else {
-        if ((obj = level.objs[omx][omy]) != 0
+        if ((obj = NH_G(level).objects[omx][omy]) != 0
             && !index(nofetch, obj->oclass)
 #ifdef MAIL
             && obj->otyp != SCR_MAIL
@@ -457,7 +452,7 @@ int udist;
                         otmp = obj;
                         if (carryamt != obj->quan)
                             otmp = splitobj(obj, carryamt);
-                        if (cansee(omx, omy) && flags.verbose)
+                        if (cansee(omx, omy) && NH_G(flags).verbose)
                             pline("%s picks up %s.", Monnam(mtmp),
                                   distant_name(otmp, doname));
                         obj_extract_self(otmp);
@@ -1083,7 +1078,7 @@ int after; /* this is extra fast monster movement */
         /* dog eschews cursed objects, but likes dog food */
         /* (minion isn't interested; `cursemsg' stays FALSE) */
         if (has_edog)
-            for (obj = level.objs[nx][ny]; obj; obj = obj->nexthere) {
+            for (obj = NH_G(level).objects[nx][ny]; obj; obj = obj->nexthere) {
                 if (obj->cursed) {
                     cursemsg[i] = TRUE;
                 } else if ((otyp = dogfood(mtmp, obj)) < MANFOOD
@@ -1215,7 +1210,7 @@ int after; /* this is extra fast monster movement */
             /* describe top item of pile, not necessarily cursed item itself;
                don't use glyph_at() here--it would return the pet but we want
                to know whether an object is remembered at this map location */
-            struct obj *o = (!Hallucination && level.lflags.hero_memory
+            struct obj *o = (!Hallucination && NH_G(level).flags.hero_memory
                              && glyph_is_object(levl[nix][niy].glyph))
                                ? vobj_at(nix, niy) : 0;
             const char *what = o ? distant_name(o, doname) : something;
@@ -1423,11 +1418,11 @@ struct monst *mtmp;
             (M_AP_TYPE(mtmp) == M_AP_FURNITURE)
                 ? an(defsyms[mtmp->mappearance].explanation)
                 : (M_AP_TYPE(mtmp) == M_AP_OBJECT
-                   && OBJ_DESCR(objects[mtmp->mappearance]))
-                      ? an(OBJ_DESCR(objects[mtmp->mappearance]))
+                   && OBJ_DESCR(NH_G(objects)[mtmp->mappearance]))
+                      ? an(OBJ_DESCR(NH_G(objects)[mtmp->mappearance]))
                       : (M_AP_TYPE(mtmp) == M_AP_OBJECT
-                         && OBJ_NAME(objects[mtmp->mappearance]))
-                            ? an(OBJ_NAME(objects[mtmp->mappearance]))
+                         && OBJ_NAME(NH_G(objects)[mtmp->mappearance]))
+                            ? an(OBJ_NAME(NH_G(objects)[mtmp->mappearance]))
                             : (M_AP_TYPE(mtmp) == M_AP_MONSTER)
                                   ? an(mons[mtmp->mappearance].mname)
                                   : something,

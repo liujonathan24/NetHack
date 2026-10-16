@@ -4,25 +4,10 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
+#include "nle.h"
+#include <fcntl.h>
 #include "lev.h"
-#include <errno.h>
-#include <string.h>
-#include <sys/stat.h>
-
-/* Per-env save-session state. Macros rewrite
- * file-statics to direct nle_ctx_t fields so concurrent c_reset save
- * paths in N>=128 vecenv training don't trample each other's buffers.
- * See vendor/nle/src/include/nle.h for the field declarations. */
-#define count_only      (current_nle_ctx->s_count_only)
-#define ustuck_id       (current_nle_ctx->s_ustuck_id)
-#define usteed_id       (current_nle_ctx->s_usteed_id)
-#define bw_FILE         (current_nle_ctx->s_bw_FILE)
-#define outbuf          (current_nle_ctx->s_outbuf)
-#define outbufp         (current_nle_ctx->s_outbufp)
-#define outrunlength    (current_nle_ctx->s_outrunlength)
-#define bwritefd        (current_nle_ctx->s_bwritefd)
-#define compressing     (current_nle_ctx->s_compressing)
+#include <errno.h> /* errno in def_bclose */
 
 #ifndef NO_SIGNAL
 #include <signal.h>
@@ -33,20 +18,7 @@
 
 #ifdef MFLOPPY
 long bytes_counted;
-/* count_only migrated to nle_ctx_t. */
-#endif
-
-/* exp_038 hypothesis 1: enforce identical struct sizes between save.c and
- * restore.c. ZEROCOMP is undef on this build so this lives OUTSIDE the
- * ZEROCOMP block. Verified 2026-05-24:
- *   sizeof(struct eshk) == 4936  (matches restore.c)
- *   sizeof(struct monst) == 144  (matches restore.c)
- *   sizeof(struct obj)   == 96   (matches restore.c)
- * Hypothesis 1 (sizeof asymmetry) is ruled out — both TUs agree. */
-#if defined(__GNUC__) || defined(__clang__)
-_Static_assert(sizeof(struct eshk)  == 4936, "save.c: sizeof(struct eshk) drifted");
-_Static_assert(sizeof(struct monst) ==  144, "save.c: sizeof(struct monst) drifted");
-_Static_assert(sizeof(struct obj)   ==   96, "save.c: sizeof(struct obj) drifted");
+static int count_only;
 #endif
 
 #ifdef MICRO
@@ -80,32 +52,26 @@ STATIC_DCL void FDECL(zerocomp_bwrite, (int, genericptr_t, unsigned int));
 STATIC_DCL void FDECL(zerocomp_bputc, (int));
 #endif
 
-/* `saveprocs` migrated to nle_ctx_t. Was file-scope static
- * struct; mutated by set_savepref() per-env via options handlers and read
- * by bufon/bufoff/bflush/bwrite/bclose during savefile writes. Under OMP
- * vecenv this was racy: env B's set_savepref could swap env A's save_bwrite
- * mid-save and write a wrong-codec stream into env A's level file (which
- * env A — or worse, env A itself reading its own file moments later — then
- * decodes incorrectly, producing the "Error reading level file" short-read
- * panic seen at N=1024). Per-env init lives in init_nle (nle.c). */
-#define saveprocs_name          (current_nle_ctx->s_saveprocs_name)
-#define saveprocs_save_bufon    (current_nle_ctx->s_saveprocs_save_bufon)
-#define saveprocs_save_bufoff   (current_nle_ctx->s_saveprocs_save_bufoff)
-#define saveprocs_save_bflush   (current_nle_ctx->s_saveprocs_save_bflush)
-#define saveprocs_save_bwrite   (current_nle_ctx->s_saveprocs_save_bwrite)
-#define saveprocs_save_bclose   (current_nle_ctx->s_saveprocs_save_bclose)
-/* Sfsaveinfo (and sfrestinfo) per-env. */
-#define sfsaveinfo  (*(struct savefile_info *)(&current_nle_ctx->s_sfsaveinfo_sfi1))
-#define sfrestinfo  (*(struct savefile_info *)(&current_nle_ctx->s_sfrestinfo_sfi1))
+#define saveprocs (nh_g->s_save_c_saveprocs)
+const struct save_procs nh_tmpl_s_save_c_saveprocs =
+{
+#if !defined(ZEROCOMP) || (defined(COMPRESS) || defined(ZLIB_COMP))
+    "externalcomp", def_bufon, def_bufoff, def_bflush, def_bwrite, def_bclose,
+#else
+    "zerocomp",      zerocomp_bufon,  zerocomp_bufoff,
+    zerocomp_bflush, zerocomp_bwrite, zerocomp_bclose,
+#endif
+};
 
 #if defined(UNIX) || defined(VMS) || defined(__EMX__) || defined(WIN32)
-#define HUP if (!current_nle_ctx->program_state.done_hup)
+#define HUP if (!NH_G(program_state).done_hup)
 #else
 #define HUP
 #endif
 
-/* ustuck_id/usteed_id migrated to nle_ctx_t.
- * They preserve monst ids across the save path. */
+/* need to preserve these during save to avoid accessing freed memory */
+#define ustuck_id (nh_g->s_save_c_ustuck_id)
+#define usteed_id (nh_g->s_save_c_usteed_id)
 
 int
 dosave()
@@ -115,13 +81,13 @@ dosave()
     clear_nhwindow(WIN_MESSAGE);
     if (yn("Really save?") == 'n') {
         clear_nhwindow(WIN_MESSAGE);
-        if (current_nle_ctx->multi > 0)
+        if (multi > 0)
             nomul(0);
     } else {
         clear_nhwindow(WIN_MESSAGE);
         pline("Saving...");
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-        current_nle_ctx->program_state.done_hup = 0;
+        NH_G(program_state).done_hup = 0;
 #endif
         if (dosave0()) {
             u.uhp = -1; /* universal game's over indicator */
@@ -156,7 +122,7 @@ dosave0()
     if (iflags.save_uburied)
         u.uburied = 1, iflags.save_uburied = 0;
 
-    if (!current_nle_ctx->program_state.something_worth_saving || !SAVEF[0])
+    if (!NH_G(program_state).something_worth_saving || !SAVEF[0])
         return 0;
     fq_save = fqname(SAVEF, SAVEPREFIX, 1); /* level files take 0 */
 
@@ -199,9 +165,9 @@ dosave0()
                          in the event of an impossible() call */
 
     /* undo date-dependent luck adjustments made at startup time */
-    if (flags.moonphase == FULL_MOON) /* ut-sally!fletcher */
+    if (NH_G(flags).moonphase == FULL_MOON) /* ut-sally!fletcher */
         change_luck(-1);              /* and unido!ab */
-    if (flags.friday13)
+    if (NH_G(flags).friday13)
         change_luck(1);
     if (iflags.window_inited)
         HUP clear_nhwindow(WIN_MESSAGE);
@@ -266,7 +232,7 @@ dosave0()
     for (ltmp = (xchar) 1; ltmp <= maxledgerno(); ltmp++) {
         if (ltmp == ledger_no(&uz_save))
             continue;
-        if (!(level_info[ltmp].linfo_flags & LFILE_EXISTS))
+        if (!(level_info[ltmp].flags & LFILE_EXISTS))
             continue;
 #ifdef MICRO
         curs(WIN_MAP, 1 + dotcnt++, dotrow);
@@ -284,12 +250,12 @@ dosave0()
             HUP pline1(whynot);
             (void) nhclose(fd);
             (void) delete_savefile();
-            HUP Strcpy(killer.name, whynot);
+            HUP Strcpy(NH_G(killer).name, whynot);
             HUP done(TRICKED);
             return 0;
         }
         minit(); /* ZEROCOMP */
-        getlev(ofd, current_nle_ctx->hackpid, ltmp, FALSE);
+        getlev(ofd, hackpid, ltmp, FALSE);
         (void) nhclose(ofd);
         bwrite(fd, (genericptr_t) &ltmp, sizeof ltmp); /* level number*/
         savelev(fd, ltmp, WRITE_SAVE | FREE_SAVE);     /* actual level*/
@@ -304,7 +270,7 @@ dosave0()
     delete_levelfile(0);
     nh_compress(fq_save);
     /* this should probably come sooner... */
-    current_nle_ctx->program_state.something_worth_saving = 0;
+    NH_G(program_state).something_worth_saving = 0;
     return 1;
 }
 
@@ -321,7 +287,7 @@ register int fd, mode;
     uid = (unsigned long) getuid();
     bwrite(fd, (genericptr_t) &uid, sizeof uid);
     bwrite(fd, (genericptr_t) &context, sizeof context);
-    bwrite(fd, (genericptr_t) &flags, sizeof flags);
+    bwrite(fd, (genericptr_t) &NH_G(flags), sizeof NH_G(flags));
 #ifdef SYSFLAGS
     bwrite(fd, (genericptr_t) &sysflags, sysflags);
 #endif
@@ -361,7 +327,7 @@ register int fd, mode;
         migrating_objs = 0;
         migrating_mons = 0;
     }
-    bwrite(fd, (genericptr_t) mvitals, sizeof mvitals);
+    bwrite(fd, (genericptr_t) NH_G(mvitals), sizeof NH_G(mvitals));
 
     save_dungeon(fd, (boolean) !!perform_bwrite(mode),
                  (boolean) !!release_data(mode));
@@ -386,6 +352,173 @@ register int fd, mode;
     bflush(fd);
 }
 
+boolean
+tricked_fileremoved(fd, whynot)
+int fd;
+char *whynot;
+{
+    if (fd < 0) {
+        pline1(whynot);
+        pline("Probably someone removed it.");
+        Strcpy(NH_G(killer).name, whynot);
+        done(TRICKED);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* Every function the game stores by address (afternmv, occupation,
+ * timed_occ_fn: see the assignment sites of those three); the player blob
+ * carries the index here. Index 0 is the null pointer. Append only. */
+static int NDECL((*const resume_fns[])) = {
+    (int NDECL((*))) 0,
+    Armor_on,    Armor_off,  Helmet_on,  Helmet_off,  Gloves_on,
+    Gloves_off,  Boots_on,   Boots_off,  Shield_on,   Shield_off,
+    Cloak_on,    Cloak_off,  Shirt_on,   Shirt_off,   eatmdone,
+    Hear_again,  unfaint,    prayer_done, stealarm,   set_trap,
+    wipeoff,     take_off,   dig,        picklock,    forcelock,
+    opentin,     eatfood,    learn,      timed_occupation, dosearch,
+    donull
+};
+
+/* index of fn in resume_fns[], or -1 */
+int
+nle_fn_id(fn)
+int NDECL((*fn));
+{
+    int i;
+
+    for (i = 0; i < SIZE(resume_fns); i++)
+        if (resume_fns[i] == fn)
+            return i;
+    return -1;
+}
+
+boolean
+nle_fn_lookup(id, fnp)
+int id;
+int NDECL((**fnp));
+{
+    if (id < 0 || id >= SIZE(resume_fns))
+        return FALSE;
+    *fnp = resume_fns[id];
+    return TRUE;
+}
+
+STATIC_OVL void
+nle_save_string(fd, s)
+int fd;
+const char *s;
+{
+    int len = s ? (int) strlen(s) : -1;
+
+    bwrite(fd, (genericptr_t) &len, sizeof len);
+    if (len > 0)
+        bwrite(fd, (genericptr_t) s, (unsigned) len);
+}
+
+/* the tail described at struct nle_player_tail (nle.h) */
+STATIC_OVL void
+nle_save_player_tail(fd, afternmv_id, occupation_id, timed_occ_id)
+int fd, afternmv_id, occupation_id, timed_occ_id;
+{
+    struct nle_player_tail t;
+    struct xlock_s *xl = &NH_G(s_lock_c_xlock);
+    struct trapinfo *ti = &NH_G(s_apply_c_trapinfo);
+    struct repo *rp = &NH_G(s_shk_c_repo);
+    uchar version = NLE_PLAYER_TAIL_VERSION;
+    int y, len = (int) (sizeof t + sizeof NH_G(s_track_c_utrack)
+                        + sizeof NH_G(s_makemon_c_rndmonst_state)
+                        + sizeof NH_G(s_cmd_c_saveq)
+                        + sizeof NH_G(s_cmd_c_pushq) + NLE_TAIL_VISION_SIZE);
+
+    (void) memset((genericptr_t) &t, 0, sizeof t);
+    t.you_movement = youmonst.movement;
+    t.you_m_ap_type = youmonst.m_ap_type;
+    t.you_mappearance = youmonst.mappearance;
+    t.you_mspec_used = youmonst.mspec_used;
+    t.multi_count = multi;
+    t.occ_time = occtime;
+    t.afternmv_id = afternmv_id;
+    t.occupation_id = occupation_id;
+    t.timed_occ_id = timed_occ_id;
+    t.last_invnr = NH_G(s_invent_c_lastinvnr);
+    t.track_cnt = NH_G(s_track_c_utcnt);
+    t.track_pnt = NH_G(s_track_c_utpnt);
+    t.pray_type = NH_G(s_pray_c_p_type);
+    t.pray_trouble = NH_G(s_pray_c_p_trouble);
+    t.pray_aligntyp = NH_G(s_pray_c_p_aligntyp);
+    t.steal_oid = NH_G(stealoid);
+    t.steal_mid = stealmid;
+    if (xl->door) {
+        long idx = (long) (xl->door - &levl[0][0]);
+
+        t.lock_door_x = (int) (idx / ROWNO);
+        t.lock_door_y = (int) (idx % ROWNO);
+    } else {
+        t.lock_door_x = t.lock_door_y = -1;
+    }
+    t.lock_box = xl->box ? xl->box->o_id : 0;
+    t.lock_picktyp = xl->picktyp;
+    t.lock_chance = xl->chance;
+    t.lock_usedtime = xl->usedtime;
+    t.lock_magic_key = xl->magic_key;
+    t.trap_tobj = ti->tobj ? ti->tobj->o_id : 0;
+    t.trap_tx = ti->tx;
+    t.trap_ty = ti->ty;
+    t.trap_time_needed = ti->time_needed;
+    t.trap_force_bungle = ti->force_bungle;
+    t.travel_x = iflags.travelcc.x;
+    t.travel_y = iflags.travelcc.y;
+    t.mkot_warn_count = NH_G(s_artifact_c_mkot_trap_warn_count);
+    t.dig_msg = NH_G(s_dig_c_did_dig_msg);
+    t.far_noise_flag = NH_G(s_mhitm_c_far_noise);
+    t.whatdoes_once = NH_G(l_pager_c_dowhatdoes_once);
+    t.encumber_oldcap = NH_G(l_pickup_c_encumber_msg_oldcap);
+    t.wail_msg = wailmsg;
+    t.ate_brains_mv = NH_G(l_eat_c_maybe_cannibal_ate_brains);
+    t.noise_time = NH_G(s_mhitm_c_noisetime);
+    t.clog_msgmv = NH_G(l_mon_c_elemental_clog_msgmv);
+    t.follow_msg = NH_G(s_shk_c_followmsg);
+    t.repo_shk = rp->shopkeeper ? rp->shopkeeper->m_id : 0;
+    t.repo_x = rp->location.x;
+    t.repo_y = rp->location.y;
+    t.cleave_cw = NH_G(l_uhitm_c_hitum_cleave_clockwise);
+    t.bubbles_up = NH_G(l_mkmaze_c_movebubbles_up);
+    t.unweapon_flag = unweapon;
+    t.hs_saved = NH_G(l_eat_c_newuhs_saved_hs);
+    t.hs_save = NH_G(l_eat_c_newuhs_save_hs);
+    t.rock_msgmv = NH_G(l_hack_c_moverock_lastmovetime);
+    t.pick_msgmv = NH_G(l_shk_c_pick_pick_pickmovetime);
+    t.break_msgmv = NH_G(l_dothrow_c_breakobj_lastmovetime);
+    t.break_peaceful_shk = NH_G(l_dothrow_c_breakobj_peaceful_shk);
+    (void) memcpy(t.empty_shops, NH_G(l_shk_c_u_entered_shop_empty_shops),
+                  sizeof t.empty_shops);
+    t.redo_phead = NH_G(s_cmd_c_phead);
+    t.redo_ptail = NH_G(s_cmd_c_ptail);
+    t.redo_shead = NH_G(s_cmd_c_shead);
+    t.redo_stail = NH_G(s_cmd_c_stail);
+    t.redo_last_multi = NH_G(s_cmd_c_last_multi);
+
+    bwrite(fd, (genericptr_t) NLE_PLAYER_TAIL_MAGIC, 4);
+    bwrite(fd, (genericptr_t) &version, sizeof version);
+    bwrite(fd, (genericptr_t) &len, sizeof len);
+    bwrite(fd, (genericptr_t) &t, sizeof t);
+    bwrite(fd, (genericptr_t) NH_G(s_track_c_utrack),
+           sizeof NH_G(s_track_c_utrack));
+    bwrite(fd, (genericptr_t) &NH_G(s_makemon_c_rndmonst_state),
+           sizeof NH_G(s_makemon_c_rndmonst_state));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_saveq), sizeof NH_G(s_cmd_c_saveq));
+    bwrite(fd, (genericptr_t) NH_G(s_cmd_c_pushq), sizeof NH_G(s_cmd_c_pushq));
+    for (y = 0; y < ROWNO; y++)
+        bwrite(fd, (genericptr_t) viz_array[y], COLNO);
+    bwrite(fd, (genericptr_t) viz_rmin, ROWNO);
+    bwrite(fd, (genericptr_t) viz_rmax, ROWNO);
+    nle_save_string(fd, multi_reason);
+    nle_save_string(fd, nomovemsg);
+    nle_save_string(fd, occtxt);
+}
+
 /* ===================================================================
  * Hero (player) state blob save.
  *
@@ -401,21 +534,28 @@ register int fd, mode;
  * Implemented here (not nle.c) because savegamestate() is file-static.
  * Returns the blob and writes its length to *out_len, or NULL on error.
  * =================================================================== */
-void *
-nle_save_player(nle, out_len)
+STATIC_OVL void *
+nle_save_player_inner(nle, out_len)
 nle_ctx_t *nle;
 long *out_len;
 {
     int fd, ledger;
+    struct obj *sv_piece, *sv_tin, *sv_book;
+    struct monst *sv_hitmon;
     char fq_player[BUFSZ];
     const char *fq_save;
     long sz;
     void *blob;
     FILE *fp;
+    int afternmv_id = nle_fn_id(afternmv), occupation_id = nle_fn_id(occupation),
+        timed_occ_id = nle_fn_id(NH_G(s_cmd_c_timed_occ_fn));
 
-    current_nle_ctx = nle;
-    if (out_len)
-        *out_len = 0;
+    if (afternmv_id < 0 || occupation_id < 0 || timed_occ_id < 0) {
+        fprintf(stderr, "nle_save_player: unknown %s function\n",
+                afternmv_id < 0 ? "afternmv"
+                : occupation_id < 0 ? "occupation" : "timed_occ_fn");
+        return (genericptr_t) 0;
+    }
 
     /* Derive a per-env scratch path. NLE leaves `lock[]` empty during play
      * (it is only populated when a level file is created), so we populate it
@@ -444,11 +584,40 @@ long *out_len;
      * read back by nle_load_player via restgamestate(), not by dorecover(). */
     ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
     usteed_id = (u.usteed ? u.usteed->m_id : 0);
+
+    /* Same treatment for the four pointers inside `context`. NetHack stamps
+     * their o_id/m_id twins (context.h keeps one beside each pointer for
+     * exactly this) inside saveobjchn/savemonchn -- but only under
+     * release_data(mode), which also frees the object. We keep the live game,
+     * so the stamping never ran and the raw pointers went into the blob, to be
+     * read back in another process as dangling addresses (restore.c's own
+     * comment names these four as "pointers which get set to Null during save
+     * and will be recovered via corresponding o_id or m_id"). Stamp, null for
+     * the write, and put the live pointers straight back. */
+    sv_piece = context.victual.piece;
+    sv_tin = context.tin.tin;
+    sv_book = context.spbook.book;
+    sv_hitmon = context.polearm.hitmon;
+    context.victual.o_id = sv_piece ? sv_piece->o_id : 0;
+    context.tin.o_id = sv_tin ? sv_tin->o_id : 0;
+    context.spbook.o_id = sv_book ? sv_book->o_id : 0;
+    context.polearm.m_id = sv_hitmon ? sv_hitmon->m_id : 0;
+    context.victual.piece = (struct obj *) 0;
+    context.tin.tin = (struct obj *) 0;
+    context.spbook.book = (struct obj *) 0;
+    context.polearm.hitmon = (struct monst *) 0;
+
+    /* bclose() (not bufoff + nhclose): see nle_save_level */
     bufon(fd);
     savegamestate(fd, WRITE_SAVE);
-    bflush(fd);
-    bufoff(fd);
-    (void) nhclose(fd);
+    nle_save_player_tail(fd, afternmv_id, occupation_id, timed_occ_id);
+    bclose(fd);
+
+    /* The running game keeps its live pointers; only the blob holds ids. */
+    context.victual.piece = sv_piece;
+    context.tin.tin = sv_tin;
+    context.spbook.book = sv_book;
+    context.polearm.hitmon = sv_hitmon;
 
     /* Slurp the scratch file into a malloc'd blob, then unlink it. */
     fp = fopen(fq_player, "rb");
@@ -483,19 +652,21 @@ long *out_len;
     return blob;
 }
 
-boolean
-tricked_fileremoved(fd, whynot)
-int fd;
-char *whynot;
+void *
+nle_save_player(nle, out_len)
+nle_ctx_t *nle;
+long *out_len;
 {
-    if (fd < 0) {
-        pline1(whynot);
-        pline("Probably someone removed it.");
-        Strcpy(killer.name, whynot);
-        done(TRICKED);
-        return TRUE;
-    }
-    return FALSE;
+    void *blob;
+
+    nle_anchor(nle);
+    if (out_len)
+        *out_len = 0;
+    if (NLE_HOST_CALL_BEGIN(nle))
+        return (genericptr_t) 0;
+    blob = nle_save_player_inner(nle, out_len);
+    NLE_HOST_CALL_END(nle);
+    return blob;
 }
 
 #ifdef INSURANCE
@@ -503,10 +674,6 @@ void
 savestateinlock()
 {
     int fd, hpid;
-    /* Process-static OK — this function is inside #ifdef INSURANCE
-     * (include/config.h:356 leaves INSURANCE undefined in our build), so the
-     * whole savestateinlock() body is dead code. Leaving untouched preserves
-     * the upstream-merge surface. */
     static boolean havestate = TRUE;
     char whynot[BUFSZ];
 
@@ -515,7 +682,7 @@ savestateinlock()
      * needs to be in the level.0 file, so it does not need to be
      * constantly rewritten.  When checkpointing is turned off during
      * a game, however, the file has to be rewritten once to truncate
-     * it and avoid current_nle_ctx->restoring from outdated information.
+     * it and avoid restoring from outdated information.
      *
      * Restricting havestate to this routine means that an additional
      * noop pid rewriting will take place on the first "checkpoint" after
@@ -533,9 +700,9 @@ savestateinlock()
             return;
 
         (void) read(fd, (genericptr_t) &hpid, sizeof hpid);
-        if (current_nle_ctx->hackpid != hpid) {
+        if (hackpid != hpid) {
             Sprintf(whynot, "Level #0 pid (%d) doesn't match ours (%d)!",
-                    hpid, current_nle_ctx->hackpid);
+                    hpid, hackpid);
             pline1(whynot);
             Strcpy(killer.name, whynot);
             done(TRICKED);
@@ -549,7 +716,7 @@ savestateinlock()
             done(TRICKED);
             return;
         }
-        (void) write(fd, (genericptr_t) &current_nle_ctx->hackpid, sizeof current_nle_ctx->hackpid);
+        (void) write(fd, (genericptr_t) &hackpid, sizeof hackpid);
         if (flags.ins_chkpt) {
             int currlev = ledger_no(&u.uz);
 
@@ -646,8 +813,8 @@ int mode;
         count_only = (mode & COUNT_SAVE);
 #endif
         if (lev >= 0 && lev <= maxledgerno())
-            level_info[lev].linfo_flags |= VISITED;
-        bwrite(fd, (genericptr_t) &current_nle_ctx->hackpid, sizeof current_nle_ctx->hackpid);
+            level_info[lev].flags |= VISITED;
+        bwrite(fd, (genericptr_t) &hackpid, sizeof hackpid);
 #ifdef TOS
         tlev = lev;
         tlev &= 0x00ff;
@@ -663,24 +830,12 @@ int mode;
        the guessing that was needed in 3.4.3 and without having to
        interpret level data to find where to start; unfortunately it
        still needs to handle all the data compression schemes */
-    savecemetery(fd, mode, &level.bonesinfo);
+    savecemetery(fd, mode, &NH_G(level).bonesinfo);
     if (mode == FREE_SAVE) /* see above */
         goto skip_lots;
 
     savelevl(fd, (boolean) ((sfsaveinfo.sfi1 & SFI1_RLECOMP) == SFI1_RLECOMP));
-    /* (exp_039 agent_e): writer/reader byte-count mismatch.
-     * Stage 7' migrated `lastseentyp` from a `schar[COLNO][ROWNO]` array to a
-     * pointer macro (rm.h:623) and `doors` from `coord[DOORMAX]` to a pointer
-     * macro (mkroom.h:55). The reader was already updated to use the literal
-     * byte counts (restore.c:1129 lastseentyp, 1141 doors), but the writer
-     * still used `sizeof <name>` which now evaluates to sizeof(pointer)=8
-     * instead of the array size. Writer wrote 8 bytes; reader read 1680
-     * (lastseentyp) or 240 (doors). Excess bytes consumed by reader pulled
-     * subsequent records out of alignment, surfacing intermittently at
-     * N>=64 as `DEF_MREAD_SHORT` panics in restmonchn (the next record the
-     * misaligned reader hit was the monster chain, where buflen values
-     * decoded from random bytes asked for impossible payloads). */
-    bwrite(fd, (genericptr_t) lastseentyp, COLNO * ROWNO * sizeof(schar));
+    bwrite(fd, (genericptr_t) lastseentyp, sizeof lastseentyp);
     bwrite(fd, (genericptr_t) &monstermoves, sizeof monstermoves);
     bwrite(fd, (genericptr_t) &upstair, sizeof (stairway));
     bwrite(fd, (genericptr_t) &dnstair, sizeof (stairway));
@@ -689,8 +844,8 @@ int mode;
     bwrite(fd, (genericptr_t) &sstairs, sizeof (stairway));
     bwrite(fd, (genericptr_t) &updest, sizeof (dest_area));
     bwrite(fd, (genericptr_t) &dndest, sizeof (dest_area));
-    bwrite(fd, (genericptr_t) &level.lflags, sizeof level.lflags);
-    bwrite(fd, (genericptr_t) doors, DOORMAX * sizeof (coord));
+    bwrite(fd, (genericptr_t) &NH_G(level).flags, sizeof NH_G(level).flags);
+    bwrite(fd, (genericptr_t) doors, sizeof doors);
     save_rooms(fd); /* no dynamic memory to reclaim */
 
     /* from here on out, saving also involves allocated memory cleanup */
@@ -703,17 +858,17 @@ int mode;
     save_worm(fd, mode); /* save worm information */
     savetrapchn(fd, ftrap, mode);
     saveobjchn(fd, fobj, mode);
-    saveobjchn(fd, level.buriedobjlist, mode);
+    saveobjchn(fd, NH_G(level).buriedobjlist, mode);
     saveobjchn(fd, billobjs, mode);
     if (release_data(mode)) {
         int x,y;
 
         for (y = 0; y < ROWNO; y++)
             for (x = 0; x < COLNO; x++)
-                level.monsters[x][y] = 0;
+                NH_G(level).monsters[x][y] = 0;
         fmon = 0;
         ftrap = 0;
-        fobj = level.buriedobjlist = billobjs = 0;
+        fobj = NH_G(level).buriedobjlist = billobjs = 0;
         /* level.bonesinfo = 0; -- handled by savecemetery() */
     }
     save_engravings(fd, mode);
@@ -783,7 +938,7 @@ void
 bufon(fd)
 int fd;
 {
-    (*saveprocs_save_bufon)(fd);
+    (*saveprocs.save_bufon)(fd);
     return;
 }
 
@@ -792,7 +947,7 @@ void
 bufoff(fd)
 int fd;
 {
-    (*saveprocs_save_bufoff)(fd);
+    (*saveprocs.save_bufoff)(fd);
     return;
 }
 
@@ -801,7 +956,7 @@ void
 bflush(fd)
 register int fd;
 {
-    (*saveprocs_save_bflush)(fd);
+    (*saveprocs.save_bflush)(fd);
     return;
 }
 
@@ -811,7 +966,7 @@ int fd;
 genericptr_t loc;
 register unsigned num;
 {
-    (*saveprocs_save_bwrite)(fd, loc, num);
+    (*saveprocs.save_bwrite)(fd, loc, num);
     return;
 }
 
@@ -819,36 +974,39 @@ void
 bclose(fd)
 int fd;
 {
-    (*saveprocs_save_bclose)(fd);
+    (*saveprocs.save_bclose)(fd);
     return;
 }
 
-/* bw_FILE migrated to nle_ctx_t — macro at top of file. */
-/* Bw_fd / buffering per-env via nle_save_state. */
-struct nle_save_state {
-    int     _bw_fd;
-    boolean _buffering;
-};
-static struct nle_save_state *
-nle_save(void)
+#define bw_fd (nh_g->s_save_c_bw_fd)
+const int nh_tmpl_s_save_c_bw_fd =
+-1;
+#define bw_FILE (nh_g->s_save_c_bw_FILE)
+#define buffering (nh_g->s_save_c_buffering)
+
+/* Drop a buffered save stream a panic unwind left open (nle_host_call_abort
+ * skips the bclose). A no-op when nothing is open. */
+void
+nle_save_io_reset()
 {
-    if (!current_nle_ctx) return NULL;
-    struct nle_save_state *s = (struct nle_save_state *) current_nle_ctx->s_save_state;
-    if (!s) {
-        s = (struct nle_save_state *) nle_arena_calloc(1, sizeof(struct nle_save_state));
-        s->_bw_fd = -1;
-        current_nle_ctx->s_save_state = s;
+    if (!current_nle_ctx)
+        return;
+    if (bw_fd >= 0) {
+        FILE *bf = bw_FILE;
+
+        bw_fd = -1;
+        bw_FILE = 0;
+        if (bf)
+            (void) fclose(bf);
     }
-    return s;
+    buffering = FALSE;
 }
-#define bw_fd     (nle_save()->_bw_fd)
-#define buffering (nle_save()->_buffering)
 
 STATIC_OVL void
 def_bufon(fd)
 int fd;
 {
-#ifdef UNIX
+#if defined(UNIX) && !defined(__EMSCRIPTEN__)
     if (bw_fd != fd) {
         if (bw_fd >= 0)
             panic("double buffering unexpected");
@@ -856,32 +1014,22 @@ int fd;
         if ((bw_FILE = fdopen(fd, "w")) == 0)
             panic("buffering of file %d failed", fd);
     }
-#endif
     buffering = TRUE;
+#else
+    /* Under Emscripten, fdopen()+fwrite() to a MEMFS-backed fd flushes via a
+       writev that returns 0 bytes without error; musl's __stdio_write then
+       retries that 0-byte write forever (savelev spins on the first level
+       transition). Keep the raw fd unbuffered so def_bwrite() uses the direct
+       write(2) path, which writes MEMFS cleanly in one syscall. */
+    (void) fd;
+    buffering = FALSE;
+#endif
 }
 
 STATIC_OVL void
 def_bufoff(fd)
 int fd;
 {
-#ifdef UNIX
-    /* Short-flush instrumentation: if bufoff is called for an fd that is
-     * NOT the one currently buffered, def_bflush silently no-ops; any bytes
-     * still in bw_FILE's stdio buffer would then be dropped by the matching
-     * def_bclose's `nhclose(fd)` (which closes the raw fd without flushing
-     * the FILE*). This pairs with the exp_037 smoking gun: a level file
-     * exactly the writer's claimed size but missing the last record. */
-    if (fd != bw_fd) {
-        fprintf(stderr,
-                "DEF_BUFOFF_MISMATCH pid=%d hackdir=%s fd=%d bw_fd=%d "
-                "buffering=%d errno=%d (%s)\n",
-                current_nle_ctx ? current_nle_ctx->hackpid : -1,
-                (current_nle_ctx && current_nle_ctx->s_fqn_prefix[HACKPREFIX])
-                    ? current_nle_ctx->s_fqn_prefix[HACKPREFIX] : "(null)",
-                fd, bw_fd, (int) buffering, errno, strerror(errno));
-        fflush(stderr);
-    }
-#endif
     def_bflush(fd);
     buffering = FALSE;
 }
@@ -892,16 +1040,8 @@ int fd;
 {
 #ifdef UNIX
     if (fd == bw_fd) {
-        if (fflush(bw_FILE) == EOF) {
-            fprintf(stderr,
-                    "DEF_BFLUSH_FAIL pid=%d hackdir=%s fd=%d errno=%d (%s)\n",
-                    current_nle_ctx ? current_nle_ctx->hackpid : -1,
-                    (current_nle_ctx && current_nle_ctx->s_fqn_prefix[HACKPREFIX])
-                        ? current_nle_ctx->s_fqn_prefix[HACKPREFIX] : "(null)",
-                    fd, errno, strerror(errno));
-            fflush(stderr);
+        if (fflush(bw_FILE) == EOF)
             panic("flush of savefile failed!");
-        }
     }
 #endif
     return;
@@ -939,19 +1079,8 @@ register unsigned num;
     }
 
     if (failed) {
-        /* Short-write instrumentation paired with def_mread's. If this fires,
-         * we know the writer truly produced a truncated file (matched later
-         * by reader's pos+rlen == size). */
-        fprintf(stderr,
-                "DEF_BWRITE_SHORT pid=%d hackdir=%s fd=%d expected=%u "
-                "errno=%d (%s)\n",
-                current_nle_ctx ? current_nle_ctx->hackpid : -1,
-                (current_nle_ctx && current_nle_ctx->s_fqn_prefix[HACKPREFIX])
-                    ? current_nle_ctx->s_fqn_prefix[HACKPREFIX] : "(null)",
-                fd, num, errno, strerror(errno));
-        fflush(stderr);
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-        if (current_nle_ctx->program_state.done_hup)
+        if (NH_G(program_state).done_hup)
             nh_terminate(EXIT_FAILURE);
         else
 #endif
@@ -975,11 +1104,10 @@ int fd;
          * restmon (eshk, 4936 bytes) saw `pos == size` on the reader, so the
          * file on disk was exactly the writer's `claimed' length — meaning
          * the bug is on the writer side and the only ignored error path left
-         * is fclose. Check it and panic loudly with full context. */
+         * is fclose. Check it and panic loudly. */
         FILE *bf = bw_FILE;
         int save_fd = bw_fd;
         int rc;
-        off_t end_pos_pre = lseek(save_fd, 0, SEEK_CUR);
         /* Reset state BEFORE fclose so a re-entrant panic path can't
          * double-close. */
         bw_fd = -1;
@@ -989,21 +1117,11 @@ int fd;
          * pushed bytes via write(2), so fsync should be a no-op here in
          * terms of correctness, but it ensures we surface EIO/ENOSPC as
          * an error rather than only after fclose has discarded info. */
-        (void)fsync(save_fd);
+        (void) fsync(save_fd);
         rc = fclose(bf);
-        (void) end_pos_pre;
-        if (rc != 0) {
-            fprintf(stderr,
-                    "DEF_BCLOSE_FCLOSE_FAIL pid=%d hackdir=%s fd=%d rc=%d "
-                    "errno=%d (%s)\n",
-                    current_nle_ctx ? current_nle_ctx->hackpid : -1,
-                    (current_nle_ctx && current_nle_ctx->s_fqn_prefix[HACKPREFIX])
-                        ? current_nle_ctx->s_fqn_prefix[HACKPREFIX] : "(null)",
-                    save_fd, rc, errno, strerror(errno));
-            fflush(stderr);
+        if (rc != 0)
             panic("fclose of savefile failed (fd=%d errno=%d)",
                   save_fd, errno);
-        }
     } else
 #endif
         (void) nhclose(fd);
@@ -1025,14 +1143,11 @@ int fd;
 #ifndef ZEROCOMP_BUFSIZ
 #define ZEROCOMP_BUFSIZ BUFSZ
 #endif
-/* outbuf[ZEROCOMP_BUFSIZ], outbufp, outrunlength, bwritefd, compressing
- * migrated to nle_ctx_t. The struct field is sized
- * BUFSZ (256) on the assumption that ZEROCOMP_BUFSIZ == BUFSZ on every
- * config we build (UNIX); enforced by the static assert below. */
-#if defined(__GNUC__) || defined(__clang__)
-_Static_assert(ZEROCOMP_BUFSIZ == 256,
-               "nle_ctx_t::s_outbuf was sized 256 (BUFSZ)");
-#endif
+static NEARDATA unsigned char outbuf[ZEROCOMP_BUFSIZ];
+static NEARDATA unsigned short outbufp = 0;
+static NEARDATA short outrunlength = -1;
+static NEARDATA int bwritefd;
+static NEARDATA boolean compressing = FALSE;
 
 /*dbg()
 {
@@ -1095,7 +1210,7 @@ register int fd;
     if (outbufp) {
         if (write(fd, outbuf, outbufp) != outbufp) {
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-            if (current_nle_ctx->program_state.done_hup)
+            if (program_state.done_hup)
                 nh_terminate(EXIT_FAILURE);
             else
 #endif
@@ -1121,7 +1236,7 @@ register unsigned num;
 #endif
         if ((unsigned) write(fd, loc, num) != num) {
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
-            if (current_nle_ctx->program_state.done_hup)
+            if (program_state.done_hup)
                 nh_terminate(EXIT_FAILURE);
             else
 #endif
@@ -1209,7 +1324,7 @@ register int fd, mode;
     register struct damage *damageptr, *tmp_dam;
     unsigned int xl = 0;
 
-    damageptr = level.damagelist;
+    damageptr = NH_G(level).damagelist;
     for (tmp_dam = damageptr; tmp_dam; tmp_dam = tmp_dam->next)
         xl++;
     if (perform_bwrite(mode))
@@ -1224,7 +1339,7 @@ register int fd, mode;
             free((genericptr_t) tmp_dam);
     }
     if (release_data(mode))
-        level.damagelist = 0;
+        NH_G(level).damagelist = 0;
 }
 
 STATIC_OVL void
@@ -1314,69 +1429,45 @@ register struct obj *otmp;
         bwrite(fd, (genericptr_t) &minusone, sizeof (int));
 }
 
-/* exp_039 agent_e: trace each buflen written/read in savemon/restmon so
- * we can pinpoint the divergence at which the reader hits EOF. Activated
- * by env var NLE_TRACE_MON=1; cheap when off (one TLS read + branch). */
-static int
-mon_trace_enabled(void)
-{
-    static int cached = -1;
-    if (cached < 0) {
-        const char *e = getenv("NLE_TRACE_MON");
-        cached = (e && *e == '1') ? 1 : 0;
-    }
-    return cached;
-}
-
 STATIC_OVL void
 savemon(fd, mtmp)
 int fd;
 struct monst *mtmp;
 {
     int buflen;
-    int trace = mon_trace_enabled();
-    int pid = current_nle_ctx ? current_nle_ctx->hackpid : -1;
 
     mtmp->mtemplit = 0; /* normally clear; if set here then a panic save
                          * is being written while bhit() was executing */
     buflen = (int) sizeof (struct monst);
-    if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=monst buflen=%d\n", pid, fd, buflen);
     bwrite(fd, (genericptr_t) &buflen, sizeof buflen);
     bwrite(fd, (genericptr_t) mtmp, buflen);
     if (mtmp->mextra) {
         buflen = MNAME(mtmp) ? (int) strlen(MNAME(mtmp)) + 1 : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=mname buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof buflen);
         if (buflen > 0)
             bwrite(fd, (genericptr_t) MNAME(mtmp), buflen);
         buflen = EGD(mtmp) ? (int) sizeof (struct egd) : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=egd buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof buflen);
         if (buflen > 0)
             bwrite(fd, (genericptr_t) EGD(mtmp), buflen);
         buflen = EPRI(mtmp) ? (int) sizeof (struct epri) : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=epri buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof buflen);
         if (buflen > 0)
             bwrite(fd, (genericptr_t) EPRI(mtmp), buflen);
         buflen = ESHK(mtmp) ? (int) sizeof (struct eshk) : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=eshk buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof(int));
         if (buflen > 0)
             bwrite(fd, (genericptr_t) ESHK(mtmp), buflen);
         buflen = EMIN(mtmp) ? (int) sizeof (struct emin) : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=emin buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof(int));
         if (buflen > 0)
             bwrite(fd, (genericptr_t) EMIN(mtmp), buflen);
         buflen = EDOG(mtmp) ? (int) sizeof (struct edog) : 0;
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=edog buflen=%d\n", pid, fd, buflen);
         bwrite(fd, (genericptr_t) &buflen, sizeof(int));
         if (buflen > 0)
             bwrite(fd, (genericptr_t) EDOG(mtmp), buflen);
         /* mcorpsenm is inline int rather than pointer to something,
            so doesn't need to be preceded by a length field */
-        if (trace) fprintf(stderr, "SAVE_MON pid=%d fd=%d kind=corpsenm\n", pid, fd);
         bwrite(fd, (genericptr_t) &MCORPSENM(mtmp), sizeof MCORPSENM(mtmp));
     }
 }
@@ -1388,16 +1479,6 @@ register struct monst *mtmp;
 {
     register struct monst *mtmp2;
     int minusone = -1;
-    int trace = mon_trace_enabled();
-    int pid = current_nle_ctx ? current_nle_ctx->hackpid : -1;
-    int count = 0;
-
-    if (trace) {
-        struct monst *t = mtmp;
-        while (t) { count++; t = t->nmon; }
-        fprintf(stderr, "SAVE_MCHN_BEGIN pid=%d fd=%d mode=%d count=%d head=%p\n",
-                pid, fd, mode, count, (void *)mtmp);
-    }
 
     while (mtmp) {
         mtmp2 = mtmp->nmon;
@@ -1421,9 +1502,6 @@ register struct monst *mtmp;
     }
     if (perform_bwrite(mode))
         bwrite(fd, (genericptr_t) &minusone, sizeof (int));
-    if (trace)
-        fprintf(stderr, "SAVE_MCHN_END pid=%d fd=%d mode=%d wrote_sentinel=%d\n",
-                pid, fd, mode, perform_bwrite(mode));
 }
 
 /* save traps; ftrap is the only trap chain so the 2nd arg is superfluous */
@@ -1433,10 +1511,7 @@ int fd;
 register struct trap *trap;
 int mode;
 {
-    /* Const sentinel — read-only end-of-chain marker. Was a
-     * mutable file-local static; making it const moves it to .rodata and
-     * eliminates the cross-env shared-mutable-state hazard. */
-    static const struct trap zerotrap;
+    /* zerotrap: per-env nh_g->l_save_c_savetrapchn_zerotrap */
     register struct trap *trap2;
 
     while (trap) {
@@ -1448,7 +1523,7 @@ int mode;
         trap = trap2;
     }
     if (perform_bwrite(mode))
-        bwrite(fd, (genericptr_t) &zerotrap, sizeof zerotrap);
+        bwrite(fd, (genericptr_t) &NH_G(l_save_c_savetrapchn_zerotrap), sizeof NH_G(l_save_c_savetrapchn_zerotrap));
 }
 
 /* save all the fruit names and ID's; this is used only in saving whole games
@@ -1460,8 +1535,7 @@ void
 savefruitchn(fd, mode)
 int fd, mode;
 {
-    /* Const sentinel — see zerotrap comment in savetrapchn(). */
-    static const struct fruit zerofruit;
+    /* zerofruit: per-env nh_g->l_save_c_savefruitchn_zerofruit */
     register struct fruit *f2, *f1;
 
     f1 = ffruit;
@@ -1474,7 +1548,7 @@ int fd, mode;
         f1 = f2;
     }
     if (perform_bwrite(mode))
-        bwrite(fd, (genericptr_t) &zerofruit, sizeof zerofruit);
+        bwrite(fd, (genericptr_t) &NH_G(l_save_c_savefruitchn_zerofruit), sizeof NH_G(l_save_c_savefruitchn_zerofruit));
     if (release_data(mode))
         ffruit = 0;
 }
@@ -1545,55 +1619,17 @@ int fd;
     return;
 }
 
-/* Per-env init for the migrated `saveprocs` table and the
- * sfsaveinfo flag word. Called from init_nle (nle.c) before any save
- * path can run. Mirrors the original file-scope static initializer. */
-void
-nle_saveprocs_init()
-{
-#if !defined(ZEROCOMP) || (defined(COMPRESS) || defined(ZLIB_COMP))
-    saveprocs_name        = "externalcomp";
-    saveprocs_save_bufon  = def_bufon;
-    saveprocs_save_bufoff = def_bufoff;
-    saveprocs_save_bflush = def_bflush;
-    saveprocs_save_bwrite = def_bwrite;
-    saveprocs_save_bclose = def_bclose;
-#else
-    saveprocs_name        = "zerocomp";
-    saveprocs_save_bufon  = zerocomp_bufon;
-    saveprocs_save_bufoff = zerocomp_bufoff;
-    saveprocs_save_bflush = zerocomp_bflush;
-    saveprocs_save_bwrite = zerocomp_bwrite;
-    saveprocs_save_bclose = zerocomp_bclose;
-#endif
-    /* sfsaveinfo: mirror the original static initializer in decl.c. */
-    sfsaveinfo.sfi1 =
-        0UL
-#if defined(COMPRESS) || defined(ZLIB_COMP)
-        | SFI1_EXTERNALCOMP
-#endif
-#if defined(ZEROCOMP)
-        | SFI1_ZEROCOMP
-#endif
-#if defined(RLECOMP)
-        | SFI1_RLECOMP
-#endif
-        ;
-    sfsaveinfo.sfi2 = 0UL;
-    sfsaveinfo.sfi3 = 0UL;
-}
-
 void
 set_savepref(suitename)
 const char *suitename;
 {
     if (!strcmpi(suitename, "externalcomp")) {
-        saveprocs_name = "externalcomp";
-        saveprocs_save_bufon = def_bufon;
-        saveprocs_save_bufoff = def_bufoff;
-        saveprocs_save_bflush = def_bflush;
-        saveprocs_save_bwrite = def_bwrite;
-        saveprocs_save_bclose = def_bclose;
+        saveprocs.name = "externalcomp";
+        saveprocs.save_bufon = def_bufon;
+        saveprocs.save_bufoff = def_bufoff;
+        saveprocs.save_bflush = def_bflush;
+        saveprocs.save_bwrite = def_bwrite;
+        saveprocs.save_bclose = def_bclose;
         sfsaveinfo.sfi1 |= SFI1_EXTERNALCOMP;
         sfsaveinfo.sfi1 &= ~SFI1_ZEROCOMP;
     }
@@ -1602,12 +1638,12 @@ const char *suitename;
     }
 #ifdef ZEROCOMP
     if (!strcmpi(suitename, "zerocomp")) {
-        saveprocs_name = "zerocomp";
-        saveprocs_save_bufon = zerocomp_bufon;
-        saveprocs_save_bufoff = zerocomp_bufoff;
-        saveprocs_save_bflush = zerocomp_bflush;
-        saveprocs_save_bwrite = zerocomp_bwrite;
-        saveprocs_save_bclose = zerocomp_bclose;
+        saveprocs.name = "zerocomp";
+        saveprocs.save_bufon = zerocomp_bufon;
+        saveprocs.save_bufoff = zerocomp_bufoff;
+        saveprocs.save_bflush = zerocomp_bflush;
+        saveprocs.save_bwrite = zerocomp_bwrite;
+        saveprocs.save_bclose = zerocomp_bclose;
         sfsaveinfo.sfi1 |= SFI1_ZEROCOMP;
         sfsaveinfo.sfi1 &= ~SFI1_EXTERNALCOMP;
     }

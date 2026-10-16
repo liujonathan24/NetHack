@@ -4,12 +4,10 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "mfndpos.h"
 #include "artifact.h"
 
-/* Notonhead per-env via nle_ctx_t (was extern boolean). */
-#define notonhead         (current_nle_ctx->s_notonhead)
+/* notonhead: per-env, see nh_globals.h */
 
 STATIC_DCL void FDECL(watch_on_duty, (struct monst *));
 STATIC_DCL int FDECL(disturb, (struct monst *));
@@ -25,7 +23,7 @@ boolean
 mb_trapped(mtmp)
 struct monst *mtmp;
 {
-    if (flags.verbose) {
+    if (NH_G(flags).verbose) {
         if (cansee(mtmp->mx, mtmp->my) && !Unaware)
             pline("KABOOM!!  You see a door explode.");
         else if (!Deaf)
@@ -423,7 +421,7 @@ register struct monst *mtmp;
 
     /* some monsters teleport */
     if (mtmp->mflee && !rn2(40) && can_teleport(mdat) && !mtmp->iswiz
-        && !level.lflags.noteleport) {
+        && !NH_G(level).flags.noteleport) {
         (void) rloc(mtmp, TRUE);
         return 0;
     }
@@ -664,14 +662,14 @@ register struct monst *mtmp;
     return (tmp == 2);
 }
 
-static const char practical[] = { WEAPON_CLASS, ARMOR_CLASS,
+static NEARDATA const char practical[] = { WEAPON_CLASS, ARMOR_CLASS,
                                            GEM_CLASS, FOOD_CLASS, 0 };
-static const char magical[] = { AMULET_CLASS, POTION_CLASS,
+static NEARDATA const char magical[] = { AMULET_CLASS, POTION_CLASS,
                                          SCROLL_CLASS, WAND_CLASS,
                                          RING_CLASS,   SPBOOK_CLASS, 0 };
-static const char indigestion[] = { BALL_CLASS, ROCK_CLASS, 0 };
-static const char boulder_class[] = { ROCK_CLASS, 0 };
-static const char gem_class[] = { GEM_CLASS, 0 };
+static NEARDATA const char indigestion[] = { BALL_CLASS, ROCK_CLASS, 0 };
+static NEARDATA const char boulder_class[] = { ROCK_CLASS, 0 };
+static NEARDATA const char gem_class[] = { GEM_CLASS, 0 };
 
 boolean
 itsstuck(mtmp)
@@ -1028,7 +1026,7 @@ register int after;
                          || (uses_items && searches_for_item(mtmp, otmp))
                          || (likerock && otmp->otyp == BOULDER)
                          || (likegems && otmp->oclass == GEM_CLASS
-                             && objects[otmp->otyp].oc_material != MINERAL)
+                             && NH_G(objects)[otmp->otyp].oc_material != MINERAL)
                          || (conceals && !cansee(otmp->ox, otmp->oy))
                          || (ptr == &mons[PM_GELATINOUS_CUBE]
                              && !index(indigestion, otmp->oclass)
@@ -1038,7 +1036,7 @@ register int after;
                         if (can_carry(mtmp, otmp) > 0
                             && (throws_rocks(ptr) || !sobj_at(BOULDER, xx, yy))
                             && (!is_unicorn(ptr)
-                                || objects[otmp->otyp].oc_material == GEMSTONE)
+                                || NH_G(objects)[otmp->otyp].oc_material == GEMSTONE)
                             /* Don't get stuck circling an Elbereth */
                             && !onscary(xx, yy, mtmp)) {
                             minr = distmin(omx, omy, xx, yy);
@@ -1088,7 +1086,7 @@ register int after;
     if (is_minion(ptr) || is_rider(ptr))
         flag |= ALLOW_SANCT;
     /* unicorn may not be able to avoid hero on a noteleport level */
-    if (is_unicorn(ptr) && !level.lflags.noteleport)
+    if (is_unicorn(ptr) && !NH_G(level).flags.noteleport)
         flag |= NOTONL;
     if (passes_walls(ptr))
         flag |= (ALLOW_WALL | ALLOW_ROCK);
@@ -1121,10 +1119,10 @@ register int after;
         chi = -1;
         nidist = dist2(nix, niy, gx, gy);
         /* allow monsters be shortsighted on some levels for balance */
-        if (!mtmp->mpeaceful && level.lflags.shortsighted
+        if (!mtmp->mpeaceful && NH_G(level).flags.shortsighted
             && nidist > (couldsee(nix, niy) ? 144 : 36) && appr == 1)
             appr = 0;
-        if (is_unicorn(ptr) && level.lflags.noteleport) {
+        if (is_unicorn(ptr) && NH_G(level).flags.noteleport) {
             /* on noteleport levels, perhaps we cannot avoid hero */
             for (i = 0; i < cnt; i++)
                 if (!(info[i] & NOTONL))
@@ -1323,7 +1321,7 @@ register int after;
                 }
                 if ((here->doormask & (D_LOCKED | D_CLOSED)) != 0
                     && amorphous(ptr)) {
-                    if (flags.verbose && canseemon(mtmp))
+                    if (NH_G(flags).verbose && canseemon(mtmp))
                         pline("%s %s under the door.", Monnam(mtmp),
                               (ptr == &mons[PM_FOG_CLOUD]
                                || ptr->mlet == S_LIGHT) ? "flows" : "oozes");
@@ -1335,7 +1333,7 @@ register int after;
                         if (mb_trapped(mtmp))
                             return 2;
                     } else {
-                        if (flags.verbose) {
+                        if (NH_G(flags).verbose) {
                             if (observeit)
                                 pline("%s unlocks and opens a door.",
                                       Monnam(mtmp));
@@ -1356,7 +1354,7 @@ register int after;
                         if (mb_trapped(mtmp))
                             return 2;
                     } else {
-                        if (flags.verbose) {
+                        if (NH_G(flags).verbose) {
                             if (observeit)
                                 pline("%s opens a door.", Monnam(mtmp));
                             else if (canseeit)
@@ -1377,7 +1375,7 @@ register int after;
                         if (mb_trapped(mtmp))
                             return 2;
                     } else {
-                        if (flags.verbose) {
+                        if (NH_G(flags).verbose) {
                             if (observeit)
                                 pline("%s smashes down a door.",
                                       Monnam(mtmp));
@@ -1405,7 +1403,7 @@ register int after;
                         pline("%s eats through the iron bars.", Monnam(mtmp));
                     dissolve_bars(mtmp->mx, mtmp->my);
                     return 3;
-                } else if (flags.verbose && canseemon(mtmp))
+                } else if (NH_G(flags).verbose && canseemon(mtmp))
                     Norep("%s %s %s the iron bars.", Monnam(mtmp),
                           /* pluralization fakes verb conjugation */
                           makeplural(locomotion(ptr, "pass")),
@@ -1505,7 +1503,7 @@ dissolve_bars(x, y)
 register int x, y;
 {
     levl[x][y].typ = (Is_special(&u.uz) || *in_rooms(x, y, 0)) ? ROOM : CORR;
-    levl[x][y].rmflags = 0;
+    levl[x][y].flags = 0;
     newsym(x, y);
 }
 
@@ -1698,7 +1696,7 @@ boolean
 can_fog(mtmp)
 struct monst *mtmp;
 {
-    if (!(mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
+    if (!(NH_G(mvitals)[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
         && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp))
         return TRUE;
     return FALSE;

@@ -4,7 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated globals */
 
 /* "an uncursed greased partly eaten guardian naga hatchling [corpse]" */
 #define PREFIX 80 /* (56) */
@@ -28,10 +27,7 @@ STATIC_DCL char *FDECL(xname_flags, (struct obj *, unsigned));
 STATIC_DCL boolean FDECL(badman, (const char *, BOOLEAN_P));
 STATIC_DCL char *FDECL(globwt, (struct obj *, char *, boolean *));
 
-struct Jitem {
-    int item;
-    const char *name;
-};
+/* struct Jitem moved to nh_globals.h */
 
 #define BSTRCMPI(base, ptr, str) ((ptr) < base || strcmpi((ptr), str))
 #define BSTRNCMPI(base, ptr, str, num) \
@@ -41,12 +37,14 @@ struct Jitem {
 /* true for gems/rocks that should have " stone" appended to their names */
 #define GemStone(typ)                                                  \
     (typ == FLINT                                                      \
-     || (objects[typ].oc_material == GEMSTONE                          \
+     || (NH_G(objects)[typ].oc_material == GEMSTONE                          \
          && (typ != DILITHIUM_CRYSTAL && typ != RUBY && typ != DIAMOND \
              && typ != SAPPHIRE && typ != BLACK_OPAL && typ != EMERALD \
              && typ != OPAL)))
 
-STATIC_OVL struct Jitem Japanese_items[] = { { SHORT_SWORD, "wakizashi" },
+#define Japanese_items (nh_g->s_objnam_c_Japanese_items)
+const struct Jitem nh_tmpl_s_objnam_c_Japanese_items[] =
+{ { SHORT_SWORD, "wakizashi" },
                                              { BROADSWORD, "ninja-to" },
                                              { FLAIL, "nunchaku" },
                                              { GLAIVE, "naginata" },
@@ -78,27 +76,9 @@ register const char *pref;
     return s;
 }
 
-/* manage a pool of BUFSZ buffers, so callers don't have to.
- * obufs migrated to nle_ctx_t (per-env heap, NUMOBUF*BUFSZ bytes). */
-#define obufs ((char (*)[BUFSZ]) current_nle_ctx->s_obufs_p)
-/* Obufidx + distantname per-env. */
-struct nle_objnam_state {
-    int _obufidx;
-    int _distantname;
-};
-static struct nle_objnam_state *
-nle_objnam(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_objnam_state *s = (struct nle_objnam_state *) current_nle_ctx->s_objnam_state;
-    if (!s) {
-        s = (struct nle_objnam_state *) nle_arena_calloc(1, sizeof(struct nle_objnam_state));
-        current_nle_ctx->s_objnam_state = s;
-    }
-    return s;
-}
-#define obufidx     (nle_objnam()->_obufidx)
-#define distantname (nle_objnam()->_distantname)
+/* manage a pool of BUFSZ buffers, so callers don't have to */
+#define obufs (nh_g->s_objnam_c_obufs)
+#define obufidx (nh_g->s_objnam_c_obufidx)
 
 STATIC_OVL char *
 nextobuf()
@@ -127,7 +107,7 @@ obj_typename(otyp)
 register int otyp;
 {
     char *buf = nextobuf();
-    struct objclass *ocl = &objects[otyp];
+    struct objclass *ocl = &NH_G(objects)[otyp];
     const char *actualn = OBJ_NAME(*ocl);
     const char *dn = OBJ_DESCR(*ocl);
     const char *un = ocl->oc_uname;
@@ -208,11 +188,11 @@ char *
 simple_typename(otyp)
 int otyp;
 {
-    char *bufp, *pp, *save_uname = objects[otyp].oc_uname;
+    char *bufp, *pp, *save_uname = NH_G(objects)[otyp].oc_uname;
 
-    objects[otyp].oc_uname = 0; /* suppress any name given by user */
+    NH_G(objects)[otyp].oc_uname = 0; /* suppress any name given by user */
     bufp = obj_typename(otyp);
-    objects[otyp].oc_uname = save_uname;
+    NH_G(objects)[otyp].oc_uname = save_uname;
     if ((pp = strstri(bufp, " (")) != 0)
         *pp = '\0'; /* strip the appended description */
     return bufp;
@@ -227,15 +207,15 @@ int otyp;
     char *res = 0;
 
     if (otyp < STRANGE_OBJECT || otyp >= NUM_OBJECTS
-        || !OBJ_NAME(objects[otyp])) {
+        || !OBJ_NAME(NH_G(objects)[otyp])) {
         res = nextobuf();
         Sprintf(res, "glorkum[%d]", otyp);
     } else {
         /* force it to be treated as fully discovered */
-        save_nameknown = objects[otyp].oc_name_known;
-        objects[otyp].oc_name_known = 1;
+        save_nameknown = NH_G(objects)[otyp].oc_name_known;
+        NH_G(objects)[otyp].oc_name_known = 1;
         res = simple_typename(otyp);
-        objects[otyp].oc_name_known = save_nameknown;
+        NH_G(objects)[otyp].oc_name_known = save_nameknown;
     }
     return res;
 }
@@ -246,7 +226,7 @@ struct obj *obj;
 {
     if (!obj->oartifact || !has_oname(obj))
         return FALSE;
-    if (!current_nle_ctx->program_state.gameover && !iflags.override_ID) {
+    if (!NH_G(program_state).gameover && !iflags.override_ID) {
         if (not_fully_identified(obj))
             return FALSE;
     }
@@ -256,7 +236,7 @@ struct obj *obj;
 /* used by distant_name() to pass extra information to xname_flags();
    it would be much cleaner if this were a parameter, but that would
    require all of the xname() and doname() calls to be modified */
-/* Distantname is per-env via nle_objnam_state (above). */
+#define distantname (nh_g->s_objnam_c_distantname)
 
 /* Give the name of an object seen at a distance.  Unlike xname/doname,
  * we don't want to set dknown if it's not set already.
@@ -443,7 +423,7 @@ unsigned cxn_flags; /* bitmask of CXN_xxx values */
 {
     register char *buf;
     register int typ = obj->otyp;
-    register struct objclass *ocl = &objects[typ];
+    register struct objclass *ocl = &NH_G(objects)[typ];
     int nn = ocl->oc_name_known, omndx = obj->corpsenm;
     const char *actualn = OBJ_NAME(*ocl);
     const char *dn = OBJ_DESCR(*ocl);
@@ -742,7 +722,7 @@ unsigned cxn_flags; /* bitmask of CXN_xxx values */
     if (pluralize)
         Strcpy(buf, makeplural(buf));
 
-    if (obj->otyp == T_SHIRT && current_nle_ctx->program_state.gameover) {
+    if (obj->otyp == T_SHIRT && NH_G(program_state).gameover) {
         char tmpbuf[BUFSZ];
 
         Sprintf(eos(buf), " with text \"%s\"", tshirt_text(obj, tmpbuf));
@@ -775,12 +755,12 @@ struct obj *obj;
     int otyp = obj->otyp;
 
     /* suppress user-supplied name */
-    saveobcls.oc_uname = objects[otyp].oc_uname;
-    objects[otyp].oc_uname = 0;
+    saveobcls.oc_uname = NH_G(objects)[otyp].oc_uname;
+    NH_G(objects)[otyp].oc_uname = 0;
     /* suppress actual name if object's description is unknown */
-    saveobcls.oc_name_known = objects[otyp].oc_name_known;
+    saveobcls.oc_name_known = NH_G(objects)[otyp].oc_name_known;
     if (!obj->dknown)
-        objects[otyp].oc_name_known = 0;
+        NH_G(objects)[otyp].oc_name_known = 0;
 
     /* caveat: this makes a lot of assumptions about which fields
        are required in order for xname() to yield a sensible result */
@@ -792,7 +772,7 @@ struct obj *obj;
     bareobj.known = (obj->oclass == AMULET_CLASS)
                         ? obj->known
                         /* default is "on" for types which don't use it */
-                        : !objects[otyp].oc_uses_known;
+                        : !NH_G(objects)[otyp].oc_uses_known;
     bareobj.quan = 1L;         /* don't want plural */
     bareobj.corpsenm = NON_PM; /* suppress statue and figurine details */
     /* but suppressing fruit details leads to "bad fruit #0"
@@ -804,8 +784,8 @@ struct obj *obj;
     if (!strncmp(bufp, "uncursed ", 9))
         bufp += 9; /* Role_if(PM_PRIEST) */
 
-    objects[otyp].oc_uname = saveobcls.oc_uname;
-    objects[otyp].oc_name_known = saveobcls.oc_name_known;
+    NH_G(objects)[otyp].oc_uname = saveobcls.oc_uname;
+    NH_G(objects)[otyp].oc_name_known = saveobcls.oc_name_known;
     return bufp;
 }
 
@@ -838,7 +818,7 @@ struct obj *obj;
     else if (obj->otyp == FAKE_AMULET_OF_YENDOR && !known)
         return TRUE; /* lie */
     else
-        return (boolean) (objects[obj->otyp].oc_unique
+        return (boolean) (NH_G(objects)[obj->otyp].oc_unique
                           && (known || obj->otyp == AMULET_OF_YENDOR));
 }
 
@@ -1015,7 +995,7 @@ unsigned doname_flags;
         Strcat(prefix, "empty ");
 
     if (bknown && obj->oclass != COIN_CLASS
-        && (obj->otyp != POT_WATER || !objects[POT_WATER].oc_name_known
+        && (obj->otyp != POT_WATER || !NH_G(objects)[POT_WATER].oc_name_known
             || (!obj->cursed && !obj->blessed))) {
         /* allow 'blessed clear potion' if we don't know it's holy water;
          * always allow "uncursed potion of water"
@@ -1035,7 +1015,7 @@ unsigned doname_flags;
              * printed to avoid ambiguity between an item whose curse
              * status is unknown, and an item known to be uncursed.
              */
-                 || ((!known || !objects[obj->otyp].oc_charged
+                 || ((!known || !NH_G(objects)[obj->otyp].oc_charged
                       || obj->oclass == ARMOR_CLASS
                       || obj->oclass == RING_CLASS)
 #ifdef MAIL
@@ -1131,13 +1111,13 @@ unsigned doname_flags;
         } else if (obj->otyp == OIL_LAMP || obj->otyp == MAGIC_LAMP
                    || obj->otyp == BRASS_LANTERN || Is_candle(obj)) {
             if (Is_candle(obj)
-                && obj->age < 20L * (long) objects[obj->otyp].oc_cost)
+                && obj->age < 20L * (long) NH_G(objects)[obj->otyp].oc_cost)
                 Strcat(prefix, "partly used ");
             if (obj->lamplit)
                 Strcat(bp, " (lit)");
             break;
         }
-        if (objects[obj->otyp].oc_charged)
+        if (NH_G(objects)[obj->otyp].oc_charged)
             goto charges;
         break;
     case WAND_CLASS:
@@ -1159,7 +1139,7 @@ unsigned doname_flags;
             Strcat(bp, body_part(HAND));
             Strcat(bp, ")");
         }
-        if (known && objects[obj->otyp].oc_charged) {
+        if (known && NH_G(objects)[obj->otyp].oc_charged) {
             Strcat(prefix, sitoa(obj->spe));
             Strcat(prefix, " ");
         }
@@ -1184,7 +1164,7 @@ unsigned doname_flags;
                 Strcat(prefix, "stale ");
 #endif
             if (omndx >= LOW_PM
-                && (known || (mvitals[omndx].mvflags & MV_KNOWS_EGG))) {
+                && (known || (NH_G(mvitals)[omndx].mvflags & MV_KNOWS_EGG))) {
                 Strcat(prefix, mons[omndx].mname);
                 Strcat(prefix, " ");
                 if (obj->spe)
@@ -1202,7 +1182,7 @@ unsigned doname_flags;
         break;
     }
 
-    if ((obj->owornmask & W_WEP) && !current_nle_ctx->mrg_to_wielded) {
+    if ((obj->owornmask & W_WEP) && !mrg_to_wielded) {
         if (obj->quan != 1L) {
             Strcat(bp, " (wielded)");
         } else {
@@ -1215,10 +1195,10 @@ unsigned doname_flags;
             Sprintf(eos(bp), " (%sweapon in %s)",
                     (obj->otyp == AKLYS) ? "tethered " : "", hand_s);
 
-            if (current_nle_ctx->warn_obj_cnt && obj == uwep && (EWarn_of_mon & W_WEP) != 0L) {
+            if (warn_obj_cnt && obj == uwep && (EWarn_of_mon & W_WEP) != 0L) {
                 if (!Blind) /* we know bp[] ends with ')'; overwrite that */
                     Sprintf(eos(bp) - 1, ", %s %s)",
-                            glow_verb(current_nle_ctx->warn_obj_cnt, TRUE),
+                            glow_verb(warn_obj_cnt, TRUE),
                             glow_color(obj->oartifact));
             }
         }
@@ -1233,7 +1213,7 @@ unsigned doname_flags;
         switch (obj->oclass) {
         case WEAPON_CLASS:
             if (is_ammo(obj)) {
-                if (objects[obj->otyp].oc_skill == -P_BOW) {
+                if (NH_G(objects)[obj->otyp].oc_skill == -P_BOW) {
                     /* Ammo for a bow */
                     Strcat(bp, " (in quiver)");
                     break;
@@ -1259,11 +1239,11 @@ unsigned doname_flags;
             Strcat(bp, " (at the ready)");
         }
     }
-    /* treat 'current_nle_ctx->restoring' like suppress_price because shopkeeper and
+    /* treat 'restoring' like suppress_price because shopkeeper and
        bill might not be available yet while restore is in progress
        (objects won't normally be formatted during that time, but if
        'perm_invent' is enabled then they might be) */
-    if (iflags.suppress_price || current_nle_ctx->restoring) {
+    if (iflags.suppress_price || restoring) {
         ; /* don't attempt to obtain any stop pricing, even if 'with_price' */
     } else if (is_unpaid(obj)) { /* in inventory or in container in invent */
         long quotedprice = unpaid_cost(obj, TRUE);
@@ -1356,7 +1336,7 @@ struct obj *otmp;
 #else
         || !otmp->bknown
 #endif
-        || !objects[otmp->otyp].oc_name_known)
+        || !NH_G(objects)[otmp->otyp].oc_name_known)
         return TRUE;
     if ((!otmp->cknown && (Is_container(otmp) || otmp->otyp == STATUE))
         || (!otmp->lknown && Is_box(otmp)))
@@ -1404,7 +1384,7 @@ unsigned cxn_flags; /* bitmask of CXN_xxx values */
     const char *mname;
 
     if (glob) {
-        mname = OBJ_NAME(objects[otmp->otyp]); /* "glob of <monster>" */
+        mname = OBJ_NAME(NH_G(objects)[otmp->otyp]); /* "glob of <monster>" */
     } else if (omndx == NON_PM) { /* paranoia */
         mname = "thing";
         /* [Possible enhancement:  check whether corpse has monster traits
@@ -1532,10 +1512,10 @@ struct obj *obj;
     if (!obj->oartifact && save_oname)
         ONAME(obj) = (char *) 0;
     /* temporarily identify the type of object */
-    save_ocknown = objects[obj->otyp].oc_name_known;
-    objects[obj->otyp].oc_name_known = 1;
-    save_ocuname = objects[obj->otyp].oc_uname;
-    objects[obj->otyp].oc_uname = 0; /* avoid "foo called bar" */
+    save_ocknown = NH_G(objects)[obj->otyp].oc_name_known;
+    NH_G(objects)[obj->otyp].oc_name_known = 1;
+    save_ocuname = NH_G(objects)[obj->otyp].oc_uname;
+    NH_G(objects)[obj->otyp].oc_uname = 0; /* avoid "foo called bar" */
 
     /* format the object */
     if (obj->otyp == CORPSE) {
@@ -1553,8 +1533,8 @@ struct obj *obj;
     if (obj->quan == 1L && !strstri(buf, "'s ") && !strstri(buf, "s' "))
         buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
 
-    objects[obj->otyp].oc_name_known = save_ocknown;
-    objects[obj->otyp].oc_uname = save_ocuname;
+    NH_G(objects)[obj->otyp].oc_name_known = save_ocknown;
+    NH_G(objects)[obj->otyp].oc_uname = save_ocuname;
     *obj = save_obj; /* restore object's core settings */
     if (!obj->oartifact && save_oname)
         ONAME(obj) = save_oname;
@@ -1578,14 +1558,14 @@ unsigned lenlimit;
         return outbuf;
 
     /* shorten called string to fairly small amount */
-    save_uname = objects[obj->otyp].oc_uname;
+    save_uname = NH_G(objects)[obj->otyp].oc_uname;
     if (save_uname && strlen(save_uname) >= sizeof unamebuf) {
         (void) strncpy(unamebuf, save_uname, sizeof unamebuf - 4);
         Strcpy(unamebuf + sizeof unamebuf - 4, "...");
-        objects[obj->otyp].oc_uname = unamebuf;
+        NH_G(objects)[obj->otyp].oc_uname = unamebuf;
         releaseobuf(outbuf);
         outbuf = (*func)(obj);
-        objects[obj->otyp].oc_uname = save_uname; /* restore called string */
+        NH_G(objects)[obj->otyp].oc_uname = save_uname; /* restore called string */
         if ((unsigned) strlen(outbuf) <= lenlimit)
             return outbuf;
     }
@@ -1607,12 +1587,12 @@ unsigned lenlimit;
        unamebuf and onamebuf have both already been populated */
     if (save_uname && strlen(save_uname) >= sizeof unamebuf && save_oname
         && strlen(save_oname) >= sizeof onamebuf) {
-        objects[obj->otyp].oc_uname = unamebuf;
+        NH_G(objects)[obj->otyp].oc_uname = unamebuf;
         ONAME(obj) = onamebuf;
         releaseobuf(outbuf);
         outbuf = (*func)(obj);
         if ((unsigned) strlen(outbuf) <= lenlimit) {
-            objects[obj->otyp].oc_uname = save_uname;
+            NH_G(objects)[obj->otyp].oc_uname = save_uname;
             ONAME(obj) = save_oname;
             return outbuf;
         }
@@ -1636,7 +1616,7 @@ unsigned lenlimit;
     if (save_oname)
         ONAME(obj) = save_oname;
     if (save_uname)
-        objects[obj->otyp].oc_uname = save_uname;
+        NH_G(objects)[obj->otyp].oc_uname = save_uname;
 
     /* use whatever we've got, whether it's too long or not */
     return outbuf;
@@ -1970,8 +1950,8 @@ struct obj *obj;
        any `known' and `dknown' checking necessary) */
     if (otyp == FAKE_AMULET_OF_YENDOR)
         otyp = AMULET_OF_YENDOR;
-    if (objects[otyp].oc_unique
-        && !strcmp(simpleoname, OBJ_NAME(objects[otyp])))
+    if (NH_G(objects)[otyp].oc_unique
+        && !strcmp(simpleoname, OBJ_NAME(NH_G(objects)[otyp])))
         return the(simpleoname);
 
     /* simpleoname is singular if quan==1, plural otherwise */
@@ -2150,14 +2130,14 @@ register const char *verb;
     return buf;
 }
 
-struct sing_plur {
-    const char *sing, *plur;
-};
+/* struct sing_plur moved to nh_globals.h */
 
 /* word pairs that don't fit into formula-based transformations;
    also some suffices which have very few--often one--matches or
    which aren't systematically reversible (knives, staves) */
-static const struct sing_plur one_off[] = {
+#define one_off (nh_g->s_objnam_c_one_off)
+const struct sing_plur nh_tmpl_s_objnam_c_one_off[] =
+{
     { "child",
       "children" },      /* (for wise guys who give their food funny names) */
     { "cubus", "cubi" }, /* in-/suc-cubus */
@@ -2677,7 +2657,7 @@ const char *u_str;      /* from user, so might be variant spelling */
 const char *o_str;      /* from objects[], so is in canonical form */
 boolean retry_inverted; /* optional extra "of" handling */
 {
-    static const char detect_SP[] = "detect ",
+    static NEARDATA const char detect_SP[] = "detect ",
                                SP_detection[] = " detection";
     char *p, buf[BUFSZ];
 
@@ -2770,8 +2750,7 @@ struct o_range {
 };
 
 /* wishable subranges of objects */
-/* read-only table: not __thread, just rodata. */
-STATIC_OVL const struct o_range o_ranges[] = {
+STATIC_OVL NEARDATA const struct o_range o_ranges[] = {
     { "bag", TOOL_CLASS, SACK, BAG_OF_TRICKS },
     { "lamp", TOOL_CLASS, OIL_LAMP, MAGIC_LAMP },
     { "candle", TOOL_CLASS, TALLOW_CANDLE, WAX_CANDLE },
@@ -2852,16 +2831,16 @@ schar skill;
     short otyp = STRANGE_OBJECT;
 
     for (i = bases[WEAPON_CLASS];
-         i < NUM_OBJECTS && objects[i].oc_class == WEAPON_CLASS; i++)
-        if (objects[i].oc_skill == skill) {
+         i < NUM_OBJECTS && NH_G(objects)[i].oc_class == WEAPON_CLASS; i++)
+        if (NH_G(objects)[i].oc_skill == skill) {
             n++;
             otyp = i;
         }
     if (n > 0) {
         n = rn2(n);
         for (i = bases[WEAPON_CLASS];
-             i < NUM_OBJECTS && objects[i].oc_class == WEAPON_CLASS; i++)
-            if (objects[i].oc_skill == skill)
+             i < NUM_OBJECTS && NH_G(objects)[i].oc_class == WEAPON_CLASS; i++)
+            if (NH_G(objects)[i].oc_skill == skill)
                 if (--n < 0)
                     return i;
     }
@@ -2893,25 +2872,25 @@ int xtra_prob; /* to force 0% random generation items to also be considered */
      * scrolls are supposed to be much more common than books.]
      */
     for (i = oclass ? bases[(int) oclass] : STRANGE_OBJECT + 1;
-         i < NUM_OBJECTS && (!oclass || objects[i].oc_class == oclass);
+         i < NUM_OBJECTS && (!oclass || NH_G(objects)[i].oc_class == oclass);
          ++i) {
         /* don't match extra descriptions (w/o real name) */
-        if ((zn = OBJ_NAME(objects[i])) == 0)
+        if ((zn = OBJ_NAME(NH_G(objects)[i])) == 0)
             continue;
         if (wishymatch(name, zn, TRUE)
-            || ((zn = OBJ_DESCR(objects[i])) != 0
+            || ((zn = OBJ_DESCR(NH_G(objects)[i])) != 0
                 && wishymatch(name, zn, FALSE))
-            || ((zn = objects[i].oc_uname) != 0
+            || ((zn = NH_G(objects)[i].oc_uname) != 0
                 && wishymatch(name, zn, FALSE))) {
             validobjs[n++] = (short) i;
-            maxprob += (objects[i].oc_prob + xtra_prob);
+            maxprob += (NH_G(objects)[i].oc_prob + xtra_prob);
         }
     }
 
     if (n > 0 && maxprob) {
         prob = rn2(maxprob);
         for (i = 0; i < n - 1; i++)
-            if ((prob -= (objects[validobjs[i]].oc_prob + xtra_prob)) < 0)
+            if ((prob -= (NH_G(objects)[validobjs[i]].oc_prob + xtra_prob)) < 0)
                 break;
         return validobjs[i];
     }
@@ -3536,7 +3515,7 @@ struct obj *no_wish;
         if (!strcmpi(g, "glass")) { /* choose random color */
             /* 9 different kinds */
             typ = LAST_GEM + rnd(9);
-            if (objects[typ].oc_class == GEM_CLASS)
+            if (NH_G(objects)[typ].oc_class == GEM_CLASS)
                 goto typfnd;
             else
                 typ = 0; /* somebody changed objects[]? punt */
@@ -3558,7 +3537,7 @@ struct obj *no_wish;
         for (i = bases[GEM_CLASS]; i <= LAST_GEM; i++) {
             register const char *zn;
 
-            if ((zn = OBJ_NAME(objects[i])) != 0 && !strcmpi(actualn, zn)) {
+            if ((zn = OBJ_NAME(NH_G(objects)[i])) != 0 && !strcmpi(actualn, zn)) {
                 typ = i;
                 goto typfnd;
             }
@@ -3691,7 +3670,7 @@ struct obj *no_wish;
      * Disallow such topology tweaks for WIZKIT startup wishes.
      */
  wiztrap:
-    if (wizard && !current_nle_ctx->program_state.wizkit_wishing) {
+    if (wizard && !NH_G(program_state).wizkit_wishing) {
         struct rm *lev;
         boolean madeterrain = FALSE;
         int trap, x = u.ux, y = u.uy;
@@ -3722,7 +3701,7 @@ struct obj *no_wish;
         p = eos(bp);
         if (!BSTRCMPI(bp, p - 8, "fountain")) {
             lev->typ = FOUNTAIN;
-            level.lflags.nfountains++;
+            NH_G(level).flags.nfountains++;
             if (!strncmpi(bp, "magic ", 6))
                 lev->blessedftn = 1;
             pline("A %sfountain.", lev->blessedftn ? "magic " : "");
@@ -3733,7 +3712,7 @@ struct obj *no_wish;
             madeterrain = TRUE;
         } else if (!BSTRCMPI(bp, p - 4, "sink")) {
             lev->typ = SINK;
-            level.lflags.nsinks++;
+            NH_G(level).flags.nsinks++;
             pline("A sink.");
             madeterrain = TRUE;
 
@@ -3744,7 +3723,7 @@ struct obj *no_wish;
             del_engr_at(x, y);
             pline("A %s.", (lev->typ == POOL) ? "pool" : "moat");
             /* Must manually make kelp! */
-            water_damage_chain(level.objs[x][y], TRUE);
+            water_damage_chain(NH_G(level).objects[x][y], TRUE);
             madeterrain = TRUE;
 
         /* also matches "molten lava" */
@@ -3823,7 +3802,7 @@ struct obj *no_wish;
         oclass = wrpsym[rn2((int) sizeof wrpsym)];
  typfnd:
     if (typ)
-        oclass = objects[typ].oc_class;
+        oclass = NH_G(objects)[typ].oc_class;
 
     /* handle some objects that are only allowed in wizard mode */
     if (typ && !wizard) {
@@ -3845,7 +3824,7 @@ struct obj *no_wish;
             break;
         default:
             /* catch any other non-wishable objects (venom) */
-            if (objects[typ].oc_nowish)
+            if (NH_G(objects)[typ].oc_nowish)
                 return (struct obj *) 0;
             break;
         }
@@ -3865,7 +3844,7 @@ struct obj *no_wish;
     }
 
     /* if player specified a reasonable count, maybe honor it */
-    if (cnt > 0 && objects[typ].oc_merge
+    if (cnt > 0 && NH_G(objects)[typ].oc_merge
         && (wizard || cnt < rnd(6) || (cnt <= 7 && Is_candle(otmp))
             || (cnt <= 20 && ((oclass == WEAPON_CLASS && is_ammo(otmp))
                               || typ == ROCK || is_missile(otmp)))))
@@ -3880,7 +3859,7 @@ struct obj *no_wish;
         ; /* no alteration to spe */
     } else if (oclass == ARMOR_CLASS || oclass == WEAPON_CLASS
                || is_weptool(otmp)
-               || (oclass == RING_CLASS && objects[typ].oc_charged)) {
+               || (oclass == RING_CLASS && NH_G(objects)[typ].oc_charged)) {
         if (spe > rnd(5) && spe > otmp->spe)
             spe = 0;
         if (spe > 2 && Luck < 0)
@@ -3954,14 +3933,14 @@ struct obj *no_wish;
             if (dead_species(mntmp, FALSE)) {
                 otmp->corpsenm = NON_PM; /* it's empty */
             } else if ((!(mons[mntmp].geno & G_UNIQ) || wizard)
-                       && !(mvitals[mntmp].mvflags & G_NOCORPSE)
+                       && !(NH_G(mvitals)[mntmp].mvflags & G_NOCORPSE)
                        && mons[mntmp].cnutrit != 0) {
                 otmp->corpsenm = mntmp;
             }
             break;
         case CORPSE:
             if ((!(mons[mntmp].geno & G_UNIQ) || wizard)
-                && !(mvitals[mntmp].mvflags & G_NOCORPSE)) {
+                && !(NH_G(mvitals)[mntmp].mvflags & G_NOCORPSE)) {
                 if (mons[mntmp].msound == MS_GUARDIAN)
                     mntmp = genus(mntmp, 1);
                 set_corpsenm(otmp, mntmp);
@@ -4121,7 +4100,7 @@ struct obj *no_wish;
         if (otmp->otyp == CORPSE)
             otmp->oeaten = mons[otmp->corpsenm].cnutrit;
         else
-            otmp->oeaten = objects[otmp->otyp].oc_nutrition;
+            otmp->oeaten = NH_G(objects)[otmp->otyp].oc_nutrition;
         /* (do this adjustment before setting up object's weight) */
         consume_oeaten(otmp, 1);
     }
@@ -4145,12 +4124,12 @@ int first, last;
     if (first == last)
         return first;
     for (i = first; i <= last; i++)
-        sum += objects[i].oc_prob;
+        sum += NH_G(objects)[i].oc_prob;
     if (!sum) /* all zero */
         return first + rn2(last - first + 1);
     x = rnd(sum);
     for (i = first; i <= last; i++)
-        if (objects[i].oc_prob && (x -= objects[i].oc_prob) <= 0)
+        if (NH_G(objects)[i].oc_prob && (x -= NH_G(objects)[i].oc_prob) <= 0)
             return i;
     return 0;
 }
@@ -4180,7 +4159,7 @@ struct obj *suit;
             return "dragon mail"; /* <color> dragon scale mail */
         else if (Is_dragon_scales(suit))
             return "dragon scales";
-        suitnm = OBJ_NAME(objects[suit->otyp]);
+        suitnm = OBJ_NAME(NH_G(objects)[suit->otyp]);
         esuitp = eos((char *) suitnm);
         if (strlen(suitnm) > 5 && !strcmp(esuitp - 5, " mail"))
             return "mail"; /* most suits fall into this category */
@@ -4202,7 +4181,7 @@ struct obj *cloak;
         case MUMMY_WRAPPING:
             return "wrapping";
         case ALCHEMY_SMOCK:
-            return (objects[cloak->otyp].oc_name_known && cloak->dknown)
+            return (NH_G(objects)[cloak->otyp].oc_name_known && cloak->dknown)
                        ? "smock"
                        : "apron";
         default:
@@ -4241,11 +4220,11 @@ struct obj *gloves;
 
     if (gloves && gloves->dknown) {
         int otyp = gloves->otyp;
-        struct objclass *ocl = &objects[otyp];
+        struct objclass *ocl = &NH_G(objects)[otyp];
         const char *actualn = OBJ_NAME(*ocl),
                    *descrpn = OBJ_DESCR(*ocl);
 
-        if (strstri(objects[otyp].oc_name_known ? actualn : descrpn,
+        if (strstri(NH_G(objects)[otyp].oc_name_known ? actualn : descrpn,
                     gauntlets))
             return gauntlets;
     }

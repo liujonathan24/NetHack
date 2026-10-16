@@ -370,7 +370,7 @@
 
 /* unconscious() includes u.usleep but not is_fainted(); the multi test is
    redundant but allows the function calls to be skipped most of the time */
-#define Unaware (current_nle_ctx->multi < 0 && (unconscious() || is_fainted()))
+#define Unaware (multi < 0 && (unconscious() || is_fainted()))
 
 #define Hate_silver (u.ulycn >= LOW_PM || hates_silver(youmonst.data))
 

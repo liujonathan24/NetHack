@@ -88,7 +88,7 @@ enum levl_typ_types {
 #define IS_DOOR(typ) ((typ) == DOOR)
 #define IS_DOORJOIN(typ) (IS_ROCK(typ) || (typ) == IRONBARS)
 #define IS_TREE(typ)                                            \
-    ((typ) == TREE || (level.lflags.arboreal && (typ) == STONE))
+    ((typ) == TREE || (NH_G(level).flags.arboreal && (typ) == STONE))
 #define ACCESSIBLE(typ) ((typ) >= DOOR) /* good position */
 #define IS_ROOM(typ) ((typ) >= ROOM)    /* ROOM, STAIRS, furniture.. */
 #define ZAP_POS(typ) ((typ) >= POOL)
@@ -306,18 +306,14 @@ struct symsetentry {
 
 extern const struct symdef defsyms[MAXPCHARS]; /* defaults */
 extern const struct symdef def_warnsyms[WARNCOUNT];
-#ifndef NLE_OBJECTS_GLOBAL
-#define currentgraphics (current_nle_ctx->s_currentgraphics)
-#else
-extern int currentgraphics;
-#endif
-extern nhsym showsyms[];
-extern nhsym primary_syms[];
-extern nhsym rogue_syms[];
-extern nhsym ov_primary_syms[];
-extern nhsym ov_rogue_syms[];
+/* currentgraphics: per-env, see nh_globals.h */ /* from drawing.c */
+/* showsyms: per-env, see nh_globals.h */
+/* primary_syms: per-env, see nh_globals.h */
+/* rogue_syms: per-env, see nh_globals.h */
+/* ov_primary_syms: per-env, see nh_globals.h */
+/* ov_rogue_syms: per-env, see nh_globals.h */
 
-extern struct symsetentry symset[NUM_GRAPHICS]; /* from drawing.c */
+/* symset: per-env, see nh_globals.h */ /* from drawing.c */
 #define SYMHANDLING(ht) (symset[currentgraphics].handling == (ht))
 
 /*
@@ -423,7 +419,7 @@ struct rm {
     int glyph;               /* what the hero thinks is there */
     schar typ;               /* what is really there */
     uchar seenv;             /* seen vector */
-    Bitfield(rmflags, 5);    /* extra information for typ (XXX AW-full: was 'flags') */
+    Bitfield(flags, 5);      /* extra information for typ */
     Bitfield(horizontal, 1); /* wall/door/etc is horiz. (more typ info) */
     Bitfield(lit, 1);        /* speed hack for lit rooms */
     Bitfield(waslit, 1);     /* remember if a location was lit */
@@ -528,16 +524,13 @@ struct rm {
 #define SV7   0x80
 #define SVALL 0xFF
 
-/* XXX AW-full: these 7 aliases used to point at struct rm.flags; the field
- * was renamed to rmflags to free the `flags` token for the per-env global
- * `#define flags (*current_nle_ctx->s_flags_v)` macro. */
-#define doormask rmflags
-#define altarmask rmflags
-#define wall_info rmflags
-#define ladder rmflags
-#define drawbridgemask rmflags
-#define looted rmflags
-#define icedpool rmflags
+#define doormask flags
+#define altarmask flags
+#define wall_info flags
+#define ladder flags
+#define drawbridgemask flags
+#define looted flags
+#define icedpool flags
 
 #define blessedftn horizontal /* a fountain that grants attribs */
 #define disturbed horizontal  /* a grave that has been disturbed */
@@ -596,17 +589,13 @@ struct levelflags {
                                   rather than ROOM */
 };
 
-/* Tag added (`struct nle_dlevel`) so nle.h can forward-declare the
- * type for the per-env field. Existing code keeps using `dlevel_t`. */
-typedef struct nle_dlevel {
+typedef struct {
     struct rm locations[COLNO][ROWNO];
 #ifndef MICROPORT_BUG
-    /* Field renamed from `objects` to `objs` to free the `objects`
-     * token for the global-object-table macro. */
-    struct obj *objs[COLNO][ROWNO];
+    struct obj *objects[COLNO][ROWNO];
     struct monst *monsters[COLNO][ROWNO];
 #else
-    struct obj *objs[1][ROWNO];
+    struct obj *objects[1][ROWNO];
     char *yuk1[COLNO - 1][ROWNO];
     struct monst *monsters[1][ROWNO];
     char *yuk2[COLNO - 1][ROWNO];
@@ -616,27 +605,19 @@ typedef struct nle_dlevel {
     struct monst *monlist;
     struct damage *damagelist;
     struct cemetery *bonesinfo;
-    struct levelflags lflags; /* XXX AW-full: was 'flags' */
+    struct levelflags flags;
 } dlevel_t;
 
-/* lastseentyp — stage 7' partial migrated to nle_ctx_t (flat array of
- * COLNO*ROWNO schars). The macro returns a `schar *`, and indexing as
- * lastseentyp[x][y] no longer works; callsites that used the [x][y]
- * form are NOT yet migrated — only the 2D layout was here, so we
- * preserve it with a typed pointer-to-array macro. */
-#define lastseentyp ((schar (*)[ROWNO]) current_nle_ctx->s7_lastseentyp_p)
+/* lastseentyp: per-env, see nh_globals.h */ /* last seen/touched dungeon typ */
 
-/* level — stage 7' completion migrated to nle_ctx_t. The `level` token
- * was previously also used as a struct field name in dig_info; that
- * field was renamed to `dlvl` so this macro is unambiguous. */
-#define level (*current_nle_ctx->s7_level_p)
+/* level: per-env, see nh_globals.h */ /* structure describing the current level */
 
 /*
  * Macros for compatibility with old code. Someday these will go away.
  */
-#define levl level.locations
-#define fobj level.objlist
-#define fmon level.monlist
+#define levl NH_G(level).locations
+#define fobj NH_G(level).objlist
+#define fmon NH_G(level).monlist
 
 /*
  * Covert a trap number into the defsym graphics array.
@@ -646,7 +627,7 @@ typedef struct nle_dlevel {
 #define trap_to_defsym(t) (S_arrow_trap + (t) -1)
 #define defsym_to_trap(d) ((d) -S_arrow_trap + 1)
 
-#define OBJ_AT(x, y) (level.objs[x][y] != (struct obj *) 0)
+#define OBJ_AT(x, y) (NH_G(level).objects[x][y] != (struct obj *) 0)
 /*
  * Macros for encapsulation of level.monsters references.
  */
@@ -658,7 +639,7 @@ typedef struct nle_dlevel {
     (level.monsters[x][y] != (struct monst *) 0 \
      && (level.monsters[x][y])->mburied)
 #else   /* without 'mburied' */
-#define MON_AT(x, y) (level.monsters[x][y] != (struct monst *) 0)
+#define MON_AT(x, y) (NH_G(level).monsters[x][y] != (struct monst *) 0)
 #endif
 #ifdef EXTRA_SANITY_CHECKS
 #define place_worm_seg(m, x, y) \
@@ -674,14 +655,14 @@ typedef struct nle_dlevel {
         level.monsters[x][y] = (struct monst *) 0;      \
     } while(0)
 #else
-#define place_worm_seg(m, x, y) level.monsters[x][y] = m
-#define remove_monster(x, y) level.monsters[x][y] = (struct monst *) 0
+#define place_worm_seg(m, x, y) NH_G(level).monsters[x][y] = m
+#define remove_monster(x, y) NH_G(level).monsters[x][y] = (struct monst *) 0
 #endif
-#define m_at(x, y) (MON_AT(x, y) ? level.monsters[x][y] : (struct monst *) 0)
+#define m_at(x, y) (MON_AT(x, y) ? NH_G(level).monsters[x][y] : (struct monst *) 0)
 #define m_buried_at(x, y) \
     (MON_BURIED_AT(x, y) ? level.monsters[x][y] : (struct monst *) 0)
 
 /* restricted movement, potential luck penalties */
-#define Sokoban level.lflags.sokoban_rules
+#define Sokoban NH_G(level).flags.sokoban_rules
 
 #endif /* RM_H */
