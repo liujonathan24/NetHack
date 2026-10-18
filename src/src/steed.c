@@ -3,10 +3,9 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
 
 /* Monsters that might be ridden */
-static const char steeds[] = { S_QUADRUPED, S_UNICORN, S_ANGEL,
+static NEARDATA const char steeds[] = { S_QUADRUPED, S_UNICORN, S_ANGEL,
                                         S_CENTAUR,   S_DRAGON,  S_JABBERWOCK,
                                         '\0' };
 
@@ -115,11 +114,11 @@ struct obj *otmp;
     }
     if (Confusion || Fumbling || Glib)
         chance -= 20;
-    else if (uarmg && (s = OBJ_DESCR(objects[uarmg->otyp])) != (char *) 0
+    else if (uarmg && (s = OBJ_DESCR(NH_G(objects)[uarmg->otyp])) != (char *) 0
              && !strncmp(s, "riding ", 7))
         /* Bonus for wearing "riding" (but not fumbling) gloves */
         chance += 10;
-    else if (uarmf && (s = OBJ_DESCR(objects[uarmf->otyp])) != (char *) 0
+    else if (uarmf && (s = OBJ_DESCR(NH_G(objects)[uarmf->otyp])) != (char *) 0
              && !strncmp(s, "riding ", 7))
         /* ... or for "riding boots" */
         chance += 10;
@@ -351,7 +350,7 @@ boolean force;      /* Quietly force this animal */
     }
     /* setuwep handles polearms differently when you're mounted */
     if (uwep && is_pole(uwep))
-        current_nle_ctx->unweapon = FALSE;
+        unweapon = FALSE;
     u.usteed = mtmp;
     remove_monster(mtmp->mx, mtmp->my);
     teleds(mtmp->mx, mtmp->my, TRUE);
@@ -643,9 +642,9 @@ int reason; /* Player was thrown off etc. */
                 /* Keep steed here, move the player to cc;
                  * teleds() clears u.utrap
                  */
-                current_nle_ctx->in_steed_dismounting = TRUE;
+                in_steed_dismounting = TRUE;
                 teleds(cc.x, cc.y, TRUE);
-                current_nle_ctx->in_steed_dismounting = FALSE;
+                in_steed_dismounting = FALSE;
 
                 /* Put your steed in your trap */
                 if (save_utrap)
@@ -674,9 +673,9 @@ int reason; /* Player was thrown off etc. */
 
     /* usually return the hero to the surface */
     if (reason != DISMOUNT_ENGULFED && reason != DISMOUNT_BONES) {
-        current_nle_ctx->in_steed_dismounting = TRUE;
+        in_steed_dismounting = TRUE;
         (void) float_down(0L, W_SADDLE);
-        current_nle_ctx->in_steed_dismounting = FALSE;
+        in_steed_dismounting = FALSE;
         context.botl = TRUE;
         (void) encumber_msg();
         vision_full_recalc = 1;
@@ -684,7 +683,7 @@ int reason; /* Player was thrown off etc. */
         context.botl = TRUE;
     /* polearms behave differently when not mounted */
     if (uwep && is_pole(uwep))
-        current_nle_ctx->unweapon = TRUE;
+        unweapon = TRUE;
     return;
 }
 
@@ -765,7 +764,7 @@ int x, y;
                    mon->mstate, buf);
         return;
     }
-    if ((othermon = level.monsters[x][y]) != 0) {
+    if ((othermon = NH_G(level).monsters[x][y]) != 0) {
         describe_level(buf);
         monnm = minimal_monnam(mon, FALSE);
         othnm = (mon != othermon) ? minimal_monnam(othermon, TRUE) : "itself";
@@ -773,7 +772,7 @@ int x, y;
                    monnm, othnm, x, y, othermon->mstate, mon->mstate, buf);
     }
     mon->mx = x, mon->my = y;
-    level.monsters[x][y] = mon;
+    NH_G(level).monsters[x][y] = mon;
     mon->mstate &= ~(MON_OFFMAP | MON_MIGRATING | MON_LIMBO | MON_BUBBLEMOVE
                      | MON_ENDGAME_FREE | MON_ENDGAME_MIGR);
 }

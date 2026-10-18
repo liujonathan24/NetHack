@@ -7,7 +7,6 @@
  * =============================================================*/
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 
 STATIC_DCL int NDECL(bc_order);
 STATIC_DCL void NDECL(litter);
@@ -15,30 +14,9 @@ STATIC_OVL void NDECL(placebc_core);
 STATIC_OVL void NDECL(unplacebc_core);
 STATIC_DCL boolean FDECL(check_restriction, (int));
 
-/* Per-env (was __thread). Ball/chain placement restriction. */
-#define bcrestriction (current_nle_ctx->s_bcrestriction)
+#define bcrestriction (nh_g->s_ball_c_bcrestriction)
 #ifdef BREADCRUMBS
-/* Bc[pu]breadcrumbs per-env via nle_ctx_t.
- * Stored as pointers (lazy alloc) because nle.h only forward-declares
- * struct breadcrumbs (its full definition lives in decl.h AFTER nle.h
- * is included, so inline embedding would not compile when nle.h is
- * parsed via decl.h). The macros dereference the pointer so all
- * existing `bcpbreadcrumbs.funcnm` callsites stay unchanged. */
-static struct breadcrumbs *
-nle_bc_get(struct breadcrumbs **slot)
-{
-    if (!*slot) {
-        struct breadcrumbs *bc =
-            (struct breadcrumbs *) alloc(sizeof(struct breadcrumbs));
-        bc->funcnm = (const char *) 0;
-        bc->linenum = 0;
-        bc->in_effect = FALSE;
-        *slot = bc;
-    }
-    return *slot;
-}
-#define bcpbreadcrumbs    (*nle_bc_get(&current_nle_ctx->s_bcpbreadcrumbs))
-#define bcubreadcrumbs    (*nle_bc_get(&current_nle_ctx->s_bcubreadcrumbs))
+static struct breadcrumbs bcpbreadcrumbs = {0}, bcubreadcrumbs = {0};
 #endif
 
 void
@@ -78,7 +56,7 @@ ballfall()
             if (is_metallic(uarmh)) {
                 pline("Fortunately, you are wearing a hard helmet.");
                 dmg = 3;
-            } else if (flags.verbose)
+            } else if (NH_G(flags).verbose)
                 pline("%s does not protect you.", Yname2(uarmh));
         }
         losehp(Maybe_Half_Phys(dmg), "crunched in the head by an iron ball",
@@ -389,7 +367,7 @@ bc_order()
         || u.uswallow)
         return BCPOS_DIFFER;
 
-    for (obj = level.objs[uball->ox][uball->oy]; obj;
+    for (obj = NH_G(level).objects[uball->ox][uball->oy]; obj;
          obj = obj->nexthere) {
         if (obj == uchain)
             return BCPOS_CHAIN;

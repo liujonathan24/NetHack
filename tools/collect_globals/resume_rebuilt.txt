@@ -1,0 +1,40 @@
+# resume_rebuilt.txt -- fields of struct nh_globals that no blob carries
+# because the load recomputes them. Checked by check_resume_coverage.py;
+# one line per field: name, the function that rebuilds it, where/how.
+s_artilist_h_artilist	role_init	quest artifact's role and alignment; the reset uses the same character
+nsubroom	rest_rooms	recounted while the rooms are read back
+warn_obj_cnt	see_monsters	recounted by docrt on the ^R render
+doorindex	getlev	restore.c: from the last room's fdoor + doorct
+subrooms	rest_room	written through rooms[].sbrooms by save_room, read back into subrooms[]
+uwep	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarm	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uswapwep	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uquiver	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarmu	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uskin	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarmc	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarmh	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarms	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarmg	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uarmf	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uamul	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uright	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+uleft	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+ublindf	setworn	nulled by nle_load_player, then rebound from the loaded inventory's owornmask
+vision_full_recalc	vision_reset	set so the ^R render runs vision_recalc
+s_mkmaze_c_ebubbles	restore_waterlevel	tail pointer of the bubble chain written by save_waterlevel
+mons	role_init	quest-monster flags of the saved role; the reset uses the same character
+s_region_c_max_regions	rest_regions	set to the n_regions read back
+urole	role_init	restgamestate: role, race, gender, alignment from the saved flags
+urace	role_init	restgamestate: role, race, gender, alignment from the saved flags
+s_vision_c_could_see	vision_reset	cleared; the current rows come back from the tail (viz_array, viz_rmin, viz_rmax) and the ^R render keeps them
+s_vision_c_cs_rows0	vision_init	the row pointers into could_see
+s_vision_c_cs_rows1	vision_init	the row pointers into could_see
+s_vision_c_cs_rmin0	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmax0	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmin1	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_cs_rmax1	vision_reset	the current pair is viz_rmin/viz_rmax, from the tail; the other is reset by get_unused_cs before use
+s_vision_c_viz_clear	vision_reset	dug from the loaded level
+s_vision_c_left_ptrs	vision_reset	dug from the loaded level
+s_vision_c_right_ptrs	vision_reset	dug from the loaded level
+defer_see_monsters	nle_load_player	cleared after restgamestate; moveloop's prologue, which clears it, never runs again in a resumed process

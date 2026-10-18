@@ -4,13 +4,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx for migrated flags */
-
-/* Function-local statics in tty_getmsghistory/tty_putmsghistory.
- * These are reached from the RL frontend via winrl.cc:rl_get/putmsghistory,
- * so they race across envs sharing one libnethack.so. Migrate to per-env. */
-#define nxtidx           (current_nle_ctx->s_topl_nxtidx)
-#define initd            (current_nle_ctx->s_topl_initd)
 
 #ifdef TTY_GRAPHICS
 
@@ -157,7 +150,7 @@ const char *str;
 {
     struct WinDesc *cw = wins[WIN_MESSAGE];
 
-    if (!(cw->wflags & WIN_STOP)) {
+    if (!(cw->flags & WIN_STOP)) {
         if (ttyDisplay->cury && ttyDisplay->toplin == 2)
             clear_nhwindow(WIN_MESSAGE);
 
@@ -179,7 +172,7 @@ remember_topl()
     int idx = cw->maxrow;
     unsigned len = strlen(toplines) + 1;
 
-    if ((cw->wflags & WIN_LOCKHISTORY) || !*toplines)
+    if ((cw->flags & WIN_LOCKHISTORY) || !*toplines)
         return;
 
     if (len > (unsigned) cw->datlen[idx]) {
@@ -223,16 +216,16 @@ more()
             topl_putsym('\n');
     }
 
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutbeg();
     putsyms(defmorestr);
-    if (flags.standout)
+    if (NH_G(flags).standout)
         standoutend();
 
     xwaitforspace("\033 ");
 
     if (morc == '\033')
-        cw->wflags |= WIN_STOP;
+        cw->flags |= WIN_STOP;
 
     if (ttyDisplay->toplin && cw->cury) {
         docorner(1, cw->cury + 1);
@@ -259,17 +252,17 @@ register const char *bp;
     /* If there is room on the line, print message on same line */
     /* But messages like "You die..." deserve their own line */
     n0 = strlen(bp);
-    if ((ttyDisplay->toplin == 1 || (cw->wflags & WIN_STOP))
+    if ((ttyDisplay->toplin == 1 || (cw->flags & WIN_STOP))
         && cw->cury == 0
         && n0 + (int) strlen(toplines) + 3 < CO - 8 /* room for --More-- */
         && (notdied = strncmp(bp, "You die", 7)) != 0) {
         Strcat(toplines, "  ");
         Strcat(toplines, bp);
         cw->curx += 2;
-        if (!(cw->wflags & WIN_STOP))
+        if (!(cw->flags & WIN_STOP))
             addtopl(bp);
         return;
-    } else if (!(cw->wflags & WIN_STOP)) {
+    } else if (!(cw->flags & WIN_STOP)) {
         if (ttyDisplay->toplin == 1) {
             more();
         } else if (cw->cury) { /* for when flags.toplin == 2 && cury > 1 */
@@ -296,8 +289,8 @@ register const char *bp;
         n0 = strlen(tl);
     }
     if (!notdied)
-        cw->wflags &= ~WIN_STOP;
-    if (!(cw->wflags & WIN_STOP))
+        cw->flags &= ~WIN_STOP;
+    if (!(cw->flags & WIN_STOP))
         redotoplin(toplines);
 }
 
@@ -363,7 +356,7 @@ register int n;
 
 extern char erase_char; /* from xxxtty.c; don't need kill_char */
 
-/* returns a single keystroke; also sets 'current_nle_ctx->yn_number' */
+/* returns a single keystroke; also sets 'yn_number' */
 char
 tty_yn_function(query, resp, def)
 const char *query, *resp;
@@ -387,10 +380,10 @@ char def;
     boolean doprev = 0;
     char prompt[BUFSZ];
 
-    current_nle_ctx->yn_number = 0L;
-    if (ttyDisplay->toplin == 1 && !(cw->wflags & WIN_STOP))
+    yn_number = 0L;
+    if (ttyDisplay->toplin == 1 && !(cw->flags & WIN_STOP))
         more();
-    cw->wflags &= ~WIN_STOP;
+    cw->flags &= ~WIN_STOP;
     ttyDisplay->toplin = 3; /* special prompt state */
     ttyDisplay->inread++;
     if (resp) {
@@ -517,7 +510,7 @@ char def;
                 }
             } while (z != '\n');
             if (value > 0)
-                current_nle_ctx->yn_number = value;
+                yn_number = value;
             else if (value == 0)
                 q = 'n'; /* 0 => "no" */
             else {       /* remove number from top line, then try again */
@@ -528,8 +521,8 @@ char def;
     } while (!q);
 
  clean_up:
-    if (current_nle_ctx->yn_number)
-        Sprintf(rtmp, "#%ld", current_nle_ctx->yn_number);
+    if (yn_number)
+        Sprintf(rtmp, "#%ld", yn_number);
     else
         (void) key2txt(q, rtmp);
     /* addtopl(rtmp); -- rewrite toplines instead */
@@ -547,26 +540,8 @@ char def;
     return q;
 }
 
-/* Per-env snapshot buffer for message history.
- * Was `static char **snapshot_mesgs = 0`. Shared by
- * tty_getmsghistory() and tty_putmsghistory() across coroutine yields,
- * so it must live in the env, not the calling thread. */
-struct nle_topl_state {
-    char **_snapshot_mesgs;
-};
-static struct nle_topl_state *
-nle_topl(void)
-{
-    if (!current_nle_ctx)
-        return NULL;
-    struct nle_topl_state *s = (struct nle_topl_state *) current_nle_ctx->s_topl_state;
-    if (!s) {
-        s = (struct nle_topl_state *) calloc(1, sizeof(struct nle_topl_state));
-        current_nle_ctx->s_topl_state = s;
-    }
-    return s;
-}
-#define snapshot_mesgs (nle_topl()->_snapshot_mesgs)
+/* shared by tty_getmsghistory() and tty_putmsghistory() */
+#define snapshot_mesgs (nh_g->s_topl_c_snapshot_mesgs)
 
 /* collect currently available message history data into a sequential array;
    optionally, purge that data from the active circular buffer set as we go */
@@ -589,7 +564,7 @@ boolean purge; /* clear message history buffer as we copy it */
     /* for a passive snapshot, we just copy pointers, so can't allow further
        history updating to take place because that could clobber them */
     if (!purge)
-        cw->wflags |= WIN_LOCKHISTORY;
+        cw->flags |= WIN_LOCKHISTORY;
 
     snapshot_mesgs = (char **) alloc((cw->rows + 1) * sizeof(char *));
     outidx = 0;
@@ -633,7 +608,7 @@ boolean purged; /* True: took history's pointers, False: just cloned them */
 
         /* history can resume being updated at will now... */
         if (!purged)
-            wins[WIN_MESSAGE]->wflags &= ~WIN_LOCKHISTORY;
+            wins[WIN_MESSAGE]->flags &= ~WIN_LOCKHISTORY;
     }
 }
 
@@ -651,17 +626,17 @@ char *
 tty_getmsghistory(init)
 boolean init;
 {
-    /* nxtidx migrated to current_nle_ctx->s_topl_nxtidx. */
+    /* nxtidx: per-env nh_g->l_topl_c_tty_getmsghistory_nxtidx */
     char *nextmesg;
     char *result = 0;
 
     if (init) {
         msghistory_snapshot(FALSE);
-        nxtidx = 0;
+        NH_G(l_topl_c_tty_getmsghistory_nxtidx) = 0;
     }
 
     if (snapshot_mesgs) {
-        nextmesg = snapshot_mesgs[nxtidx++];
+        nextmesg = snapshot_mesgs[NH_G(l_topl_c_tty_getmsghistory_nxtidx)++];
         if (nextmesg) {
             result = (char *) nextmesg;
         } else {
@@ -693,21 +668,20 @@ tty_putmsghistory(msg, restoring_msghist)
 const char *msg;
 boolean restoring_msghist;
 {
-    /* initd migrated to current_nle_ctx->s_topl_initd; ctx is
-     * calloc-zero'd which gives FALSE on first call (matches original init). */
+    /* initd: per-env nh_g->l_topl_c_tty_putmsghistory_initd */
     int idx;
 #ifdef DUMPLOG
     extern unsigned saved_pline_index; /* pline.c */
 #endif
 
-    if (restoring_msghist && !initd) {
-        /* we're current_nle_ctx->restoring history from the previous session, but new
+    if (restoring_msghist && !NH_G(l_topl_c_tty_putmsghistory_initd)) {
+        /* we're restoring history from the previous session, but new
            messages have already been issued this session ("Restoring...",
            for instance); collect current history (ie, those new messages),
            and also clear it out so that nothing will be present when the
            restored ones are being put into place */
         msghistory_snapshot(TRUE);
-        initd = TRUE;
+        NH_G(l_topl_c_tty_putmsghistory_initd) = TRUE;
 #ifdef DUMPLOG
         /* this suffices; there's no need to scrub saved_pline[] pointers */
         saved_pline_index = 0;
@@ -732,7 +706,7 @@ boolean restoring_msghist;
         }
         /* now release the snapshot */
         free_msghistory_snapshot(TRUE);
-        initd = FALSE; /* reset */
+        NH_G(l_topl_c_tty_putmsghistory_initd) = FALSE; /* reset */
     }
 }
 

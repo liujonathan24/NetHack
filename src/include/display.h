@@ -19,7 +19,7 @@
  * Returns the head of the list of objects that the player can see
  * at location (x,y).
  */
-#define vobj_at(x, y) (level.objs[x][y])
+#define vobj_at(x, y) (NH_G(level).objects[x][y])
 
 /*
  * sensemon()
@@ -128,7 +128,7 @@
  * definition here is convenient.
  */
 #define is_safepet(mon)                                                   \
-    (mon && mon->mtame && canspotmon(mon) && flags.safe_dog && !Confusion \
+    (mon && mon->mtame && canspotmon(mon) && NH_G(flags).safe_dog && !Confusion \
      && !Hallucination && !Stunned)
 
 /*
@@ -312,11 +312,11 @@
     ((int) what_mon(monsndx((mon)->data), rng) + GLYPH_PET_OFF)
 
 /* This has the unfortunate side effect of needing a global variable    */
-/* to store a result. 'current_nle_ctx->otg_temp' is defined and declared in decl.{ch}.  */
+/* to store a result. 'otg_temp' is defined and declared in decl.{ch}.  */
 #define random_obj_to_glyph(rng)                \
-    ((current_nle_ctx->otg_temp = random_object(rng)) == CORPSE  \
+    ((otg_temp = random_object(rng)) == CORPSE  \
          ? random_monster(rng) + GLYPH_BODY_OFF \
-         : current_nle_ctx->otg_temp + GLYPH_OBJ_OFF)
+         : otg_temp + GLYPH_OBJ_OFF)
 
 #define obj_to_glyph(obj, rng)                                          \
     (((obj)->otyp == STATUE)                                            \
@@ -352,9 +352,9 @@
 /* The hero's glyph when seen as a monster.
  */
 #define hero_glyph                                                    \
-    monnum_to_glyph((Upolyd || !flags.showrace)                       \
+    monnum_to_glyph((Upolyd || !NH_G(flags).showrace)                       \
                         ? u.umonnum                                   \
-                        : (flags.female && urace.femalenum != NON_PM) \
+                        : (NH_G(flags).female && urace.femalenum != NON_PM) \
                               ? urace.femalenum                       \
                               : urace.malenum)
 

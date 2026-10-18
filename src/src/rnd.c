@@ -3,21 +3,83 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx access for both RNG paths. */
 
 #ifdef USE_ISAAC64
 #include "isaac64.h"
 
-/* nle_state refactor stage 1: RNG state moved out of static storage and
- * into per-instance nle_ctx_t. The (constant) function-pointer side of
- * each entry stays static because it's the same across all instances. */
+#if 0
+static isaac64_ctx rng_state;
+#endif
+
+/* struct rnglist_t moved to nh_globals.h */
 
 enum { CORE = 0, DISP = 1 };
 
-static int FDECL((*rnglist_fn[2]), (int)) = {
-    rn2,                  /* CORE */
-    rn2_on_display_rng,   /* DISP */
+#define rnglist (nh_g->s_rnd_c_rnglist)
+const struct rnglist_t nh_tmpl_s_rnd_c_rnglist[] =
+{
+    { rn2, FALSE, { 0 } },                      /* CORE */
+    { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };
+
+/* NLE: per-env RNG state accessors (nle.h). CORE = 0, DISP = 1. */
+struct isaac64_ctx *
+nle_rng_state(idx)
+int idx;
+{
+    return &rnglist[idx].rng_state;
+}
+
+boolean *
+nle_rng_init_flag(idx)
+int idx;
+{
+    return &rnglist[idx].init;
+}
+
+/* NLE: serialize both RNG contexts for the portable checkpoint.
+ *
+ * There are exactly two — CORE and DISP — and they live in the per-env block,
+ * so an in-memory snapshot already carries them. The on-disk checkpoint stores
+ * NetHack's own save blobs instead, and that format never serialized the RNG
+ * (vanilla re-seeds on restore), so a resume would otherwise rewind the
+ * generator to where a fresh reset(seed) leaves it.
+ *
+ * `fn` is deliberately not serialized: it is a function pointer, meaningless in
+ * another process, and nh_globals_init restores it from the template. */
+size_t
+nle_rng_blob_size()
+{
+    return (size_t) SIZE(rnglist) * (1 + sizeof(isaac64_ctx));
+}
+
+void
+nle_rng_save(dst)
+void *dst;
+{
+    char *p = (char *) dst;
+    int i;
+
+    for (i = 0; i < SIZE(rnglist); ++i) {
+        *p++ = (char) (rnglist[i].init ? 1 : 0);
+        (void) memcpy(p, &rnglist[i].rng_state, sizeof(isaac64_ctx));
+        p += sizeof(isaac64_ctx);
+    }
+}
+
+void
+nle_rng_load(src)
+const void *src;
+{
+    const char *p = (const char *) src;
+    int i;
+
+    for (i = 0; i < SIZE(rnglist); ++i) {
+        rnglist[i].init = *p++ ? TRUE : FALSE;
+        (void) memcpy(&rnglist[i].rng_state, p, sizeof(isaac64_ctx));
+        p += sizeof(isaac64_ctx);
+    }
+}
 
 int
 whichrng(fn)
@@ -25,8 +87,8 @@ int FDECL((*fn), (int));
 {
     int i;
 
-    for (i = 0; i < 2; ++i)
-        if (rnglist_fn[i] == fn)
+    for (i = 0; i < SIZE(rnglist); ++i)
+        if (rnglist[i].fn == fn)
             return i;
     return -1;
 }
@@ -47,14 +109,14 @@ int FDECL((*fn), (int));
         new_rng_state[i] = (unsigned char) (seed & 0xFF);
         seed >>= 8;
     }
-    isaac64_init(nle_rng_state(rngindx), new_rng_state,
+    isaac64_init(&rnglist[rngindx].rng_state, new_rng_state,
                  (int) sizeof seed);
 }
 
 static int
 RND(int x)
 {
-    return (isaac64_next_uint64(nle_rng_state(CORE)) % x);
+    return (isaac64_next_uint64(&rnglist[CORE].rng_state) % x);
 }
 
 /* 0 <= rn2(x) < x, but on a different sequence from the "main" rn2;
@@ -64,7 +126,7 @@ int
 rn2_on_display_rng(x)
 register int x;
 {
-    return (isaac64_next_uint64(nle_rng_state(DISP)) % x);
+    return (isaac64_next_uint64(&rnglist[DISP].rng_state) % x);
 }
 
 #else   /* USE_ISAAC64 */
@@ -85,12 +147,9 @@ int
 rn2_on_display_rng(x)
 register int x;
 {
-    /* Function-local `static unsigned seed = 1;` migrated
-     * to current_nle_ctx->s_rn2disprng_seed (initialized to 1 in init_nle).
-     * Direct access here rather than a #define seed macro because `seed`
-     * collides with init_isaac64's parameter name above. */
-    current_nle_ctx->s_rn2disprng_seed *= 2739110765;
-    return (int)((current_nle_ctx->s_rn2disprng_seed >> 16) % (unsigned)x);
+    static unsigned seed = 1;
+    seed *= 2739110765;
+    return (int)((seed >> 16) % (unsigned)x);
 }
 #endif  /* USE_ISAAC64 */
 

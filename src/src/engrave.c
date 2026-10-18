@@ -4,12 +4,9 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx */
 #include "lev.h"
 
-/* File-static migrated to nle_ctx_t. */
-#define head_engr (current_nle_ctx->s_head_engr)
-
+#define head_engr (nh_g->s_engrave_c_head_engr)
 STATIC_DCL const char *NDECL(blengr);
 
 char *
@@ -437,7 +434,7 @@ freehand()
             || (!bimanual(uwep) && (!uarms || !uarms->cursed)));
 }
 
-static const char styluses[] = { ALL_CLASSES, ALLOW_NONE,
+static NEARDATA const char styluses[] = { ALL_CLASSES, ALLOW_NONE,
                                           TOOL_CLASS,  WEAPON_CLASS,
                                           WAND_CLASS,  GEM_CLASS,
                                           RING_CLASS,  0 };
@@ -498,7 +495,7 @@ doengrave()
     struct obj *otmp; /* Object selected with which to engrave */
     char *writer;
 
-    current_nle_ctx->multi = 0;              /* moves consumed */
+    multi = 0;              /* moves consumed */
     nomovemsg = (char *) 0; /* occupation end message */
 
     buf[0] = (char) 0;
@@ -606,7 +603,7 @@ doengrave()
         /* "diamond" rings and others should work */
     case GEM_CLASS:
         /* diamonds & other hard gems should work */
-        if (objects[otmp->otyp].oc_tough) {
+        if (NH_G(objects)[otmp->otyp].oc_tough) {
             type = ENGRAVE;
             break;
         }
@@ -752,8 +749,8 @@ doengrave()
             case WAN_DIGGING:
                 ptext = TRUE;
                 type = ENGRAVE;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of digging!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -766,7 +763,7 @@ doengrave()
                                  ? "Chips fly out from the headstone."
                                  : is_ice(u.ux, u.uy)
                                     ? "Ice chips fly up from the ice surface!"
-                                    : (level.locations[u.ux][u.uy].typ
+                                    : (NH_G(level).locations[u.ux][u.uy].typ
                                        == DRAWBRIDGE_DOWN)
                                        ? "Splinters fly up from the bridge."
                                        : "Gravel flies up from the floor.");
@@ -775,8 +772,8 @@ doengrave()
             case WAN_FIRE:
                 ptext = TRUE;
                 type = BURN;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of fire!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -786,8 +783,8 @@ doengrave()
             case WAN_LIGHTNING:
                 ptext = TRUE;
                 type = BURN;
-                if (!objects[otmp->otyp].oc_name_known) {
-                    if (flags.verbose)
+                if (!NH_G(objects)[otmp->otyp].oc_name_known) {
+                    if (NH_G(flags).verbose)
                         pline("This %s is a wand of lightning!", xname(otmp));
                     doknown = TRUE;
                 }
@@ -897,7 +894,7 @@ doengrave()
     /* Identify stylus */
     if (doknown) {
         learnwand(otmp);
-        if (objects[otmp->otyp].oc_name_known)
+        if (NH_G(objects)[otmp->otyp].oc_name_known)
             more_experienced(0, 10);
     }
     if (teleengr) {
@@ -1073,21 +1070,21 @@ doengrave()
      */
     switch (type) {
     default:
-        current_nle_ctx->multi = -(len / 10);
-        if (current_nle_ctx->multi)
+        multi = -(len / 10);
+        if (multi)
             nomovemsg = "You finish your weird engraving.";
         break;
     case DUST:
-        current_nle_ctx->multi = -(len / 10);
-        if (current_nle_ctx->multi)
+        multi = -(len / 10);
+        if (multi)
             nomovemsg = "You finish writing in the dust.";
         break;
     case HEADSTONE:
     case ENGRAVE:
-        current_nle_ctx->multi = -(len / 10);
+        multi = -(len / 10);
         if (otmp->oclass == WEAPON_CLASS
             && (otmp->otyp != ATHAME || otmp->cursed)) {
-            current_nle_ctx->multi = -len;
+            multi = -len;
             maxelen = ((otmp->spe + 3) * 2) + 1;
             /* -2 => 3, -1 => 5, 0 => 7, +1 => 9, +2 => 11
              * Note: this does not allow a +0 anything (except an athame)
@@ -1097,44 +1094,44 @@ doengrave()
             pline("%s dull.", Yobjnam2(otmp, "get"));
             costly_alteration(otmp, COST_DEGRD);
             if (len > maxelen) {
-                current_nle_ctx->multi = -maxelen;
+                multi = -maxelen;
                 otmp->spe = -3;
             } else if (len > 1)
                 otmp->spe -= len >> 1;
             else
                 otmp->spe -= 1; /* Prevent infinite engraving */
         } else if (otmp->oclass == RING_CLASS || otmp->oclass == GEM_CLASS) {
-            current_nle_ctx->multi = -len;
+            multi = -len;
         }
-        if (current_nle_ctx->multi)
+        if (multi)
             nomovemsg = "You finish engraving.";
         break;
     case BURN:
-        current_nle_ctx->multi = -(len / 10);
-        if (current_nle_ctx->multi)
+        multi = -(len / 10);
+        if (multi)
             nomovemsg = is_ice(u.ux, u.uy)
                           ? "You finish melting your message into the ice."
                           : "You finish burning your message into the floor.";
         break;
     case MARK:
-        current_nle_ctx->multi = -(len / 10);
+        multi = -(len / 10);
         if (otmp->otyp == MAGIC_MARKER) {
             maxelen = otmp->spe * 2; /* one charge / 2 letters */
             if (len > maxelen) {
                 Your("marker dries out.");
                 otmp->spe = 0;
-                current_nle_ctx->multi = -(maxelen / 10);
+                multi = -(maxelen / 10);
             } else if (len > 1)
                 otmp->spe -= len >> 1;
             else
                 otmp->spe -= 1; /* Prevent infinite graffiti */
         }
-        if (current_nle_ctx->multi)
+        if (multi)
             nomovemsg = "You finish defacing the dungeon.";
         break;
     case ENGR_BLOOD:
-        current_nle_ctx->multi = -(len / 10);
-        if (current_nle_ctx->multi)
+        multi = -(len / 10);
+        if (multi)
             nomovemsg = "You finish scrawling.";
         break;
     }
@@ -1146,7 +1143,7 @@ doengrave()
                 maxelen--;
         if (!maxelen && *sp) {
             *sp = '\0';
-            if (current_nle_ctx->multi)
+            if (multi)
                 nomovemsg = "You cannot write any more.";
             You("are only able to write \"%s\".", ebuf);
         }
@@ -1156,7 +1153,7 @@ doengrave()
         Strcpy(buf, oep->engr_txt);
     (void) strncat(buf, ebuf, BUFSZ - (int) strlen(buf) - 1);
     /* Put the engraving onto the map */
-    make_engr_at(u.ux, u.uy, buf, moves - current_nle_ctx->multi, type);
+    make_engr_at(u.ux, u.uy, buf, moves - multi, type);
 
     if (post_engr_text[0])
         pline("%s", post_engr_text);

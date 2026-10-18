@@ -5,7 +5,7 @@
 #ifndef SP_LEV_H
 #define SP_LEV_H
 
-/* Wall directions */
+/* wall directions */
 #define W_NORTH 1
 #define W_SOUTH 2
 #define W_EAST 4
@@ -23,17 +23,17 @@
 #define SHORTSIGHTED 0x00000008L
 #define ARBOREAL 0x00000010L
 #define MAZELEVEL 0x00000020L
-#define PREMAPPED 0x00000040L /* Premapped level & sokoban rules */
+#define PREMAPPED 0x00000040L /* premapped level & sokoban rules */
 #define SHROUD 0x00000080L
 #define GRAVEYARD 0x00000100L
-#define ICEDPOOLS 0x00000200L /* For ice locations: ICED_POOL vs ICED_MOAT \
+#define ICEDPOOLS 0x00000200L /* for ice locations: ICED_POOL vs ICED_MOAT \
                                  */
-#define SOLIDIFY 0x00000400L  /* Outer areas are nondiggable & nonpasswall */
-#define CORRMAZE 0x00000800L  /* For maze levels only */
-#define CHECK_INACCESSIBLES 0x00001000L /* Check for inaccessible areas and
+#define SOLIDIFY 0x00000400L  /* outer areas are nondiggable & nonpasswall */
+#define CORRMAZE 0x00000800L  /* for maze levels only */
+#define CHECK_INACCESSIBLES 0x00001000L /* check for inaccessible areas and
    generate ways to escape from them */
 
-/* Different level layout initializers */
+/* different level layout initializers */
 enum lvlinit_types {
     LVLINIT_NONE = 0,
     LVLINIT_SOLIDFILL,
@@ -42,16 +42,16 @@ enum lvlinit_types {
     LVLINIT_ROGUE
 };
 
-/* Max. layers of object containment */
+/* max. layers of object containment */
 #define MAX_CONTAINMENT 10
 
-/* Max. # of random registers */
+/* max. # of random registers */
 #define MAX_REGISTERS 10
 
-/* Max. nested depth of subrooms */
+/* max. nested depth of subrooms */
 #define MAX_NESTED_ROOMS 5
 
-/* Max. # of opcodes per special level */
+/* max. # of opcodes per special level */
 #define SPCODER_MAX_RUNTIME 65536
 
 /* Opcodes for creating the level
@@ -118,7 +118,7 @@ enum opcode_defs {
     SPO_RETURN,
     SPO_INITLEVEL,
     SPO_LEVEL_FLAGS,
-    SPO_VAR_INIT, /* Variable_name data */
+    SPO_VAR_INIT, /* variable_name data */
     SPO_SHUFFLE_ARRAY,
     SPO_DICE,
 
@@ -198,28 +198,28 @@ enum sp_obj_var_flags {
 #define SPOFILTER_SELECTION 1
 #define SPOFILTER_MAPCHAR 2
 
-/* Gradient filter types */
+/* gradient filter types */
 #define SEL_GRADIENT_RADIAL 0
 #define SEL_GRADIENT_SQUARE 1
 
-/* Variable types */
+/* variable types */
 #define SPOVAR_NULL 0x00
-#define SPOVAR_INT 0x01      /* L */
-#define SPOVAR_STRING 0x02   /* Str */
-#define SPOVAR_VARIABLE 0x03 /* Str (contains the variable name) */
+#define SPOVAR_INT 0x01      /* l */
+#define SPOVAR_STRING 0x02   /* str */
+#define SPOVAR_VARIABLE 0x03 /* str (contains the variable name) */
 #define SPOVAR_COORD \
-    0x04 /* Coordinate, encoded in l; use SP_COORD_X() and SP_COORD_Y() */
-#define SPOVAR_REGION 0x05  /* Region, encoded in l; use SP_REGION_X1() etc \
+    0x04 /* coordinate, encoded in l; use SP_COORD_X() and SP_COORD_Y() */
+#define SPOVAR_REGION 0x05  /* region, encoded in l; use SP_REGION_X1() etc \
                                */
-#define SPOVAR_MAPCHAR 0x06 /* Map char, in l */
+#define SPOVAR_MAPCHAR 0x06 /* map char, in l */
 #define SPOVAR_MONST                                                         \
-    0x07 /* Monster class & specific monster, encoded in l; use SP_MONST_... \
+    0x07 /* monster class & specific monster, encoded in l; use SP_MONST_... \
             */
 #define SPOVAR_OBJ                                                 \
-    0x08 /* Object class & specific object type, encoded in l; use \
+    0x08 /* object class & specific object type, encoded in l; use \
             SP_OBJ_... */
-#define SPOVAR_SEL 0x09   /* Selection. char[COLNO][ROWNO] in str */
-#define SPOVAR_ARRAY 0x40 /* Used in splev_var & lc_vardefs, not in opvar */
+#define SPOVAR_SEL 0x09   /* selection. char[COLNO][ROWNO] in str */
+#define SPOVAR_ARRAY 0x40 /* used in splev_var & lc_vardefs, not in opvar */
 
 #define SP_COORD_IS_RANDOM 0x01000000L
 /* Humidity flags for get_location() and friends, used with
@@ -228,9 +228,9 @@ enum sp_obj_var_flags {
 #define WET         0x02
 #define HOT         0x04
 #define SOLID       0x08
-#define ANY_LOC     0x10 /* Even outside the level */
-#define NO_LOC_WARN 0x20 /* No complaints and set x & y to -1, if no loc */
-#define SPACELOC    0x40 /* Like DRY, but accepts furniture too */
+#define ANY_LOC     0x10 /* even outside the level */
+#define NO_LOC_WARN 0x20 /* no complaints and set x & y to -1, if no loc */
+#define SPACELOC    0x40 /* like DRY, but accepts furniture too */
 
 #define SP_COORD_X(l) (l & 0xff)
 #define SP_COORD_Y(l) ((l >> 16) & 0xff)
@@ -245,7 +245,7 @@ enum sp_obj_var_flags {
     (((x1) & 0xff) + (((y1) & 0xff) << 8) + (((x2) & 0xff) << 16) \
      + (((y2) & 0xff) << 24))
 
-/* Permonst index, object index, and lit value might be negative;
+/* permonst index, object index, and lit value might be negative;
  * add 10 to accept -1 through -9 while forcing non-negative for bit shift
  */
 #define SP_MONST_CLASS(l) ((l) & 0xff)
@@ -297,11 +297,11 @@ struct sp_coder {
     int lvl_is_joined;
     boolean check_inaccessibles;
 
-    int opcode;          /* Current opcode */
-    struct opvar *opdat; /* Current push data (req. opcode == SPO_PUSH) */
+    int opcode;          /* current opcode */
+    struct opvar *opdat; /* current push data (req. opcode == SPO_PUSH) */
 };
 
-/* Special level coder CPU flags */
+/* special level coder CPU flags */
 #define SP_CPUFLAG_LT 1
 #define SP_CPUFLAG_GT 2
 #define SP_CPUFLAG_EQ 4
@@ -333,8 +333,8 @@ typedef union str_or_len {
 } Str_or_Len;
 
 typedef struct {
-    xchar init_style; /* One of LVLINIT_foo */
-    long init_flags; /* XXX AW-full: was 'flags' */
+    xchar init_style; /* one of LVLINIT_foo */
+    long flags;
     schar filling;
     boolean init_present, padding;
     char fg, bg;
@@ -400,10 +400,8 @@ typedef struct {
     xchar fromter, toter, tolit;
 } replaceterrain;
 
-/* Values for rtype are defined in dungeon.h */
-/* Tag `nle_lev_region_s` lets nle.h forward-declare this struct without
- * pulling in sp_lev.h. */
-typedef struct nle_lev_region_s {
+/* values for rtype are defined in dungeon.h */
+typedef struct {
     struct {
         xchar x1, y1, x2, y2;
     } inarea;
@@ -454,7 +452,7 @@ typedef struct {
     char typ;
 } spill;
 
-/* Only used by lev_comp */
+/* only used by lev_comp */
 struct lc_funcdefs_parm {
     char *name;
     char parmtype;
@@ -488,18 +486,18 @@ struct lc_breakdef {
  * Quick! Avert your eyes while you still have a chance!
  */
 #ifdef SPEC_LEV
-/* Compiling lev_comp rather than nethack */
-/* Clang format off */
+/* compiling lev_comp rather than nethack */
+/* clang format off */
 #ifdef USE_OLDARGS
 #ifndef VA_TYPE
 typedef const char *vA;
 #define VA_TYPE
 #endif
-/* Hack to avoid "warning: cast to 'vA' (aka 'const char *') from smaller
+/* hack to avoid "warning: cast to 'vA' (aka 'const char *') from smaller
    integer type 'int' [-Wint-to-pointer-cast]" */
 #define vA_(a) ((vA) (long) a)
-#undef VA_ARGS  /* Redefine with the maximum number actually used */
-#undef VA_SHIFT /* Ditto */
+#undef VA_ARGS  /* redefine with the maximum number actually used */
+#undef VA_SHIFT /* ditto */
 #undef VA_PASS1
 #define VA_ARGS                                                         \
     arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, \
@@ -510,7 +508,7 @@ typedef const char *vA;
     (arg1 = arg2, arg2 = arg3, arg3 = arg4, arg4 = arg5, arg5 = arg6,    \
      arg6 = arg7, arg7 = arg8, arg8 = arg9, arg9 = arg10, arg10 = arg11, \
      arg11 = arg12, arg12 = arg13, arg13 = arg14, arg14 = 0)
-/* Standard NULL may be either (void *)0 or plain 0, both of
+/* standard NULL may be either (void *)0 or plain 0, both of
    which would need to be explicitly cast to (char *) here */
 #define VA_PASS1(a1) \
     vA_(a1), vA_(0), vA_(0), vA_(0), vA_(0), vA_(0), vA_(0), vA_(0),    \
@@ -553,7 +551,7 @@ typedef const char *vA;
 #define VA_PASS14(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14) \
     a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14
 #endif /*?USE_OLDARGS*/
-/* Clang format on */
+/* clang format on */
 /* You were warned to avert your eyes.... */
 #endif /*SPEC_LEV*/
 

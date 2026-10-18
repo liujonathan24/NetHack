@@ -4,8 +4,8 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 /* If you change the flag structure make sure you increment EDITLEVEL in   */
-/* Patchlevel.h if needed.  Changing the instance_flags structure does     */
-/* Not require incrementing EDITLEVEL.                                     */
+/* patchlevel.h if needed.  Changing the instance_flags structure does     */
+/* not require incrementing EDITLEVEL.                                     */
 
 #ifndef FLAG_H
 #define FLAG_H
@@ -16,39 +16,39 @@
  */
 
 struct flag {
-    boolean acoustics;  /* Allow dungeon sound messages */
+    boolean acoustics;  /* allow dungeon sound messages */
     boolean autodig;    /* MRKR: Automatically dig */
     boolean autoquiver; /* Automatically fill quiver */
-    boolean autoopen;   /* Open doors by walking into them */
+    boolean autoopen;   /* open doors by walking into them */
     boolean beginner;
-    boolean biff;      /* Enable checking for mail */
-    boolean bones;     /* Allow saving/loading bones */
-    boolean confirm;   /* Confirm before hitting tame monsters */
-    boolean dark_room; /* Show shadows in lit rooms */
-    boolean debug;     /* In debugging mode */
-#define wizard flags.debug
-    boolean end_own; /* List all own scores */
-    boolean explore; /* In exploration mode */
-#define discover flags.explore
+    boolean biff;      /* enable checking for mail */
+    boolean bones;     /* allow saving/loading bones */
+    boolean confirm;   /* confirm before hitting tame monsters */
+    boolean dark_room; /* show shadows in lit rooms */
+    boolean debug;     /* in debugging mode */
+#define wizard NH_G(flags).debug
+    boolean end_own; /* list all own scores */
+    boolean explore; /* in exploration mode */
+#define discover NH_G(flags).explore
     boolean female;
-    boolean friday13;        /* It's Friday the 13th */
-    boolean help;            /* Look in data file for info about stuff */
-    boolean ignintr;         /* Ignore interrupts */
-    boolean ins_chkpt;       /* Checkpoint as appropriate; INSURANCE */
-    boolean invlet_constant; /* Let objects keep their inventory symbol */
-    boolean legacy;          /* Print game entry "story" */
-    boolean lit_corridor;    /* Show a dark corr as lit if it is in sight */
+    boolean friday13;        /* it's Friday the 13th */
+    boolean help;            /* look in data file for info about stuff */
+    boolean ignintr;         /* ignore interrupts */
+    boolean ins_chkpt;       /* checkpoint as appropriate; INSURANCE */
+    boolean invlet_constant; /* let objects keep their inventory symbol */
+    boolean legacy;          /* print game entry "story" */
+    boolean lit_corridor;    /* show a dark corr as lit if it is in sight */
     boolean nap;             /* `timed_delay' option for display effects */
     boolean null;            /* OK to send nulls to the terminal */
     boolean p__obsolete;     /* [3.6.2: perm_invent moved to iflags] */
-    boolean pickup;          /* Whether you pickup or move and look */
-    boolean pickup_thrown;   /* Auto-pickup items you threw */
+    boolean pickup;          /* whether you pickup or move and look */
+    boolean pickup_thrown;   /* auto-pickup items you threw */
     boolean pushweapon; /* When wielding, push old weapon into second slot */
-    boolean rest_on_space;   /* Space means rest */
-    boolean safe_dog;        /* Give complete protection to the dog */
-    boolean showexp;         /* Show experience points */
-    boolean showscore;       /* Show score */
-    boolean silent;          /* Whether the bell rings or not */
+    boolean rest_on_space;   /* space means rest */
+    boolean safe_dog;        /* give complete protection to the dog */
+    boolean showexp;         /* show experience points */
+    boolean showscore;       /* show score */
+    boolean silent;          /* whether the bell rings or not */
     /* The story so far:
      * 'sortloot' originally took a True/False value but was changed
      * to use a letter instead.  3.6.0 was released without changing its
@@ -71,13 +71,13 @@ struct flag {
      * eventually ends.
      */
 #ifndef SKIP_BOOLEAN
-    /* This is the normal configuration; assigning a character constant
+    /* this is the normal configuration; assigning a character constant
        for a normal letter to an 'xchar' variable should always work even
        if 'char' is unsigned since character constants are actually 'int'
        and letters are within the range where signedness shouldn't matter */
     xchar   sortloot; /* 'n'=none, 'l'=loot (pickup), 'f'=full ('l'+invent) */
 #else
-    /* With SKIP_BOOLEAN, we have no idea what underlying type is being
+    /* with SKIP_BOOLEAN, we have no idea what underlying type is being
        used, other than it isn't 'xchar' (although its size might match
        that) or a bitfield (because it must be directly addressable);
        it's probably either 'char' for compactness or 'int' for access,
@@ -85,18 +85,18 @@ struct flag {
        flip a coin here and guess 'char' for compactness */
     char    sortloot; /* 'n'=none, 'l'=loot (pickup), 'f'=full ('l'+invent) */
 #endif
-    boolean sortpack;        /* Sorted inventory */
-    boolean sparkle;         /* Show "resisting" special FX (Scott Bigham) */
-    boolean standout;        /* Use standout for --More-- */
-    boolean time;            /* Display elapsed 'time' */
-    boolean tombstone;       /* Print tombstone */
-    boolean verbose;         /* Max battle info */
-    int end_top, end_around; /* Describe desired score list */
+    boolean sortpack;        /* sorted inventory */
+    boolean sparkle;         /* show "resisting" special FX (Scott Bigham) */
+    boolean standout;        /* use standout for --More-- */
+    boolean time;            /* display elapsed 'time' */
+    boolean tombstone;       /* print tombstone */
+    boolean verbose;         /* max battle info */
+    int end_top, end_around; /* describe desired score list */
     unsigned moonphase;
     unsigned long suppress_alert;
 #define NEW_MOON 0
 #define FULL_MOON 4
-    unsigned paranoia_bits; /* Alternate confirmation prompting */
+    unsigned paranoia_bits; /* alternate confirmation prompting */
 #define PARANOID_CONFIRM    0x0001
 #define PARANOID_QUIT       0x0002
 #define PARANOID_DIE        0x0004
@@ -107,21 +107,21 @@ struct flag {
 #define PARANOID_BREAKWAND  0x0080
 #define PARANOID_WERECHANGE 0x0100
 #define PARANOID_EATING     0x0200
-    int pickup_burden; /* Maximum burden before prompt */
-    int pile_limit;    /* Controls feedback when walking over objects */
+    int pickup_burden; /* maximum burden before prompt */
+    int pile_limit;    /* controls feedback when walking over objects */
     char inv_order[MAXOCLASSES];
     char pickup_types[MAXOCLASSES];
-#define NUM_DISCLOSURE_OPTIONS 6 /* I,a,v,g,c,o (decl.c) */
+#define NUM_DISCLOSURE_OPTIONS 6 /* i,a,v,g,c,o (decl.c) */
 #define DISCLOSE_PROMPT_DEFAULT_YES 'y'
 #define DISCLOSE_PROMPT_DEFAULT_NO 'n'
-#define DISCLOSE_PROMPT_DEFAULT_SPECIAL '?' /* V, default a */
+#define DISCLOSE_PROMPT_DEFAULT_SPECIAL '?' /* v, default a */
 #define DISCLOSE_YES_WITHOUT_PROMPT '+'
 #define DISCLOSE_NO_WITHOUT_PROMPT '-'
-#define DISCLOSE_SPECIAL_WITHOUT_PROMPT '#' /* V, use a */
-    char end_disclose[NUM_DISCLOSURE_OPTIONS + 1]; /* Disclose various
+#define DISCLOSE_SPECIAL_WITHOUT_PROMPT '#' /* v, use a */
+    char end_disclose[NUM_DISCLOSURE_OPTIONS + 1]; /* disclose various
                                                       info upon exit */
     char menu_style;    /* User interface style setting */
-    boolean made_fruit; /* Don't easily let the user overflow the number of
+    boolean made_fruit; /* don't easily let the user overflow the number of
                            fruits */
 
     /* KMH, role patch -- Variables used during startup.
@@ -150,18 +150,18 @@ struct flag {
      * is initialized or restored (specifically, after role_init()
      * is called).
      */
-    int initrole;  /* Starting role      (index into roles[])   */
-    int initrace;  /* Starting race      (index into races[])   */
-    int initgend;  /* Starting gender    (index into genders[]) */
-    int initalign; /* Starting alignment (index into aligns[])  */
-    int randomall; /* Randomly assign everything not specified */
-    int pantheon;  /* Deity selection for priest character */
+    int initrole;  /* starting role      (index into roles[])   */
+    int initrace;  /* starting race      (index into races[])   */
+    int initgend;  /* starting gender    (index into genders[]) */
+    int initalign; /* starting alignment (index into aligns[])  */
+    int randomall; /* randomly assign everything not specified */
+    int pantheon;  /* deity selection for priest character */
     /* Items which were in iflags in 3.4.x to preserve savefile compatibility
      */
-    boolean lootabc;   /* Use "a/b/c" rather than "o/i/b" when looting */
-    boolean showrace;  /* Show hero glyph by race rather than by role */
-    boolean travelcmd; /* Allow travel command */
-    int runmode;       /* Update screen display during run moves */
+    boolean lootabc;   /* use "a/b/c" rather than "o/i/b" when looting */
+    boolean showrace;  /* show hero glyph by race rather than by role */
+    boolean travelcmd; /* allow travel command */
+    int runmode;       /* update screen display during run moves */
 };
 
 /*
@@ -180,23 +180,23 @@ struct flag {
 struct sysflag {
     char sysflagsid[10];
 #ifdef AMIFLUSH
-    boolean altmeta;  /* Use ALT keys as META */
-    boolean amiflush; /* Kill typeahead */
+    boolean altmeta;  /* use ALT keys as META */
+    boolean amiflush; /* kill typeahead */
 #endif
 #ifdef AMII_GRAPHICS
     int numcols;
     unsigned short
         amii_dripens[20]; /* DrawInfo Pens currently there are 13 in v39 */
-    AMII_COLOR_TYPE amii_curmap[AMII_MAXCOLORS]; /* Colormap */
+    AMII_COLOR_TYPE amii_curmap[AMII_MAXCOLORS]; /* colormap */
 #endif
 #ifdef OPT_DISPMAP
-    boolean fast_map; /* Use optimized, less flexible map display */
+    boolean fast_map; /* use optimized, less flexible map display */
 #endif
 #ifdef MFLOPPY
     boolean asksavedisk;
 #endif
 #ifdef MAC
-    boolean page_wait; /* Put up a --More-- after a page of messages */
+    boolean page_wait; /* put up a --More-- after a page of messages */
 #endif
 };
 #endif
@@ -207,7 +207,7 @@ struct sysflag {
  *
  */
 
-/* Values for iflags.getpos_coords */
+/* values for iflags.getpos_coords */
 #define GPCOORDS_NONE    'n'
 #define GPCOORDS_MAP     'm'
 #define GPCOORDS_COMPASS 'c'
@@ -233,221 +233,221 @@ struct debug_flags {
 };
 
 struct instance_flags {
-    /* Stuff that really isn't option or platform related. They are
+    /* stuff that really isn't option or platform related. They are
      * set and cleared during the game to control the internal
      * behaviour of various NetHack functions and probably warrant
      * a structure of their own elsewhere some day.
      */
-    boolean debug_fuzzer;  /* Fuzz testing */
+    boolean debug_fuzzer;  /* fuzz testing */
     boolean defer_plname;  /* X11 hack: askname() might not set plname */
-    boolean herecmd_menu;  /* Use menu when mouseclick on yourself */
-    boolean invis_goldsym; /* Gold symbol is ' '? */
-    int at_midnight;       /* Only valid during end of game disclosure */
-    int at_night;          /* Also only valid during end of game disclosure */
-    int failing_untrap;    /* Move_into_trap() -> spoteffects() -> dotrap() */
-    int in_lava_effects;   /* Hack for Boots_off() */
-    int last_msg;          /* Indicator of last message player saw */
-    int override_ID;       /* True to force full identification of objects */
-    int parse_config_file_src;  /* Hack for parse_config_line() */
+    boolean herecmd_menu;  /* use menu when mouseclick on yourself */
+    boolean invis_goldsym; /* gold symbol is ' '? */
+    int at_midnight;       /* only valid during end of game disclosure */
+    int at_night;          /* also only valid during end of game disclosure */
+    int failing_untrap;    /* move_into_trap() -> spoteffects() -> dotrap() */
+    int in_lava_effects;   /* hack for Boots_off() */
+    int last_msg;          /* indicator of last message player saw */
+    int override_ID;       /* true to force full identification of objects */
+    int parse_config_file_src;  /* hack for parse_config_line() */
     int purge_monsters;    /* # of dead monsters still on fmon list */
-    int suppress_price;    /* Controls doname() for unpaid objects */
-    int terrainmode; /* For getpos()'s autodescribe when #terrain is active */
+    int suppress_price;    /* controls doname() for unpaid objects */
+    int terrainmode; /* for getpos()'s autodescribe when #terrain is active */
 #define TER_MAP    0x01
 #define TER_TRP    0x02
 #define TER_OBJ    0x04
 #define TER_MON    0x08
-#define TER_DETECT 0x10    /* Detect_foo magic rather than #terrain */
+#define TER_DETECT 0x10    /* detect_foo magic rather than #terrain */
     boolean getloc_travelmode;
     int getloc_filter;     /* GFILTER_foo */
     boolean getloc_usemenu;
     boolean getloc_moveskip;
-    coord travelcc;        /* Coordinates for travel_cache */
-    boolean trav_debug;    /* Display travel path (#if DEBUG only) */
-    boolean window_inited; /* True if init_nhwindows() completed */
-    boolean vision_inited; /* True if vision is ready */
-    boolean sanity_check;  /* Run sanity checks */
-    boolean mon_polycontrol; /* Debug: control monster polymorphs */
-    boolean in_dumplog;    /* Doing the dumplog right now? */
-    boolean in_parse;      /* Is a command being parsed? */
-     /* Suppress terminate during options parsing, for --showpaths */
+    coord travelcc;        /* coordinates for travel_cache */
+    boolean trav_debug;    /* display travel path (#if DEBUG only) */
+    boolean window_inited; /* true if init_nhwindows() completed */
+    boolean vision_inited; /* true if vision is ready */
+    boolean sanity_check;  /* run sanity checks */
+    boolean mon_polycontrol; /* debug: control monster polymorphs */
+    boolean in_dumplog;    /* doing the dumplog right now? */
+    boolean in_parse;      /* is a command being parsed? */
+     /* suppress terminate during options parsing, for --showpaths */
     boolean initoptions_noterminate;
 
-    /* Stuff that is related to options and/or user or platform preferences
+    /* stuff that is related to options and/or user or platform preferences
      */
-    unsigned msg_history; /* Hint: # of top lines to save */
-    int getpos_coords;    /* Show coordinates when getting cursor position */
+    unsigned msg_history; /* hint: # of top lines to save */
+    int getpos_coords;    /* show coordinates when getting cursor position */
     int menu_headings;    /* ATR for menu headings */
-    int *opt_booldup;     /* For duplication of boolean opts in config file */
-    int *opt_compdup;     /* For duplication of compound opts in conf file */
+    int *opt_booldup;     /* for duplication of boolean opts in config file */
+    int *opt_compdup;     /* for duplication of compound opts in conf file */
 #ifdef ALTMETA
     boolean altmeta;      /* Alt-c sends ESC c rather than M-c */
 #endif
-    boolean autodescribe;     /* Autodescribe mode in getpos() */
-    boolean cbreak;           /* In cbreak mode, rogue format */
-    boolean deferred_X;       /* Deferred entry into explore mode */
+    boolean autodescribe;     /* autodescribe mode in getpos() */
+    boolean cbreak;           /* in cbreak mode, rogue format */
+    boolean deferred_X;       /* deferred entry into explore mode */
     boolean echo;             /* 1 to echo characters */
-    boolean force_invmenu;    /* Always menu when handling inventory */
+    boolean force_invmenu;    /* always menu when handling inventory */
     /* FIXME: goldX belongs in flags, but putting it in iflags avoids
        breaking 3.6.[01] save files */
-    boolean goldX;            /* For BUCX filtering, whether gold is X or U */
-    boolean hilite_pile;      /* Mark piles of objects with a hilite */
-    boolean implicit_uncursed; /* Maybe omit "uncursed" status in inventory */
-    boolean mention_walls;    /* Give feedback when bumping walls */
+    boolean goldX;            /* for BUCX filtering, whether gold is X or U */
+    boolean hilite_pile;      /* mark piles of objects with a hilite */
+    boolean implicit_uncursed; /* maybe omit "uncursed" status in inventory */
+    boolean mention_walls;    /* give feedback when bumping walls */
     boolean menu_head_objsym; /* Show obj symbol in menu headings */
     boolean menu_overlay;     /* Draw menus over the map */
     boolean menu_requested;   /* Flag for overloaded use of 'm' prefix
                                * on some non-move commands */
     boolean menu_tab_sep;     /* Use tabs to separate option menu fields */
-    boolean news;             /* Print news */
-    boolean num_pad;          /* Use numbers for movement commands */
-    boolean perm_invent;      /* Keep full inventories up until dismissed */
-    boolean renameallowed;    /* Can change hero name during role selection */
-    boolean renameinprogress; /* We are changing hero name */
-    boolean status_updates;   /* Allow updates to bottom status lines;
+    boolean news;             /* print news */
+    boolean num_pad;          /* use numbers for movement commands */
+    boolean perm_invent;      /* keep full inventories up until dismissed */
+    boolean renameallowed;    /* can change hero name during role selection */
+    boolean renameinprogress; /* we are changing hero name */
+    boolean status_updates;   /* allow updates to bottom status lines;
                                * disable to avoid excessive noise when using
                                * a screen reader (use ^X to review status) */
-    boolean toptenwin;        /* Ending list in window instead of stdout */
-    boolean use_background_glyph; /* Use background glyph when appropriate */
-    boolean use_menu_color;   /* Use color in menus; only if wc_color */
+    boolean toptenwin;        /* ending list in window instead of stdout */
+    boolean use_background_glyph; /* use background glyph when appropriate */
+    boolean use_menu_color;   /* use color in menus; only if wc_color */
 #ifdef STATUS_HILITES
-    long hilite_delta;     /* Number of moves to leave a temp hilite lit */
-    long unhilite_deadline; /* Time when oldest temp hilite should be unlit */
+    long hilite_delta;     /* number of moves to leave a temp hilite lit */
+    long unhilite_deadline; /* time when oldest temp hilite should be unlit */
 #endif
-    boolean zerocomp;         /* Write zero-compressed save files */
-    boolean rlecomp;          /* Alternative to zerocomp; run-length encoding
+    boolean zerocomp;         /* write zero-compressed save files */
+    boolean rlecomp;          /* alternative to zerocomp; run-length encoding
                                * compression of levels when writing savefile */
     uchar num_pad_mode;
     boolean cursesgraphics;     /* Use portable curses extended characters */
 #if 0   /* XXXgraphics superseded by symbol sets */
-    boolean  DECgraphics;       /* Use DEC VT-xxx extended character set */
-    boolean  IBMgraphics;       /* Use IBM extended character set */
+    boolean  DECgraphics;       /* use DEC VT-xxx extended character set */
+    boolean  IBMgraphics;       /* use IBM extended character set */
 #ifdef MAC_GRAPHICS_ENV
-    boolean  MACgraphics;       /* Use Macintosh extended character set, as
+    boolean  MACgraphics;       /* use Macintosh extended character set, as
                                    as defined in the special font HackFont */
 #endif
 #endif
-    uchar bouldersym; /* Symbol for boulder display */
-    char prevmsg_window; /* Type of old message window to use */
-    boolean extmenu;     /* Extended commands use menu interface */
+    uchar bouldersym; /* symbol for boulder display */
+    char prevmsg_window; /* type of old message window to use */
+    boolean extmenu;     /* extended commands use menu interface */
 #ifdef MFLOPPY
-    boolean checkspace; /* Check disk space before writing files */
+    boolean checkspace; /* check disk space before writing files */
                         /* (in iflags to allow restore after moving
                          * to >2GB partition) */
 #endif
 #ifdef MICRO
-    boolean BIOS; /* Use IBM or ST BIOS calls when appropriate */
+    boolean BIOS; /* use IBM or ST BIOS calls when appropriate */
 #endif
 #if defined(MICRO) || defined(WIN32)
-    boolean rawio; /* Whether can use rawio (IOCTL call) */
+    boolean rawio; /* whether can use rawio (IOCTL call) */
 #endif
 #ifdef MAC_GRAPHICS_ENV
-    boolean MACgraphics; /* Use Macintosh extended character set, as
+    boolean MACgraphics; /* use Macintosh extended character set, as
                             as defined in the special font HackFont */
-    unsigned use_stone;  /* Use the stone ppats */
+    unsigned use_stone;  /* use the stone ppats */
 #endif
 #if defined(MSDOS) || defined(WIN32)
-    boolean hassound;     /* Has a sound card */
-    boolean usesound;     /* Use the sound card */
-    boolean usepcspeaker; /* Use the pc speaker */
+    boolean hassound;     /* has a sound card */
+    boolean usesound;     /* use the sound card */
+    boolean usepcspeaker; /* use the pc speaker */
     boolean tile_view;
     boolean over_view;
     boolean traditional_view;
 #endif
 #ifdef MSDOS
-    boolean hasvga; /* Has a vga adapter */
-    boolean usevga; /* Use the vga adapter */
-    boolean hasvesa; /* Has a VESA-capable VGA adapter */
-    boolean usevesa; /* Use the VESA-capable VGA adapter */
-    boolean grmode; /* Currently in graphics mode */
+    boolean hasvga; /* has a vga adapter */
+    boolean usevga; /* use the vga adapter */
+    boolean hasvesa; /* has a VESA-capable VGA adapter */
+    boolean usevesa; /* use the VESA-capable VGA adapter */
+    boolean grmode; /* currently in graphics mode */
 #endif
 #ifdef LAN_FEATURES
-    boolean lan_mail;         /* Mail is initialized */
-    boolean lan_mail_fetched; /* Mail is awaiting display */
+    boolean lan_mail;         /* mail is initialized */
+    boolean lan_mail_fetched; /* mail is awaiting display */
 #endif
 #ifdef TTY_TILES_ESCCODES
-    boolean vt_tiledata;     /* Output console codes for tile support in TTY */
+    boolean vt_tiledata;     /* output console codes for tile support in TTY */
 #endif
-    boolean clicklook;       /* Allow right-clicking for look */
-    boolean cmdassist;       /* Provide detailed assistance for some comnds */
-    boolean time_botl;       /* Context.botl for 'time' (moves) only */
-    boolean wizweight;       /* Display weight of everything in wizard mode */
+    boolean clicklook;       /* allow right-clicking for look */
+    boolean cmdassist;       /* provide detailed assistance for some comnds */
+    boolean time_botl;       /* context.botl for 'time' (moves) only */
+    boolean wizweight;       /* display weight of everything in wizard mode */
     /*
      * Window capability support.
      */
-    boolean wc_color;         /* Use color graphics                  */
-    boolean wc_hilite_pet;    /* Hilight pets                        */
-    boolean wc_ascii_map;     /* Show map using traditional ascii    */
-    boolean wc_tiled_map;     /* Show map using tiles                */
-    boolean wc_preload_tiles; /* Preload tiles into memory           */
-    int wc_tile_width;        /* Tile width                          */
-    int wc_tile_height;       /* Tile height                         */
-    char *wc_tile_file;       /* Name of tile file;overrides default */
-    boolean wc_inverse;       /* Use inverse video for some things   */
-    int wc_align_status;      /*  Status win at top|bot|right|left   */
-    int wc_align_message;     /* Message win at top|bot|right|left   */
-    int wc_vary_msgcount;     /* Show more old messages at a time    */
-    char *wc_foregrnd_menu; /* Points to foregrnd color name for menu win   */
-    char *wc_backgrnd_menu; /* Points to backgrnd color name for menu win   */
-    char *wc_foregrnd_message; /* Points to foregrnd color name for msg win */
-    char *wc_backgrnd_message; /* Points to backgrnd color name for msg win */
-    char *wc_foregrnd_status; /* Points to foregrnd color name for status   */
-    char *wc_backgrnd_status; /* Points to backgrnd color name for status   */
-    char *wc_foregrnd_text; /* Points to foregrnd color name for text win   */
-    char *wc_backgrnd_text; /* Points to backgrnd color name for text win   */
-    char *wc_font_map;      /* Points to font name for the map win */
-    char *wc_font_message;  /* Points to font name for message win */
-    char *wc_font_status;   /* Points to font name for status win  */
-    char *wc_font_menu;     /* Points to font name for menu win    */
-    char *wc_font_text;     /* Points to font name for text win    */
-    int wc_fontsiz_map;     /* Font size for the map win           */
-    int wc_fontsiz_message; /* Font size for the message window    */
-    int wc_fontsiz_status;  /* Font size for the status window     */
-    int wc_fontsiz_menu;    /* Font size for the menu window       */
-    int wc_fontsiz_text;    /* Font size for text windows          */
-    int wc_scroll_amount;   /* Scroll this amount at scroll_margin */
-    int wc_scroll_margin;   /* Scroll map when this far from the edge */
-    int wc_map_mode;        /* Specify map viewing options, mostly
+    boolean wc_color;         /* use color graphics                  */
+    boolean wc_hilite_pet;    /* hilight pets                        */
+    boolean wc_ascii_map;     /* show map using traditional ascii    */
+    boolean wc_tiled_map;     /* show map using tiles                */
+    boolean wc_preload_tiles; /* preload tiles into memory           */
+    int wc_tile_width;        /* tile width                          */
+    int wc_tile_height;       /* tile height                         */
+    char *wc_tile_file;       /* name of tile file;overrides default */
+    boolean wc_inverse;       /* use inverse video for some things   */
+    int wc_align_status;      /*  status win at top|bot|right|left   */
+    int wc_align_message;     /* message win at top|bot|right|left   */
+    int wc_vary_msgcount;     /* show more old messages at a time    */
+    char *wc_foregrnd_menu; /* points to foregrnd color name for menu win   */
+    char *wc_backgrnd_menu; /* points to backgrnd color name for menu win   */
+    char *wc_foregrnd_message; /* points to foregrnd color name for msg win */
+    char *wc_backgrnd_message; /* points to backgrnd color name for msg win */
+    char *wc_foregrnd_status; /* points to foregrnd color name for status   */
+    char *wc_backgrnd_status; /* points to backgrnd color name for status   */
+    char *wc_foregrnd_text; /* points to foregrnd color name for text win   */
+    char *wc_backgrnd_text; /* points to backgrnd color name for text win   */
+    char *wc_font_map;      /* points to font name for the map win */
+    char *wc_font_message;  /* points to font name for message win */
+    char *wc_font_status;   /* points to font name for status win  */
+    char *wc_font_menu;     /* points to font name for menu win    */
+    char *wc_font_text;     /* points to font name for text win    */
+    int wc_fontsiz_map;     /* font size for the map win           */
+    int wc_fontsiz_message; /* font size for the message window    */
+    int wc_fontsiz_status;  /* font size for the status window     */
+    int wc_fontsiz_menu;    /* font size for the menu window       */
+    int wc_fontsiz_text;    /* font size for text windows          */
+    int wc_scroll_amount;   /* scroll this amount at scroll_margin */
+    int wc_scroll_margin;   /* scroll map when this far from the edge */
+    int wc_map_mode;        /* specify map viewing options, mostly
                              * for backward compatibility */
-    int wc_player_selection;    /* Method of choosing character */
-    boolean wc_splash_screen;   /* Display an opening splash screen or not */
-    boolean wc_popup_dialog;    /* Put queries in pop up dialogs instead of
+    int wc_player_selection;    /* method of choosing character */
+    boolean wc_splash_screen;   /* display an opening splash screen or not */
+    boolean wc_popup_dialog;    /* put queries in pop up dialogs instead of
                                  * in the message window */
-    boolean wc_eight_bit_input; /* Allow eight bit input               */
-    boolean wc2_fullscreen;     /* Run fullscreen */
-    boolean wc2_softkeyboard;   /* Use software keyboard */
-    boolean wc2_wraptext;       /* Wrap text */
-    boolean wc2_selectsaved;    /* Display a menu of user's saved games */
-    boolean wc2_darkgray;    /* Try to use dark-gray color for black glyphs */
-    boolean wc2_hitpointbar;  /* Show graphical bar representing hit points */
-    boolean wc2_guicolor;       /* Allow colours in gui (outside map) */
-    int wc_mouse_support;       /* Allow mouse support */
-    int wc2_term_cols;		/* Terminal width, in characters */
-    int wc2_term_rows;		/* Terminal height, in characters */
-    int wc2_statuslines;        /* Default = 2, curses can handle 3 */
-    int wc2_windowborders;	/* Display borders on NetHack windows */
-    int wc2_petattr;            /* Text attributes for pet */
+    boolean wc_eight_bit_input; /* allow eight bit input               */
+    boolean wc2_fullscreen;     /* run fullscreen */
+    boolean wc2_softkeyboard;   /* use software keyboard */
+    boolean wc2_wraptext;       /* wrap text */
+    boolean wc2_selectsaved;    /* display a menu of user's saved games */
+    boolean wc2_darkgray;    /* try to use dark-gray color for black glyphs */
+    boolean wc2_hitpointbar;  /* show graphical bar representing hit points */
+    boolean wc2_guicolor;       /* allow colours in gui (outside map) */
+    int wc_mouse_support;       /* allow mouse support */
+    int wc2_term_cols;		/* terminal width, in characters */
+    int wc2_term_rows;		/* terminal height, in characters */
+    int wc2_statuslines;        /* default = 2, curses can handle 3 */
+    int wc2_windowborders;	/* display borders on NetHack windows */
+    int wc2_petattr;            /* text attributes for pet */
 #ifdef WIN32
 #define MAX_ALTKEYHANDLER 25
     char altkeyhandler[MAX_ALTKEYHANDLER];
 #endif
-    /* Copies of values in struct u, used during detection when the
+    /* copies of values in struct u, used during detection when the
        originals are temporarily cleared; kept here rather than
        locally so that they can be restored during a hangup save */
     Bitfield(save_uswallow, 1);
     Bitfield(save_uinwater, 1);
     Bitfield(save_uburied, 1);
-    /* Item types used to acomplish "special achievements"; find the target
+    /* item types used to acomplish "special achievements"; find the target
        object and you'll be flagged as having achieved something... */
-    short mines_prize_type;     /* Luckstone */
-    short soko_prize_type1;     /* Bag of holding or    */
-    short soko_prize_type2;     /* Amulet of reflection */
+    short mines_prize_type;     /* luckstone */
+    short soko_prize_type1;     /* bag of holding or    */
+    short soko_prize_type2;     /* amulet of reflection */
     struct debug_flags debug;
-    boolean windowtype_locked;  /* Windowtype can't change from configfile */
-    boolean windowtype_deferred; /* Pick a windowport and store it in
+    boolean windowtype_locked;  /* windowtype can't change from configfile */
+    boolean windowtype_deferred; /* pick a windowport and store it in
                                     chosen_windowport[], but do not switch to
                                     it in the midst of options processing */
     genericptr_t returning_missile; /* 'struct obj *'; Mjollnir or aklys */
-    boolean obsolete;  /* Obsolete options can point at this, it isn't used */
+    boolean obsolete;  /* obsolete options can point at this, it isn't used */
 };
 
 /*
@@ -467,30 +467,13 @@ struct instance_flags {
 #endif
 #define preload_tiles wc_preload_tiles
 
-/* Flags — now per-env via macro indirection. All 12
- * struct-field `flags` collisions were renamed (rmflags, lflags, dflags,
- * linfo_flags, mflags, init_flags, cmd_flags, ls_flags, wflags, tflags),
- * so the `flags` token is now unambiguous and can be redirected through
- * current_nle_ctx like iflags/sysflags.
- *
- * Util binaries (makedefs, recover) don't link nle.h and need the
- * traditional `struct flag flags` global, so we gate on
- * NLE_PER_ENV_FLAGS (set by CMakeLists.txt for the nethack target). */
-#ifdef NLE_PER_ENV_FLAGS
-#define flags (*current_nle_ctx->flags_ptr)
-#else
-extern NEARDATA struct flag flags;
-#endif
+/* flags: per-env, see nh_globals.h */
 #ifdef SYSFLAGS
-/* Sysflags — migrated to nle_ctx_t (per-env). No `.sysflags`
- * struct-field collisions. */
-#define sysflags (*current_nle_ctx->sysflags_ptr)
+extern NEARDATA struct sysflag sysflags;
 #endif
-/* Iflags — instance flags. Migrated to nle_ctx_t (per-env). No
- * `.iflags` struct-field collisions in headers or src/. */
-#define iflags (*current_nle_ctx->iflags_ptr)
+/* iflags: per-env, see nh_globals.h */
 
-/* Last_msg values
+/* last_msg values
  * Usage:
  *  pline("some message");
  *    pline: vsprintf + putstr + iflags.last_msg = PLNMSG_UNKNOWN;
@@ -499,65 +482,65 @@ extern NEARDATA struct flag flags;
  * by some_message.  The next message will clear iflags.last_msg.
  */
 enum plnmsg_types {
-    PLNMSG_UNKNOWN = 0,         /* Arbitrary */
+    PLNMSG_UNKNOWN = 0,         /* arbitrary */
     PLNMSG_ONE_ITEM_HERE,       /* "you see <single item> here" */
-    PLNMSG_TOWER_OF_FLAME,      /* Scroll of fire */
-    PLNMSG_CAUGHT_IN_EXPLOSION, /* Explode() feedback */
+    PLNMSG_TOWER_OF_FLAME,      /* scroll of fire */
+    PLNMSG_CAUGHT_IN_EXPLOSION, /* explode() feedback */
     PLNMSG_OBJ_GLOWS,           /* "the <obj> glows <color>" */
-    PLNMSG_OBJNAM_ONLY,         /* Xname/doname only, for #tip */
-    PLNMSG_OK_DONT_DIE          /* Overriding death in explore/wizard mode */
+    PLNMSG_OBJNAM_ONLY,         /* xname/doname only, for #tip */
+    PLNMSG_OK_DONT_DIE          /* overriding death in explore/wizard mode */
 };
 
-/* Runmode options */
+/* runmode options */
 enum runmode_types {
-    RUN_TPORT = 0, /* Don't update display until movement stops */
-    RUN_LEAP,      /* Update display every 7 steps */
-    RUN_STEP,      /* Update display every single step */
-    RUN_CRAWL      /* Walk w/ extra delay after each update */
+    RUN_TPORT = 0, /* don't update display until movement stops */
+    RUN_LEAP,      /* update display every 7 steps */
+    RUN_STEP,      /* update display every single step */
+    RUN_CRAWL      /* walk w/ extra delay after each update */
 };
 
-/* Paranoid confirmation prompting */
-/* Any yes confirmations also require explicit no (or ESC) to reject */
-#define ParanoidConfirm ((flags.paranoia_bits & PARANOID_CONFIRM) != 0)
-/* Quit: yes vs y for "Really quit?" and "Enter explore mode?" */
-#define ParanoidQuit ((flags.paranoia_bits & PARANOID_QUIT) != 0)
-/* Die: yes vs y for "Die?" (dying in explore mode or wizard mode) */
-#define ParanoidDie ((flags.paranoia_bits & PARANOID_DIE) != 0)
-/* Hit: yes vs y for "Save bones?" in wizard mode */
-#define ParanoidBones ((flags.paranoia_bits & PARANOID_BONES) != 0)
-/* Hit: yes vs y for "Really attack <the peaceful monster>?" */
-#define ParanoidHit ((flags.paranoia_bits & PARANOID_HIT) != 0)
-/* Pray: ask "Really pray?" (accepts y answer, doesn't require yes),
+/* paranoid confirmation prompting */
+/* any yes confirmations also require explicit no (or ESC) to reject */
+#define ParanoidConfirm ((NH_G(flags).paranoia_bits & PARANOID_CONFIRM) != 0)
+/* quit: yes vs y for "Really quit?" and "Enter explore mode?" */
+#define ParanoidQuit ((NH_G(flags).paranoia_bits & PARANOID_QUIT) != 0)
+/* die: yes vs y for "Die?" (dying in explore mode or wizard mode) */
+#define ParanoidDie ((NH_G(flags).paranoia_bits & PARANOID_DIE) != 0)
+/* hit: yes vs y for "Save bones?" in wizard mode */
+#define ParanoidBones ((NH_G(flags).paranoia_bits & PARANOID_BONES) != 0)
+/* hit: yes vs y for "Really attack <the peaceful monster>?" */
+#define ParanoidHit ((NH_G(flags).paranoia_bits & PARANOID_HIT) != 0)
+/* pray: ask "Really pray?" (accepts y answer, doesn't require yes),
    taking over for the old prayconfirm boolean option */
-#define ParanoidPray ((flags.paranoia_bits & PARANOID_PRAY) != 0)
-/* Remove: remove ('R') and takeoff ('T') commands prompt for an inventory
+#define ParanoidPray ((NH_G(flags).paranoia_bits & PARANOID_PRAY) != 0)
+/* remove: remove ('R') and takeoff ('T') commands prompt for an inventory
    item even when only one accessory or piece of armor is currently worn */
-#define ParanoidRemove ((flags.paranoia_bits & PARANOID_REMOVE) != 0)
-/* Breakwand: Applying a wand */
-#define ParanoidBreakwand ((flags.paranoia_bits & PARANOID_BREAKWAND) != 0)
-/* Werechange: accepting randomly timed werecreature change to transform
+#define ParanoidRemove ((NH_G(flags).paranoia_bits & PARANOID_REMOVE) != 0)
+/* breakwand: Applying a wand */
+#define ParanoidBreakwand ((NH_G(flags).paranoia_bits & PARANOID_BREAKWAND) != 0)
+/* werechange: accepting randomly timed werecreature change to transform
    from human to creature or vice versa while having polymorph control */
-#define ParanoidWerechange ((flags.paranoia_bits & PARANOID_WERECHANGE) != 0)
-/* Continue eating: prompt given _after_first_bite_ when eating something
+#define ParanoidWerechange ((NH_G(flags).paranoia_bits & PARANOID_WERECHANGE) != 0)
+/* continue eating: prompt given _after_first_bite_ when eating something
    while satiated */
-#define ParanoidEating ((flags.paranoia_bits & PARANOID_EATING) != 0)
+#define ParanoidEating ((NH_G(flags).paranoia_bits & PARANOID_EATING) != 0)
 
-/* Command parsing, mainly dealing with number_pad handling;
+/* command parsing, mainly dealing with number_pad handling;
    not saved and restored */
 
 #ifdef NHSTDC
-/* Forward declaration sufficient to declare pointers */
-struct ext_func_tab; /* From func_tab.h */
+/* forward declaration sufficient to declare pointers */
+struct ext_func_tab; /* from func_tab.h */
 #endif
 
-/* Special key functions */
+/* special key functions */
 enum nh_keyfunc {
     NHKF_ESC = 0,
     NHKF_DOAGAIN,
 
     NHKF_REQMENU,
 
-    /* Run ... clicklook need to be in a continuous block */
+    /* run ... clicklook need to be in a continuous block */
     NHKF_RUN,
     NHKF_RUN2,
     NHKF_RUSH,
@@ -577,9 +560,9 @@ enum nh_keyfunc {
     NHKF_COUNT,
     NHKF_GETPOS_SELF,
     NHKF_GETPOS_PICK,
-    NHKF_GETPOS_PICK_Q,  /* Quick */
-    NHKF_GETPOS_PICK_O,  /* Once */
-    NHKF_GETPOS_PICK_V,  /* Verbose */
+    NHKF_GETPOS_PICK_Q,  /* quick */
+    NHKF_GETPOS_PICK_O,  /* once */
+    NHKF_GETPOS_PICK_V,  /* verbose */
     NHKF_GETPOS_SHOWVALID,
     NHKF_GETPOS_AUTODESC,
     NHKF_GETPOS_MON_NEXT,
@@ -613,7 +596,7 @@ enum gloctypes {
     NUM_GLOCS
 };
 
-/* Commands[] is used to directly access cmdlist[] instead of looping
+/* commands[] is used to directly access cmdlist[] instead of looping
    through it to find the entry for a given input character;
    move_X is the character used for moving one step in direction X;
    alphadirchars corresponds to old sdir,
@@ -621,19 +604,18 @@ enum gloctypes {
    pcHack_compat and phone_layout only matter when num_pad is on,
    swap_yz only matters when it's off */
 struct cmd {
-    unsigned serialno;     /* Incremented after each update */
-    boolean num_pad;       /* Same as iflags.num_pad except during updates */
-    boolean pcHack_compat; /* For numpad:  affects 5, M-5, and M-0 */
-    boolean phone_layout;  /* Inverted keypad:  1,2,3 above, 7,8,9 below */
+    unsigned serialno;     /* incremented after each update */
+    boolean num_pad;       /* same as iflags.num_pad except during updates */
+    boolean pcHack_compat; /* for numpad:  affects 5, M-5, and M-0 */
+    boolean phone_layout;  /* inverted keypad:  1,2,3 above, 7,8,9 below */
     boolean swap_yz;       /* QWERTZ keyboards; use z to move NW, y to zap */
     char move_W, move_NW, move_N, move_NE, move_E, move_SE, move_S, move_SW;
-    const char *dirchars;      /* Current movement/direction characters */
-    const char *alphadirchars; /* Same as dirchars if !numpad */
-    const struct ext_func_tab *commands[256]; /* Indexed by input character */
+    const char *dirchars;      /* current movement/direction characters */
+    const char *alphadirchars; /* same as dirchars if !numpad */
+    const struct ext_func_tab *commands[256]; /* indexed by input character */
     char spkeys[NUM_NHKF];
 };
 
-/* Cmd — migrated to nle_ctx_t (per-env command bindings). */
-#define Cmd (*current_nle_ctx->s5_cmd_p)
+/* Cmd: per-env, see nh_globals.h */
 
 #endif /* FLAG_H */

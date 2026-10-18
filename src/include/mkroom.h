@@ -38,21 +38,18 @@ struct shclass {
     const char *const *shknms; /* list of shopkeeper names for this type */
 };
 
-/* stage 7' partial — heap-migrated to nle_ctx_t.
- * Field declarations (and forward-decl of struct mkroom) live in nle.h.
- * Macros expand to pointers into the per-env nle_ctx_t. */
-#define rooms          (current_nle_ctx->s7_rooms_p)
-#define subrooms       (current_nle_ctx->s7_subrooms)
+/* rooms: per-env, see nh_globals.h */
+/* subrooms: per-env, see nh_globals.h */
 /* the normal rooms on the current level are described in rooms[0..n] for
  * some n<MAXNROFROOMS
  * the vault, if any, is described by rooms[n+1]
  * the next rooms entry has hx -1 as a flag
  * there is at most one non-vault special room on a level
  */
-#define dnstairs_room  (current_nle_ctx->s7_dnstairs_room)
-#define upstairs_room  (current_nle_ctx->s7_upstairs_room)
-#define sstairs_room   (current_nle_ctx->s7_sstairs_room)
-#define doors          (current_nle_ctx->s7_doors_p)
+
+/* dnstairs_room, upstairs_room, sstairs_room: per-env, see nh_globals.h */
+
+/* doors: per-env, see nh_globals.h */
 
 /* values for rtype in the room definition structure */
 enum roomtype_types {

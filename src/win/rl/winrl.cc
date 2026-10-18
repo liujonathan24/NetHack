@@ -51,8 +51,7 @@ extern "C" {
  * --More-- situation that enter/return (ironically not necessarily space)
  * is required to continue.
  */
-/* xwaitingforspace — migrated to nle_ctx_t. */
-#define xwaitingforspace (current_nle_ctx->xwaitingforspace_v)
+/* xwaitingforspace (wintty.c) is a per-env game global: nh_globals.h. */
 
 /* Some hack.h macros. Can be undefined here. */
 #undef Invisible
@@ -63,7 +62,6 @@ extern "C" {
 #undef wizard
 #undef yn
 
-extern unsigned long nle_seeds[];
 
 extern "C" {
 extern void *nle_yield(boolean);
@@ -79,7 +77,7 @@ namespace nethack_rl
  * and onto libc malloc / free. See libc_allocator.h for the rationale.
  *
  * All STL types that own heap memory and live (transitively) under
- * nle_ctx_t->s_win_proc_calls or nle_ctx_t->s_netHackRL_instance use these
+ * nle_ctx_t->rl_win_proc_calls or nle_ctx_t->rl_instance use these
  * libc-backed aliases. The global `new` override in nle_arena_cpp.cc would
  * otherwise put their nodes in the arena where another env's libnethack
  * activity can zero them out from underneath us. */
@@ -107,7 +105,7 @@ make_libc_string(const char *s)
     return LibcString(s ? s : "", LibcAllocator<char>());
 }
 
-/* Per-env via nle_ctx_t->s_win_proc_calls. The `win_proc_calls`
+/* Per-env via nle_ctx_t->rl_win_proc_calls. The `win_proc_calls`
  * symbol is a free function below that returns a reference to the current
  * env's deque, allocated lazily on first use. Previously this was
  * `thread_local std::deque<std::string>`, which crashed when ScopedStack
@@ -125,17 +123,17 @@ win_proc_calls()
 {
     static thread_local WinProcDeque fallback_deque;
     if (!current_nle_ctx) return fallback_deque;
-    auto *d = static_cast<WinProcDeque *>(current_nle_ctx->s_win_proc_calls);
+    auto *d = static_cast<WinProcDeque *>(current_nle_ctx->rl_win_proc_calls);
     if (!d) {
         void *mem = std::malloc(sizeof(WinProcDeque));
         if (!mem) std::abort();
         d = new (mem) WinProcDeque();
-        current_nle_ctx->s_win_proc_calls = d;
+        current_nle_ctx->rl_win_proc_calls = d;
     }
     return *d;
 }
-#define in_yn_function (current_nle_ctx->s_in_yn_function)
-#define in_getlin      (current_nle_ctx->s_in_getlin)
+#define in_yn_function (current_nle_ctx->rl_in_yn_function)
+#define in_getlin      (current_nle_ctx->rl_in_getlin)
 
 // Glyphs provide instructions for windows to render the game (see display.h).
 // At the start of the game, descriptions and properties of the object classes
@@ -152,7 +150,7 @@ int
 shuffled_glyph(int glyph)
 {
     if glyph_is_normal_object (glyph) {
-        return GLYPH_OBJ_OFF + objects[glyph_to_obj(glyph)].oc_descr_idx;
+        return GLYPH_OBJ_OFF + NH_G(objects)[glyph_to_obj(glyph)].oc_descr_idx;
     }
     return glyph;
 }
@@ -251,6 +249,10 @@ class NetHackRL
     static size_t mirror_blob_size();
     void save_mirror(void *dst) const;
     void load_mirror(const void *src);
+    /* Public for the same reason: a restore has to refill the observation
+     * planes from the restored mirror, and it cannot do that from inside the
+     * game coroutine the way a normal step does. */
+    void fill_obs(nle_obs *);
 
   private:
     struct rl_menu_item {
@@ -296,17 +298,17 @@ class NetHackRL
      * `#pragma omp parallel for`, so worker threads saw a null instance
      * and segfaulted in `instance_get()->getch_method()`.
      *
-     * Now the NetHackRL singleton lives in nle_ctx_t->s_netHackRL_instance.
+     * Now the NetHackRL singleton lives in nle_ctx_t->rl_instance.
      * `instance` is an inline accessor that resolves to the current env's
      * NetHackRL via current_nle_ctx (which is __thread but set by
      * nle_swap_in before each step). */
     static inline NetHackRL* instance_get() {
         return current_nle_ctx
-                   ? static_cast<NetHackRL*>(current_nle_ctx->s_netHackRL_instance)
+                   ? static_cast<NetHackRL*>(current_nle_ctx->rl_instance)
                    : nullptr;
     }
     static inline void instance_set(NetHackRL* p) {
-        if (current_nle_ctx) current_nle_ctx->s_netHackRL_instance = p;
+        if (current_nle_ctx) current_nle_ctx->rl_instance = p;
     }
   public:
     /* Allocate the NetHackRL instance through libc malloc and
@@ -334,15 +336,15 @@ class NetHackRL
     /* Called from nle_end (C). */
     static void destroy_for_ctx(nle_ctx_t *nle) {
         if (!nle) return;
-        if (nle->s_netHackRL_instance) {
-            destroy_libc(static_cast<NetHackRL*>(nle->s_netHackRL_instance));
-            nle->s_netHackRL_instance = nullptr;
+        if (nle->rl_instance) {
+            destroy_libc(static_cast<NetHackRL*>(nle->rl_instance));
+            nle->rl_instance = nullptr;
         }
-        if (nle->s_win_proc_calls) {
-            auto *d = static_cast<WinProcDeque *>(nle->s_win_proc_calls);
+        if (nle->rl_win_proc_calls) {
+            auto *d = static_cast<WinProcDeque *>(nle->rl_win_proc_calls);
             d->~WinProcDeque();
             std::free(d);
-            nle->s_win_proc_calls = nullptr;
+            nle->rl_win_proc_calls = nullptr;
         }
     }
   private:
@@ -371,6 +373,21 @@ class NetHackRL
         return LibcRlWindowPtr(new (mem) rl_window{ type, {}, {} });
     }
 
+    /* windows_ is outside the snapshot, so after nle_fr_restore the core
+     * can name a window whose mirror slot a later destroy nulled; give it
+     * a slot again instead of dereferencing null. */
+    rl_window *
+    rl_win_ensure(winid wid, int type)
+    {
+        if (wid < 0)
+            return nullptr;
+        if ((size_t) wid >= windows_.size())
+            windows_.resize((size_t) wid + 1);
+        if (!windows_[wid])
+            windows_[wid] = make_libc_rl_window(type);
+        return windows_[wid].get();
+    }
+
     std::array<int16_t, (COLNO - 1) * ROWNO> glyphs_;
 
     /* Output of mapglyph */
@@ -386,7 +403,6 @@ class NetHackRL
                             XCHAR_P y);
     void store_screen_description(XCHAR_P x, XCHAR_P y, int glyph);
 
-    void fill_obs(nle_obs *);
     int getch_method();
 
     std::array<LibcString, MAXBLSTATS> status_;
@@ -452,13 +468,29 @@ NetHackRL::mirror_blob_size()
            + n * NLE_SCREEN_DESCRIPTION_LENGTH   /* screen_descriptions_ */
            + sizeof(uint32_t)                    /* inventory_ count */
            + (size_t) NLE_INVENTORY_SIZE * RL_INV_SLOT /* inventory_ slots */
-           + 2 + RL_MSG_MAX;                     /* WIN_MESSAGE last_msg */
+           + 2 + RL_MSG_MAX                      /* WIN_MESSAGE last_msg */
+           + sizeof(int64_t)                     /* condition_bits_ */
+           + MAXWIN;                             /* windows_ types */
 }
 
 void
 NetHackRL::save_mirror(void *dst) const
 {
     char *p = static_cast<char *>(dst);
+    /* condition_bits_ lives on the libc-malloc'd NetHackRL instance, outside
+     * the arena and the ctx block, so the snapshot would otherwise not carry
+     * it and a restored game would report the abandoned branch's condition
+     * mask in blstats[NLE_BL_CONDITION]. */
+    {
+        int64_t cond = (int64_t) condition_bits_;
+        std::memcpy(p, &cond, sizeof(cond)); p += sizeof(cond);
+    }
+    /* windows_ is per-game state too: a slot a later destroy nulled would
+     * skip its clear (the map mirror at the game's end) or come back with
+     * another type. 0 = no window. */
+    for (int wid = 0; wid < MAXWIN; wid++)
+        *p++ = (char) (((size_t) wid < windows_.size() && windows_[wid])
+                           ? windows_[wid]->type : 0);
     std::memcpy(p, glyphs_.data(), sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(p, chars_.data(), sizeof(chars_));       p += sizeof(chars_);
     std::memcpy(p, colors_.data(), sizeof(colors_));     p += sizeof(colors_);
@@ -516,6 +548,25 @@ void
 NetHackRL::load_mirror(const void *src)
 {
     const char *p = static_cast<const char *>(src);
+    {
+        int64_t cond = 0;
+        std::memcpy(&cond, p, sizeof(cond)); p += sizeof(cond);
+        condition_bits_ = (long) cond;
+    }
+    for (int wid = 0; wid < MAXWIN; wid++) {
+        int type = (unsigned char) *p++;
+        if ((size_t) wid >= windows_.size()) {
+            if (!type)
+                continue;
+            windows_.resize((size_t) wid + 1);
+        }
+        if (!type)
+            windows_[wid].reset(nullptr);
+        else if (!windows_[wid])
+            windows_[wid] = make_libc_rl_window(type);
+        else
+            windows_[wid]->type = type;
+    }
     std::memcpy(glyphs_.data(), p, sizeof(glyphs_));     p += sizeof(glyphs_);
     std::memcpy(chars_.data(), p, sizeof(chars_));       p += sizeof(chars_);
     std::memcpy(colors_.data(), p, sizeof(colors_));     p += sizeof(colors_);
@@ -563,7 +614,7 @@ NetHackRL::load_mirror(const void *src)
 }
 
 /* C-callable shims used by nle_fast_reset.c. The NetHackRL instance lives on
- * nle_ctx_t->s_netHackRL_instance (libc-malloc'd, outside the arena). */
+ * nle_ctx_t->rl_instance (libc-malloc'd, outside the arena). */
 extern "C" size_t
 nle_rl_mirror_size(void)
 {
@@ -573,8 +624,8 @@ nle_rl_mirror_size(void)
 extern "C" void
 nle_rl_mirror_save(nle_ctx_t *nle, void *dst)
 {
-    if (nle && nle->s_netHackRL_instance)
-        static_cast<NetHackRL *>(nle->s_netHackRL_instance)->save_mirror(dst);
+    if (nle && nle->rl_instance)
+        static_cast<NetHackRL *>(nle->rl_instance)->save_mirror(dst);
     else
         std::memset(dst, 0, NetHackRL::mirror_blob_size());
 }
@@ -582,8 +633,8 @@ nle_rl_mirror_save(nle_ctx_t *nle, void *dst)
 extern "C" void
 nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
 {
-    if (nle && nle->s_netHackRL_instance)
-        static_cast<NetHackRL *>(nle->s_netHackRL_instance)->load_mirror(src);
+    if (nle && nle->rl_instance)
+        static_cast<NetHackRL *>(nle->rl_instance)->load_mirror(src);
 }
 
 /* Reset the win-proc diagnostic deque to empty on restore. The deque (libc-
@@ -592,11 +643,28 @@ nle_rl_mirror_load(nle_ctx_t *nle, const void *src)
  * deque from drifting/growing across restores. The matching ScopedStack dtor
  * guards pop-on-empty, so the restored stack's still-pending destructors are
  * harmless no-ops against the now-empty deque. */
+/* Refill the observation planes from the restored state.
+ *
+ * fill_obs() is the only writer of glyphs/chars/colors/specials/message/
+ * blstats/inv_*, and its only other caller is getch_method(), inside the game
+ * coroutine. A restore does not enter the coroutine, so without this the
+ * planes keep the abandoned branch's last frame until the next step. Every
+ * input it reads -- the mirror arrays, NH_G(program_state), in_yn_function /
+ * in_getlin / xwaitingforspace, iflags, and u/sstairs in the arena -- is
+ * restored by the time nle_fr_restore calls this, so it consumes no game turn
+ * and draws no RNG. */
+extern "C" void
+nle_rl_fill_obs(nle_ctx_t *nle)
+{
+    if (nle && nle->rl_instance && nle->observation)
+        static_cast<NetHackRL *>(nle->rl_instance)->fill_obs(nle->observation);
+}
+
 extern "C" void
 nle_rl_winproc_reset(nle_ctx_t *nle)
 {
-    if (nle && nle->s_win_proc_calls)
-        static_cast<WinProcDeque *>(nle->s_win_proc_calls)->clear();
+    if (nle && nle->rl_win_proc_calls)
+        static_cast<WinProcDeque *>(nle->rl_win_proc_calls)->clear();
 }
 
 void
@@ -609,12 +677,12 @@ void
 NetHackRL::fill_obs(nle_obs *obs)
 {
     if (obs->program_state) {
-        obs->program_state[0] = current_nle_ctx->program_state.gameover;
-        obs->program_state[1] = current_nle_ctx->program_state.panicking;
-        obs->program_state[2] = current_nle_ctx->program_state.exiting;
-        obs->program_state[3] = current_nle_ctx->program_state.in_moveloop;
-        obs->program_state[4] = current_nle_ctx->program_state.in_impossible;
-        obs->program_state[5] = current_nle_ctx->program_state.something_worth_saving;
+        obs->program_state[0] = NH_G(program_state).gameover;
+        obs->program_state[1] = NH_G(program_state).panicking;
+        obs->program_state[2] = NH_G(program_state).exiting;
+        obs->program_state[3] = NH_G(program_state).in_moveloop;
+        obs->program_state[4] = NH_G(program_state).in_impossible;
+        obs->program_state[5] = NH_G(program_state).something_worth_saving;
         // TODO: Consider adding something_worth_saving.
         // Also consider adding ttyDisplay->inmore ...
     }
@@ -629,7 +697,7 @@ NetHackRL::fill_obs(nle_obs *obs)
         obs->internal[2] = in_getlin;
         obs->internal[3] = xwaitingforspace;
         obs->internal[4] = stairs_down;
-        obs->internal[5] = 0; /* Used to be core seed */
+        obs->internal[5] = current_nle_ctx->rl_cmd_boundary;
         obs->internal[6] = 0; /* Used to be disp seed */
         obs->internal[7] = u.uhunger;
         obs->internal[8] =
@@ -641,7 +709,7 @@ NetHackRL::fill_obs(nle_obs *obs)
         obs->misc[2] = xwaitingforspace;
     }
 
-    if ((!current_nle_ctx->program_state.something_worth_saving && !current_nle_ctx->program_state.in_moveloop)
+    if ((!NH_G(program_state).something_worth_saving && !NH_G(program_state).in_moveloop)
         || !iflags.window_inited) {
         // Game not yet started (!something_worth_saving && !in_moveloop -- we
         // need both as something_worth_saving also becomes false in
@@ -697,30 +765,42 @@ NetHackRL::fill_obs(nle_obs *obs)
      * this loop never runs, so the default obs is byte-identical to vanilla
      * and golden parity is unaffected. */
     if (nle_tuning.reveal_map > 0.0) {
+        /* on a fresh copy of the screen: the update callback refreshes the
+         * rows the game redrew, so a monster the overlay drew into another
+         * row before would linger there */
+        if (current_nle_ctx)
+            nle_vt_refresh_obs(current_nle_ctx, obs);
         for (int x = 1; x < COLNO; x++) {
             for (int y = 0; y < ROWNO; y++) {
                 size_t i = (x - 1) % (COLNO - 1);
                 size_t j = y % ROWNO;
                 size_t offset = j * (COLNO - 1) + i;
 
-                /* Only overlay cells the hero has not already seen. A blank
-                 * cell is the nul_glyph (stone) fill the port initializes
-                 * with and which store_glyph re-emits for unknown terrain. */
+                /* Only overlay cells the hero has not already seen (a blank
+                 * nul_glyph cell). The hero's memory holds the revealed
+                 * terrain, secret doors opened (vision.c reveal_map_memory);
+                 * this fills what it does not cover. */
                 if (obs->glyphs && obs->glyphs[offset] != nul_glyph)
                     continue;
 
-                /* back_to_glyph() returns S_stone for any wall whose seenv
-                 * bits are all clear (display.c: idx = seenv ? wall_angle()
-                 * : S_stone), so an unseen wall would overlay as blank stone
-                 * and stay masked. For wall cells (incl. secret doors) with
-                 * seenv==0, temporarily set seenv = SVALL so wall_angle()
-                 * computes a wall face, then restore the original value
-                 * immediately. Fully reversible: levl[][] is unchanged after
-                 * this call. */
+                /* back_to_glyph() renders a wall as S_stone (blank) whenever
+                 * wall_angle() has no face to show for the hero's seen-vector:
+                 * either seenv==0 (display.c:1785 short-circuits to S_stone)
+                 * or seenv holds only angles this wall segment does not show
+                 * from -- e.g. HWALL with wall_info WM_W_RIGHT/LEFT seen only
+                 * from SV6 (display.c:2547-2560), or a corner with WM_C_OUTER /
+                 * WM_C_INNER seen only from its hidden side (set_corner,
+                 * display.c:2563-2593). Gating the poke on seenv==0 therefore
+                 * left every wall the hero HAS partly seen from its blind side
+                 * rendering as blank stone under reveal_map. So poke
+                 * seenv = SVALL for ANY wall cell (incl. secret doors) we reach
+                 * here -- we only reach here when the emitted glyph is already
+                 * blank stone -- then restore the original value immediately.
+                 * Fully reversible: levl[][] is unchanged after this call. */
                 schar typ = levl[x][y].typ;
                 uchar saved_seenv = levl[x][y].seenv;
                 boolean poked = FALSE;
-                if ((IS_WALL(typ) || typ == SDOOR) && saved_seenv == 0) {
+                if (IS_WALL(typ) || typ == SDOOR) {
                     levl[x][y].seenv = SVALL;
                     poked = TRUE;
                 }
@@ -729,6 +809,23 @@ NetHackRL::fill_obs(nle_obs *obs)
 
                 if (poked)
                     levl[x][y].seenv = saved_seenv;
+
+                /* INVARIANT: never emit a walkable-looking glyph for a cell
+                 * the engine will refuse to step into.  ACCESSIBLE(typ) is
+                 * exactly the predicate test_move() uses (hack.c:749 tests
+                 * IS_ROCK == typ < POOL, and prints "It's a wall." for
+                 * IS_WALL/SDOOR, "It's solid stone." otherwise), so any
+                 * !ACCESSIBLE cell must render as wall face or stone.
+                 *
+                 * Secret doors and secret corridors used to be remapped here
+                 * to S_ndoor / S_corr so that "lights on" showed a connected
+                 * map.  But SDOOR/SCORR are NOT accessible until found, and
+                 * S_ndoor is '.' and S_corr is '#': that painted an ordinary
+                 * floor/corridor glyph over solid rock, so a cell that looked
+                 * like plain floor answered a move with "It's a wall."  The
+                 * poke above already gives SDOOR a proper wall face; SCORR
+                 * falls through to back_to_glyph()'s S_stone (blank), which
+                 * is what an unfound secret passage looks like in vanilla. */
 
                 /* Map the background glyph to char/color/special exactly the
                  * way rl_print_glyph -> store_glyph / store_mapped_glyph do. */
@@ -786,7 +883,18 @@ NetHackRL::fill_obs(nle_obs *obs)
             size_t j = my % ROWNO;
             size_t offset = j * (COLNO - 1) + i;
 
-            int glyph = mon_to_glyph(mtmp, rn2_on_display_rng);
+            /* Mirror display.c's pet branch (display.c:508-512). Using the
+             * bare mon_to_glyph here dropped GLYPH_PET_OFF, so every monster
+             * came out as a plain monster glyph under reveal_map -- which
+             * silently disabled BOTH the "[PET - don't attack]" label
+             * (prompt/features.py, via glyph_is_pet) and the melee guard
+             * (tools/netplay_true.py::_refuse_attack). Measured: a revealed
+             * rollout killed its own starting pet on turn 2. The tame check is
+             * display.c's own; worm tails cannot arise here because this loop
+             * walks fmon head positions only. */
+            int glyph = (mtmp->mtame && !Hallucination)
+                            ? pet_to_glyph(mtmp, rn2_on_display_rng)
+                            : mon_to_glyph(mtmp, rn2_on_display_rng);
 
             int ch;
             int color;
@@ -910,12 +1018,13 @@ NetHackRL::getch_method()
 {
     fill_obs(nle_get_obs());
     int i = ((nle_obs *) nle_yield(TRUE))->action;
+    current_nle_ctx->rl_cmd_boundary = 0;
 
     /* NOT calling tty_nhgetch() but instead getting the input from
        the context switch. No stdin required. The following code is from
        tty_nhgetch. */
     if (WIN_MESSAGE != WIN_ERR && wins[WIN_MESSAGE])
-        wins[WIN_MESSAGE]->wflags &= ~WIN_STOP;
+        wins[WIN_MESSAGE]->flags &= ~WIN_STOP;
     if (!i)
         i = '\033'; /* Map NUL to ESC since nethack doesn't expect NUL */
     else if (i == EOF)
@@ -1085,7 +1194,10 @@ void
 NetHackRL::putstr_method(winid wid, int attr, const char *str)
 {
     DEBUG_API("About to set strings on " << wid << std::endl);
-    windows_[wid]->last_msg = make_libc_string(str);
+    rl_window *w = rl_win_ensure(wid, NHW_TEXT);
+    if (!w)
+        return;
+    w->last_msg = make_libc_string(str);
 }
 
 winid
@@ -1160,15 +1272,7 @@ NetHackRL::clear_nhwindow_method(winid wid)
     }
 
     DEBUG_API("rl_clear_nhwindow(wid=" << wid << ")" << std::endl);
-    /* Exp_039: tty_clear_nhwindow emits home()/cl_end()/clear_screen() etc.
-     * which all go to nle_putchar -> outbuf. The agent reads the in-memory
-     * window state (windows_[wid]->menu_items, last_msg, glyphs_/chars_/
-     * colors_) which is already cleared above. The TTY-side rendering
-     * here is dead work. Per perf-record: this was ~2.4% of user CPU at
-     * N=1024 (clear_nhwindow_method -> tty_clear_nhwindow -> nle_putchar). */
-#if 0
     tty_clear_nhwindow(wid);
-#endif
 }
 
 void
@@ -1184,7 +1288,8 @@ void
 NetHackRL::destroy_nhwindow_method(winid wid)
 {
     DEBUG_API("rl_destroy_nhwindow(wid=" << wid << ")" << std::endl);
-    windows_[wid].reset(nullptr);
+    if (wid >= 0 && (size_t) wid < windows_.size())
+        windows_[wid].reset(nullptr);
     tty_destroy_nhwindow(wid);
 }
 
@@ -1193,7 +1298,10 @@ NetHackRL::start_menu_method(winid wid)
 {
     DEBUG_API("rl_start_menu(wid=" << wid << ")" << std::endl);
     tty_start_menu(wid);
-    windows_[wid]->menu_items.clear();
+    rl_window *w = rl_win_ensure(wid, NHW_MENU);
+    if (!w)
+        return;
+    w->menu_items.clear();
 }
 
 void
@@ -1215,7 +1323,10 @@ NetHackRL::add_menu_method(
        we won't see any updates happening during tty_select_menu. We could
        try to inspect tty's own menu items instead? */
 
-    windows_[wid]->menu_items.emplace_back(rl_menu_item{
+    rl_window *w = rl_win_ensure(wid, NHW_MENU);
+    if (!w)
+        return;
+    w->menu_items.emplace_back(rl_menu_item{
         glyph, *identifier, -1L, make_libc_string(str), attr, preselected, ch,
         gch });
 }
@@ -1260,10 +1371,8 @@ NetHackRL::rl_exit_nhwindows(const char *c)
 {
     DEBUG_API("rl_exit_nhwindows" << std::endl);
     ScopedStack s(win_proc_calls(), "exit_nhwindows");
-    if (current_nle_ctx && current_nle_ctx->s_netHackRL_instance) {
-        destroy_libc(static_cast<NetHackRL*>(current_nle_ctx->s_netHackRL_instance));
-        current_nle_ctx->s_netHackRL_instance = nullptr;
-    }
+    /* The instance outlives the game: a snapshot restored after the game's
+     * end steps on through it. nle_end frees it (destroy_for_ctx). */
     tty_exit_nhwindows(c);
 }
 
@@ -1589,16 +1698,6 @@ NetHackRL::rl_end_screen()
     DEBUG_API("rl_end_screen" << std::endl);
     ScopedStack s(win_proc_calls(), "end_screen");
     tty_end_screen();
-
-    if (instance_get()) {
-        // The only way instance can still be around is in an error situation.
-        // Unfortunately, ZQM doesn't close properly when destructed via
-        // global objects. So we do it here.
-        if (current_nle_ctx) {
-            destroy_libc(static_cast<NetHackRL*>(current_nle_ctx->s_netHackRL_instance));
-            current_nle_ctx->s_netHackRL_instance = nullptr;
-        }
-    }
 }
 
 void
@@ -1639,13 +1738,7 @@ NetHackRL::rl_status_update(int fldidx, genericptr_t ptr, int chg,
     ScopedStack s(win_proc_calls(), "status_update");
     instance_get()->status_update_method(fldidx, ptr, chg, percent, color,
                                    colormasks);
-    /* Exp_039: tty_status_update() formats the status bar (sprintf-heavy)
-     * into a TTY buffer that the RL agent never reads — the agent gets
-     * its stats via update_blstats / fill_obs straight from u/youmonst.
-     * Per perf-record: this path was ~15% of user CPU under N=128 puffer
-     * training (printf_positional, __vfprintf, __strchrnul, _IO_default_xsputn).
-     * Skip it; nothing downstream consumes the formatted output. */
-#if 0 && defined(STATUS_HILITES)
+#ifdef STATUS_HILITES
     tty_status_update(fldidx, ptr, chg, percent, color, colormasks);
 #endif
 }

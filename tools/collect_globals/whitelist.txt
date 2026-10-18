@@ -1,0 +1,41 @@
+# Symbols allowed to stay in a writable section of libnethack.
+# One per line, '#' comments; a name matches itself and gcc's `name.N`
+# spellings of function-local statics. Every entry needs a reason.
+
+# --- the one thread-local pointer to the current environment's state ---
+nh_g
+
+# --- process-level state that is identical for every environment (see keep.txt) ---
+ptrbuf          # alloc.c fmt_ptr(): "%p" scratch buffers for panic/debug text
+ptrbufidx       # ditto
+dlb_libs        # dlb.c: the read-only data-library file table, opened once per process
+dlb_procs       # dlb.c: active dlb backend vtable
+dlb_initialized # dlb.c: one-time dlb_init latch
+
+# --- compiler/runtime artifacts ---
+DW.ref.__gxx_personality_v0   # g++ EH personality reference (winrl.cc)
+_ZStL8__ioinit                # libstdc++ iostream init guard (winrl.cc)
+
+# --- NLE layer (src/nle.c, alloc.c, dlb.c, nle_fast_reset.c, nle_sentinel.c, winrl.cc) ---
+current_nle_ctx     # the thread-local pointer to the environment being stepped
+nle_arena_base      # alloc.c: legacy process arena, only used before the first env exists
+nle_arena_used      # ditto
+nle_arena_cap       # ditto
+nle_arena_registry_base       # alloc.c: registry of live per-env arenas (lock-free, atomics)
+nle_arena_registry_cap_bytes  # ditto
+nle_arena_registry_hwm        # ditto
+dlb_init_state      # dlb.c: once-only open of the shared data library
+linux_flag_console  # nle.c: whether stdin is a Linux console (never, in NLE)
+erase_char          # nle.c: tty control chars of a real terminal (none in NLE)
+intr_char           # ditto
+kill_char           # ditto
+nle_fr_last_rc      # nle_fast_reset.c: diagnostic result of the last restore
+g_slots             # nle_sentinel.c: process-wide env registry for crash/hang breadcrumbs
+g_tls               # ditto (thread-local)
+g_crash_path        # ditto
+g_signal_fired      # ditto
+g_once              # ditto
+altstack            # ditto (signal alternate stack)
+_ZGVZN10nethack_rlL14win_proc_callsEvE14fallback_deque  # winrl.cc: thread-local fallback deque used only when no env is anchored
+_ZZN10nethack_rlL14win_proc_callsEvE14fallback_deque    # ditto
+vision_recur_depth  # vision.c: recursion guard, reset at every view_from() entry

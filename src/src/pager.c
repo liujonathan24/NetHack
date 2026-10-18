@@ -7,27 +7,7 @@
 /* a few other help related facilities */
 
 #include "hack.h"
-#include "nle.h" /* current_nle_ctx, refactor */
 #include "dlb.h"
-
-/* Per-env pager.c state. Replaces function-local statics. */
-struct nle_pager_state {
-    char _look_buf[BUFSZ];
-    boolean _once;
-};
-static struct nle_pager_state *
-nle_pager(void)
-{
-    if (!current_nle_ctx) return NULL;
-    struct nle_pager_state *s = (struct nle_pager_state *) current_nle_ctx->s_pager_state;
-    if (!s) {
-        s = (struct nle_pager_state *) nle_arena_calloc(1, sizeof(struct nle_pager_state));
-        current_nle_ctx->s_pager_state = s;
-    }
-    return s;
-}
-#define look_buf  (nle_pager()->_look_buf)
-#define once      (nle_pager()->_once)
 
 STATIC_DCL boolean FDECL(is_swallow_sym, (int));
 STATIC_DCL int FDECL(append_str, (char *, const char *));
@@ -125,7 +105,7 @@ char *outbuf;
     struct obj *otmp;
     boolean fakeobj, isyou = (mon == &youmonst);
     int x = isyou ? u.ux : mon->mx, y = isyou ? u.uy : mon->my,
-        glyph = (level.lflags.hero_memory && !isyou) ? levl[x][y].glyph
+        glyph = (NH_G(level).flags.hero_memory && !isyou) ? levl[x][y].glyph
                                                     : glyph_at(x, y);
 
     *outbuf = '\0';
@@ -188,7 +168,7 @@ struct obj **obj_p;
     *obj_p = (struct obj *) 0;
     /* TODO: check inside containers in case glyph came from detection */
     if ((otmp = sobj_at(glyphotyp, x, y)) == 0)
-        for (otmp = level.buriedobjlist; otmp; otmp = otmp->nobj)
+        for (otmp = NH_G(level).buriedobjlist; otmp; otmp = otmp->nobj)
             if (otmp->ox == x && otmp->oy == y && otmp->otyp == glyphotyp)
                 break;
 
@@ -838,6 +818,7 @@ struct permonst **for_supplement;
 {
     static const char mon_interior[] = "the interior of a monster",
                       unreconnoitered[] = "unreconnoitered";
+    /* look_buf: per-env nh_g->l_pager_c_do_screen_description_look_buf */
     char prefix[BUFSZ];
     int i, alt_i, j, glyph = NO_GLYPH,
         skipped_venom = 0, found = 0; /* count of matching syms found */
@@ -930,7 +911,7 @@ struct permonst **for_supplement;
            symbol; firstmatch is assumed to already be set for '@' */
         if ((looked ? (sym == showsyms[S_HUMAN + SYM_OFF_M]
                        && cc.x == u.ux && cc.y == u.uy)
-                    : (sym == def_monsyms[S_HUMAN].sym && !flags.showrace))
+                    : (sym == def_monsyms[S_HUMAN].sym && !NH_G(flags).showrace))
             && !(Race_if(PM_HUMAN) || Race_if(PM_ELF)) && !Upolyd)
             found += append_str(out_str, "you"); /* tack on "or you" */
     }
@@ -1128,10 +1109,10 @@ struct permonst **for_supplement;
             char monbuf[BUFSZ];
             char temp_buf[BUFSZ];
 
-            pm = lookat(cc.x, cc.y, look_buf, monbuf);
+            pm = lookat(cc.x, cc.y, NH_G(l_pager_c_do_screen_description_look_buf), monbuf);
             if (pm && for_supplement)
                 *for_supplement = pm;
-            *firstmatch = look_buf;
+            *firstmatch = NH_G(l_pager_c_do_screen_description_look_buf);
             if (*(*firstmatch)) {
                 Sprintf(temp_buf, " (%s)", *firstmatch);
                 (void) strncat(out_str, temp_buf,
@@ -1188,15 +1169,15 @@ coord *click_cc;
             /* 'y' and 'n' to keep backwards compatibility with previous
                versions: "Specify unknown object by cursor?" */
             add_menu(win, NO_GLYPH, &any,
-                     flags.lootabc ? 0 : any.a_char, 'y', ATR_NONE,
+                     NH_G(flags).lootabc ? 0 : any.a_char, 'y', ATR_NONE,
                      "something on the map", MENU_UNSELECTED);
             any.a_char = 'i';
             add_menu(win, NO_GLYPH, &any,
-                     flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                     NH_G(flags).lootabc ? 0 : any.a_char, 0, ATR_NONE,
                      "something you're carrying", MENU_UNSELECTED);
             any.a_char = '?';
             add_menu(win, NO_GLYPH, &any,
-                     flags.lootabc ? 0 : any.a_char, 'n', ATR_NONE,
+                     NH_G(flags).lootabc ? 0 : any.a_char, 'n', ATR_NONE,
                      "something else (by symbol or name)", MENU_UNSELECTED);
             if (!u.uswallow && !Hallucination) {
                 any = zeroany;
@@ -1209,19 +1190,19 @@ coord *click_cc;
                    bogus monster type, so suppress when hallucinating */
                 any.a_char = 'm';
                 add_menu(win, NO_GLYPH, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         NH_G(flags).lootabc ? 0 : any.a_char, 0, ATR_NONE,
                          "nearby monsters", MENU_UNSELECTED);
                 any.a_char = 'M';
                 add_menu(win, NO_GLYPH, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         NH_G(flags).lootabc ? 0 : any.a_char, 0, ATR_NONE,
                          "all monsters shown on map", MENU_UNSELECTED);
                 any.a_char = 'o';
                 add_menu(win, NO_GLYPH, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         NH_G(flags).lootabc ? 0 : any.a_char, 0, ATR_NONE,
                          "nearby objects", MENU_UNSELECTED);
                 any.a_char = 'O';
                 add_menu(win, NO_GLYPH, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         NH_G(flags).lootabc ? 0 : any.a_char, 0, ATR_NONE,
                          "all objects shown on map", MENU_UNSELECTED);
             }
             end_menu(win, "What do you want to look at:");
@@ -1298,8 +1279,8 @@ coord *click_cc;
     }
 
     /* Save the verbose flag, we change it later. */
-    save_verbose = flags.verbose;
-    flags.verbose = flags.verbose && !quick;
+    save_verbose = NH_G(flags).verbose;
+    NH_G(flags).verbose = NH_G(flags).verbose && !quick;
     /*
      * The user typed one letter, or we're identifying from the screen.
      */
@@ -1311,7 +1292,7 @@ coord *click_cc;
 
         if (from_screen || clicklook) {
             if (from_screen) {
-                if (flags.verbose)
+                if (NH_G(flags).verbose)
                     pline("Please move the cursor to %s.",
                           what_is_an_unknown_object);
                 else
@@ -1320,7 +1301,7 @@ coord *click_cc;
                 ans = getpos(&cc, quick, what_is_an_unknown_object);
                 if (ans < 0 || cc.x < 0)
                     break; /* done */
-                flags.verbose = FALSE; /* only print long question once */
+                NH_G(flags).verbose = FALSE; /* only print long question once */
             }
         }
 
@@ -1349,7 +1330,7 @@ coord *click_cc;
 
             /* check the data file for information about this thing */
             if (found == 1 && ans != LOOK_QUICK && ans != LOOK_ONCE
-                && (ans == LOOK_VERBOSE || (flags.help && !quick))
+                && (ans == LOOK_VERBOSE || (NH_G(flags).help && !quick))
                 && !clicklook) {
                 char temp_buf[BUFSZ], supplemental_name[BUFSZ];
 
@@ -1366,7 +1347,7 @@ coord *click_cc;
         }
     } while (from_screen && !quick && ans != LOOK_ONCE && !clicklook);
 
-    flags.verbose = save_verbose;
+    NH_G(flags).verbose = save_verbose;
     return 0;
 }
 
@@ -1458,7 +1439,9 @@ boolean do_mons; /* True => monsters, False => objects */
     destroy_nhwindow(win);
 }
 
-static const char *suptext1[] = {
+#define suptext1 (nh_g->s_pager_c_suptext1)
+const char *const nh_tmpl_s_pager_c_suptext1[] =
+{
     "%s is a member of a marauding horde of orcs",
     "rumored to have brutally attacked and plundered",
     "the ordinarily sheltered town that is located ",
@@ -1470,7 +1453,9 @@ static const char *suptext1[] = {
     (char *) 0,
 };
 
-static const char *suptext2[] = {
+#define suptext2 (nh_g->s_pager_c_suptext2)
+const char *const nh_tmpl_s_pager_c_suptext2[] =
+{
     "\"%s\" is the common dungeon name of",
     "a nefarious orc who is known to acquire property",
     "from thieves and sell it off for profit.",
@@ -1885,16 +1870,17 @@ char *cbuf;
 int
 dowhatdoes()
 {
+    /* once: per-env nh_g->l_pager_c_dowhatdoes_once */
     char bufr[BUFSZ];
     char q, *reslt;
 
-    if (!once) {
+    if (!NH_G(l_pager_c_dowhatdoes_once)) {
         pline("Ask about '&' or '?' to get more info.%s",
 #ifdef ALTMETA
               iflags.altmeta ? "  (For ESC, type it twice.)" :
 #endif
               "");
-        once = TRUE;
+        NH_G(l_pager_c_dowhatdoes_once) = TRUE;
     }
 #if defined(UNIX) || defined(VMS)
     introff(); /* disables ^C but not ^\ */
@@ -1932,14 +1918,14 @@ docontact(VOID_ARGS)
     winid cwin = create_nhwindow(NHW_TEXT);
     char buf[BUFSZ];
 
-    if (sysopt.support) {
+    if (NH_G(sysopt).support) {
         /*XXX overflow possibilities*/
-        Sprintf(buf, "To contact local support, %s", sysopt.support);
+        Sprintf(buf, "To contact local support, %s", NH_G(sysopt).support);
         putstr(cwin, 0, buf);
         putstr(cwin, 0, "");
-    } else if (sysopt.fmtd_wizard_list) { /* formatted SYSCF WIZARDS */
+    } else if (NH_G(sysopt).fmtd_wizard_list) { /* formatted SYSCF WIZARDS */
         Sprintf(buf, "To contact local support, contact %s.",
-                sysopt.fmtd_wizard_list);
+                NH_G(sysopt).fmtd_wizard_list);
         putstr(cwin, 0, buf);
         putstr(cwin, 0, "");
     }
