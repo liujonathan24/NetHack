@@ -181,6 +181,11 @@ nle_arena_per_env_init(nle_ctx_t *ctx)
 #ifdef MADV_DONTDUMP
     (void) madvise(p, NLE_PER_ENV_ARENA_SIZE, MADV_DONTDUMP);
 #endif
+#ifdef MADV_NOHUGEPAGE
+    /* With THP=always the first touch faults in a 2 MB page per env, which
+     * is most of the RSS for a game that uses a few hundred KB. */
+    (void) madvise(p, NLE_PER_ENV_ARENA_SIZE, MADV_NOHUGEPAGE);
+#endif
     ctx->arena_base = (char *) p;
     ctx->arena_used = 0;
     ctx->arena_cap  = NLE_PER_ENV_ARENA_SIZE;
